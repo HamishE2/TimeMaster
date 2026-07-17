@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { parseCSV } from './csvParser';
-import { fmtHours } from './utils';
+import { fmtHours, weeklyPlan } from './utils';
 
 /** Normalise: resourcing CSV uses `resourcedHours`, timesheet uses `totalHours`. */
 function getResourcedHours(parsed) {
@@ -20,19 +20,20 @@ function classifyProject(parsed, existingProjects, format, weekKey) {
 
   if (!match) return { ...item, status: 'new', existingId: null };
 
+  const existingWeekly=weeklyPlan(match,weekKey);
   const unchanged = format === 'timesheet'
     ? Object.entries(item.dailyHours || {}).every(([day,hours]) => Math.abs(Number(match.entries?.[weekKey]?.[day] || 0) - Number(hours || 0)) < 0.01)
-    : Math.abs(Number(match.resourcedHours || 0) - resourcedHours) < 0.01;
+    : Math.abs(Number(existingWeekly || 0) - resourcedHours) < 0.01;
 
   if (unchanged) {
-    return { ...item, status: 'skip', existingId: match.id, existingHours: match.resourcedHours };
+    return { ...item, status: 'skip', existingId: match.id, existingHours: existingWeekly };
   }
 
   return {
     ...item,
     status: 'update',
     existingId: match.id,
-    existingHours: match.resourcedHours,
+    existingHours: existingWeekly,
   };
 }
 
