@@ -4,7 +4,9 @@ const knownWeeks = project => new Set([
   ...Object.keys(project.entries || {}),
   ...Object.values(project.taskEntries || {}).flatMap(entries => Object.keys(entries || {})),
   ...Object.keys(project.weeklyOverrides || {}),
-  ...Object.keys(project.monthlyOverrides || {})
+  ...Object.keys(project.monthlyOverrides || {}),
+  ...Object.keys(project.frontloads || {}),
+  ...Object.keys(project.frontloads || {}).map(key => shiftWeek(key, 1))
 ]);
 
 const commonFields = (project, fields, week) => {
@@ -74,6 +76,7 @@ export function createProjectRecord(fields, scope, week, id = uuid(), createdAt 
     taskRows: {},
     entries: {},
     weeklyOverrides: scope === 'week' ? {[week]: fields.hours} : {},
+    frontloads: {},
     hiddenWeeks: [],
     visibleOnwardsFrom: start,
     hiddenOnwardsFrom: scope === 'week' ? shiftWeek(week, 1) : null,
