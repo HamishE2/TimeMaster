@@ -3,6 +3,7 @@ export const DAY_NAMES = ['Monday','Tuesday','Wednesday','Thursday','Friday','Sa
 export const DAY_SHORT = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 export const DEFAULT_VISIBLE_DAYS = [0,1,2,3,4];
 export const DEFAULT_CAPACITY = [7.6,7.6,7.6,7.6,7.6,0,0];
+export const WEEKLY_RESOURCING_CAPACITY = 22.8;
 export const EPSILON = 0.01;
 
 export const uuid = () => crypto.randomUUID?.() ?? `p-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -33,6 +34,7 @@ export function adjustmentFor(project, month) { return Number(project.monthlyAdj
 export function monthlyLogged(project, month, leaveWeeks={}) { let n=adjustmentFor(project,month);const sources=[project.entries||{},...taskEntrySources(project)];for(const source of sources)for(const [wk,entries] of Object.entries(source)) for(const [d,h] of Object.entries(entries||{})) if(!leaveWeeks[wk]?.includes(Number(d)) && monthKey(dayDate(wk,Number(d)))===month) n+=Number(h)||0; return n; }
 export function monthlyAllowance(project,key,leaveWeeks={}) { const allocation=monthlyPlan(project,key);if (allocation == null) return null; const month=monthKey(dayDate(key,3)); return Math.max(0, Number(allocation)-monthlyLogged(project,month,leaveWeeks)+weeklyLogged(project,key,leaveWeeks[key]||[])); }
 export function projectMetrics(project,key,leaveWeeks={}) { const plan=weeklyPlan(project,key), logged=weeklyLogged(project,key,leaveWeeks[key]||[]), monthly=monthlyAllowance(project,key,leaveWeeks),frontloadedIn=frontloadAmount(project,key),frontloadedOut=frontloadAmount(project,shiftWeek(key,-1)),hasWeeklyPlan=plan!=null&&Number.isFinite(Number(plan)),weeklyAllowance=hasWeeklyPlan?Number(plan)+frontloadedIn-frontloadedOut:null,weeklyAvailable=weeklyAllowance==null?null:Math.max(0,weeklyAllowance),effective=weeklyAllowance==null ? monthly : monthly==null ? weeklyAllowance : Math.min(weeklyAllowance,monthly),remaining=effective==null ? null : effective-logged,status=effective==null?'unlimited':remaining < -EPSILON?'over':Math.abs(remaining)<=EPSILON?'at':'under',overDueToFrontloading=frontloadedOut>EPSILON&&weeklyAllowance!=null&&logged>weeklyAllowance+EPSILON; return {plan,logged,monthly,frontloadedIn,frontloadedOut,weeklyAllowance,weeklyAvailable,effective,remaining,status,overDueToFrontloading}; }
+export function weeklyResourcedHours(projects,key,leaveWeeks={}) { return projects.reduce((total,project)=>{const allowance=projectMetrics(project,key,leaveWeeks).weeklyAllowance;return total+Math.max(0,Number(allowance)||0);},0); }
 export function capacityFor(key, settings) { const leave=settings.leaveWeeks?.[key]||[], visible=settings.visibleDays||DEFAULT_VISIBLE_DAYS, caps=settings.capacityByDay||DEFAULT_CAPACITY; return visible.reduce((n,d)=>n+(leave.includes(d)?0:Number(caps[d]||0)),0); }
 export function migrateBackup(raw) {
   if(!raw || typeof raw !== 'object' || !Array.isArray(raw.projects)) throw new Error('This backup does not contain a valid project list.');
