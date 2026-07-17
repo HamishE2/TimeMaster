@@ -30,7 +30,7 @@ export default function StartupModal({ onComplete }) {
     <div className="modal-backdrop">
       <div className="modal">
         <div className="modal-header">
-          <h2>Welcome to Resourcing Tracker</h2>
+          <h2>Welcome to TimeMaster</h2>
         </div>
         <div className="modal-body">
           <p style={{ margin: '0 0 12px 0' }}>
