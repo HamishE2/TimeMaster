@@ -30,7 +30,7 @@ export default function Header({ weekKey, setWeekKey, visibleDays, toggleDay, on
             </linearGradient>
           </defs>
         </svg>
-        <span className="header-title">Resourcing Tracker</span>
+        <span className="header-title">TimeMaster</span>
       </div>
 
       <div className="header-nav">
