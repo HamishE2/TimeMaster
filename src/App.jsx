@@ -16,7 +16,7 @@ const taskLinesFor=(project,week)=>(project.tasks||[]).filter(task=>task.id!=='g
 const taskHoursForDay=(project,week,day)=>taskEntrySources(project).reduce((sum,entries)=>sum+Number(entries?.[week]?.[day]||0),0);
 const hasFiniteWeeklyPlan=(project,week)=>{const plan=weeklyPlan(project,week);return plan!=null&&Number.isFinite(Number(plan))&&Number(plan)>=0};
 const canFrontload=(project,week)=>{const next=shiftWeek(week,1);return project.status!=='closed'&&isVisible(project,week)&&isVisible(project,next)&&hasFiniteWeeklyPlan(project,week)&&hasFiniteWeeklyPlan(project,next)};
-const clockForwardIcon=<svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="10" cy="12" r="6"/><path d="M10 8v4l2.5 1.5M15 5h5v5M20 5l-7 7"/></svg>;
+const clockForwardIcon=<svg aria-hidden="true" viewBox="0 0 32 32"><circle cx="12" cy="16" r="8"/><path d="M12 11v5l3.5 2.5M21 10h8m-4-4 4 4-4 4"/></svg>;
 const frontloadWarningIcon=<svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="10" cy="12" r="6"/><path d="M10 8v3.5M10 14.5v.5M16.5 6.5l3 5.25-3 5.25h-6"/></svg>;
 const FrontloadWarning=({metrics})=>metrics.overDueToFrontloading?<span className="frontload-warning" title="Over limit due to frontloading" tabIndex="0" aria-label="Over limit due to frontloading">{frontloadWarningIcon}</span>:null;
 const FrontloadButton=({project,week,onOpen})=>canFrontload(project,week)?<button className="frontload-button" onClick={onOpen} aria-label={`Frontload hours for ${project.name}`} title="Frontload hours from next week">{clockForwardIcon}</button>:null;
