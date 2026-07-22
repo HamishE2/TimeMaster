@@ -4,6 +4,11 @@ import { getCategorizedProjects, monthlyPlan, uuid } from './utils';
 import { validateProjectDraft } from './projectOperations';
 
 export default function ProjectModal({ isOpen, onClose, onSave, initial, projects = [], visibleProjects = [], weekKey }) {
+  const [projectType, setProjectType] = useState('standard');
+  const [durationPreset, setDurationPreset] = useState('1 week');
+  const [durationWeeks, setDurationWeeks] = useState(1);
+  const [durationDays, setDurationDays] = useState(0);
+  const [remainderLimit, setRemainderLimit] = useState('');
   const [name, setName] = useState('');
   const [client, setClient] = useState('');
   const [code, setCode] = useState('');
@@ -29,6 +34,21 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
   // Opening the dialog creates a fresh editable draft from the selected project.
   useEffect(() => {
     if (isOpen) {
+      setProjectType(initial?.projectType || 'standard');
+      if (initial?.projectType === 'one-time') {
+        setDurationWeeks(initial.durationWeeks || 0);
+        setDurationDays(initial.durationDays || 0);
+        setRemainderLimit(initial.remainderLimit ?? '');
+        if (initial.durationWeeks === 0 && initial.durationDays === 1) setDurationPreset('1 day');
+        else if (initial.durationWeeks === 1 && initial.durationDays === 0) setDurationPreset('1 week');
+        else setDurationPreset('custom');
+      } else {
+        setDurationPreset('1 week');
+        setDurationWeeks(1);
+        setDurationDays(0);
+        setRemainderLimit('');
+      }
+
       setName(initial?.name ?? '');
       setClient(initial?.client ?? '');
       setCode(initial?.code ?? '');
@@ -39,10 +59,10 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
       let initHours = isUnlim ? '' : (initial?.resourcedHours ?? '');
       
       // Check if there's a weekly override for the current week
-      if (initial && initial.weeklyOverrides && initial.weeklyOverrides[weekKey] !== undefined) {
+      if (initial && initial.weeklyOverrides && Object.hasOwn(initial.weeklyOverrides, weekKey)) {
         initHours = initial.weeklyOverrides[weekKey];
-        setApplyScope('week');
-        setUnlimited(false);
+        setApplyScope(initial.projectType === 'one-time' ? 'onwards' : 'week');
+        setUnlimited(initHours === null || initHours === undefined);
       } else {
         setApplyScope(initial ? 'project' : 'onwards');
         setUnlimited(initial ? isUnlim : false);
@@ -86,6 +106,20 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
 
   const handleSelectProject = (project) => {
     setSelectedExistingId(project.id);
+    setProjectType(project.projectType || 'standard');
+    if (project.projectType === 'one-time') {
+      setDurationWeeks(project.durationWeeks || 0);
+      setDurationDays(project.durationDays || 0);
+      setRemainderLimit(project.remainderLimit ?? '');
+      if (project.durationWeeks === 0 && project.durationDays === 1) setDurationPreset('1 day');
+      else if (project.durationWeeks === 1 && project.durationDays === 0) setDurationPreset('1 week');
+      else setDurationPreset('custom');
+    } else {
+      setDurationPreset('1 week');
+      setDurationWeeks(1);
+      setDurationDays(0);
+      setRemainderLimit('');
+    }
     setName(project.name);
     setClient(project.client ?? '');
     setCode(project.code ?? '');
@@ -107,7 +141,7 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
   if (!isOpen) return null;
 
   const validate = () => {
-    const e = validateProjectDraft({name, unlimited, hours, monthlyHours, historicalMonthly});
+    const e = validateProjectDraft({name, unlimited, hours, monthlyHours, historicalMonthly, projectType, durationWeeks, durationDays, remainderLimit});
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -126,7 +160,11 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
         status,
         color,
         selectedExistingId,
-        tasks.map(task => ({...task, name: task.name.trim() || 'Untitled task'}))
+        tasks.map(task => ({...task, name: task.name.trim() || 'Untitled task'})),
+        projectType,
+        durationWeeks,
+        durationDays,
+        remainderLimit === '' ? null : Number(remainderLimit)
       );
       if (saved !== false) onClose();
     }
@@ -149,6 +187,84 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
         </div>
 
         <div className="modal-body">
+          <div className="field" style={{ marginBottom: '16px' }}>
+            <label>Project type</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setProjectType('standard');
+                  if (initial?.projectType === 'one-time') setApplyScope('onwards');
+                }}
+                style={{
+                  padding: '10px 12px',
+                  fontSize: '13px',
+                  border: `1px solid ${projectType === 'standard' ? 'var(--brand)' : 'var(--border)'}`,
+                  borderRadius: 'var(--radius-sm)',
+                  backgroundColor: projectType === 'standard' ? 'var(--brand-glow)' : 'var(--bg-elevated)',
+                  color: projectType === 'standard' ? 'var(--brand-light)' : 'var(--text-muted)',
+                  cursor: 'pointer',
+                  fontWeight: projectType === 'standard' ? 600 : 500,
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                Standard
+              </button>
+              <button
+                type="button"
+                onClick={() => setProjectType('one-time')}
+                style={{
+                  padding: '10px 12px',
+                  fontSize: '13px',
+                  border: `1px solid ${projectType === 'one-time' ? 'var(--brand)' : 'var(--border)'}`,
+                  borderRadius: 'var(--radius-sm)',
+                  backgroundColor: projectType === 'one-time' ? 'var(--brand-glow)' : 'var(--bg-elevated)',
+                  color: projectType === 'one-time' ? 'var(--brand-light)' : 'var(--text-muted)',
+                  cursor: 'pointer',
+                  fontWeight: projectType === 'one-time' ? 600 : 500,
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                One-Time
+              </button>
+            </div>
+          </div>
+
+          {projectType === 'one-time' && (
+            <div className="field" style={{ marginBottom: '16px' }}>
+              <label>Duration</label>
+              <div style={{ display: 'flex', gap: '16px', marginBottom: '8px' }}>
+                {['1 day', '1 week', 'custom'].map(preset => (
+                  <label key={preset} style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: 'var(--text)' }}>
+                    <input 
+                      type="radio" 
+                      checked={durationPreset === preset} 
+                      onChange={() => {
+                        setDurationPreset(preset);
+                        if (preset === '1 day') { setDurationWeeks(0); setDurationDays(1); }
+                        else if (preset === '1 week') { setDurationWeeks(1); setDurationDays(0); }
+                      }} 
+                    />
+                    {preset.charAt(0).toUpperCase() + preset.slice(1)}
+                  </label>
+                ))}
+              </div>
+              {durationPreset === 'custom' && (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Weeks</label>
+                    <input type="number" min="0" value={durationWeeks} onChange={e => setDurationWeeks(Number(e.target.value) || 0)} style={{ width: '100%', padding: '6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--border)' }} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Days</label>
+                    <input type="number" min="0" max="6" value={durationDays} onChange={e => setDurationDays(Number(e.target.value) || 0)} style={{ width: '100%', padding: '6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--border)' }} />
+                  </div>
+                </div>
+              )}
+              {errors.duration && <span className="field-error" style={{marginTop: '4px', display: 'block'}}>{errors.duration}</span>}
+            </div>
+          )}
+
           {!initial && (
             <div className="field" style={{ marginBottom: '16px' }}>
               <label>Select project</label>
@@ -404,7 +520,11 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
           </div>
 
           <div className="field">
-            <label htmlFor="project-hours">Weekly resourced hours</label>
+            <label htmlFor="project-hours">
+              {projectType === 'one-time'
+                ? (durationWeeks === 0 && durationDays > 0 ? `Usage limit for ${durationDays} day(s)` : 'Weekly usage limit')
+                : 'Weekly resourced hours'}
+            </label>
             <div className="hours-field-row">
               <input
                 id="project-hours"
@@ -432,7 +552,29 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
             </div>
             {errors.hours && <span className="field-error">{errors.hours}</span>}
             
-            {((initial && !unlimited) || !initial) && (
+            {projectType === 'one-time' && durationWeeks > 0 && durationDays > 0 && (
+              <div style={{ marginTop: '16px' }}>
+                <label htmlFor="project-remainder-hours" style={{ fontSize: '13px', display: 'block', marginBottom: '8px' }}>
+                  Usage limit for remaining {durationDays} day(s)
+                </label>
+                <div className="hours-field-row">
+                  <input
+                    id="project-remainder-hours"
+                    type="number"
+                    min="0"
+                    step="0.25"
+                    value={remainderLimit}
+                    onChange={e => setRemainderLimit(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="e.g. 5"
+                    className={errors.remainderLimit ? 'input-error' : ''}
+                  />
+                </div>
+                {errors.remainderLimit && <span className="field-error">{errors.remainderLimit}</span>}
+              </div>
+            )}
+            
+            {projectType !== 'one-time' && (((initial && !unlimited) || !initial) && (
               <div style={{ marginTop: '16px' }}>
                 <label style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px', display: 'block', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   {initial ? 'Apply changes to:' : 'Add to:'}
@@ -519,11 +661,13 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
                   )}
                 </div>
               </div>
-            )}
+            ))}
           </div>
 
-          <div className="field" style={{ marginTop: '16px' }}>
-            <label htmlFor="project-monthly-hours">Monthly resourced hours (optional)</label>
+          {projectType !== 'one-time' && (
+            <>
+              <div className="field" style={{ marginTop: '16px' }}>
+                <label htmlFor="project-monthly-hours">Monthly resourced hours (optional)</label>
             <div className="hours-field-row">
               <input
                 id="project-monthly-hours"
@@ -554,9 +698,11 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
                 placeholder="e.g. 10"
                 className={errors.historicalMonthly ? 'input-error' : ''}
               />
+              </div>
+              {errors.historicalMonthly && <span className="field-error">{errors.historicalMonthly}</span>}
             </div>
-            {errors.historicalMonthly && <span className="field-error">{errors.historicalMonthly}</span>}
-          </div>
+            </>
+          )}
 
           <div className="field project-tasks-field">
             <label>Tasks / phases</label>
@@ -614,3 +760,4 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
     </div>
   );
 }
+
