@@ -8,8 +8,12 @@ const finalDeliverable = () => ({
   name: 'final-deliverable',
   closeBundle() {
     copyFileSync(
-      resolve('dist/timemaster-entry.html'),
+      resolve('dist/index.html'),
       resolve('timemaster-redesigned.html')
+    )
+    copyFileSync(
+      resolve('dist/index.html'),
+      resolve('timemaster-entry.html')
     )
   }
 })
@@ -19,7 +23,7 @@ export default defineConfig({
   base: './',
   build: {
     rollupOptions: {
-      input: 'timemaster-entry.html'
+      input: 'index.html'
     }
   },
   plugins: [react(), viteSingleFile(), finalDeliverable()],
