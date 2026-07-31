@@ -3,31 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Local-first resourcing and timesheet planning." />
+    <meta name="description" content="TimeMaster is currently unavailable." />
     <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <title>TimeMaster</title>
+    <title>TimeMaster — Unavailable</title>
+    <style>
+      :root { color-scheme: light; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f4f1ea; color: #1e2521; }
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; }
+      main { width: min(32rem, calc(100% - 3rem)); padding: 3rem 0; }
+      .mark { width: 2.5rem; height: 2.5rem; display: grid; place-items: center; border: 1px solid #89938a; border-radius: 50%; color: #536057; font-weight: 700; }
+      h1 { margin: 3rem 0 1rem; font-size: clamp(2.4rem, 9vw, 4.8rem); line-height: .95; letter-spacing: -.06em; font-weight: 650; }
+      p { max-width: 28rem; margin: 0; color: #536057; font-size: 1.05rem; line-height: 1.6; }
+      .rule { height: 1px; margin-top: 4rem; background: #c6c8c0; }
+      small { display: block; margin-top: 1rem; color: #7b827b; letter-spacing: .08em; text-transform: uppercase; font-size: .68rem; }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module">
-      const supportsRequiredFileAccess =
-        typeof window.showOpenFilePicker === 'function'
-        && typeof window.showSaveFilePicker === 'function';
-
-      if (supportsRequiredFileAccess) {
-        import('/src/main.jsx');
-      } else {
-        document.body.style.margin = '0';
-        document.body.style.fontFamily = 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-        document.getElementById('root').style.minHeight = '100vh';
-        document.getElementById('root').style.display = 'grid';
-        document.getElementById('root').style.placeItems = 'center';
-        document.getElementById('root').style.padding = '24px';
-        document.getElementById('root').style.boxSizing = 'border-box';
-        document.getElementById('root').style.textAlign = 'center';
-        document.getElementById('root').textContent = 'TimeMaster is only available on Chromium-based browsers.';
-      }
-    </script>
+    <main>
+      <div class="mark" aria-hidden="true">T</div>
+      <h1>TimeMaster is unavailable.</h1>
+      <p>This site has been taken offline for now. Please check back later.</p>
+      <div class="rule"></div>
+      <small>Service status · offline</small>
+    </main>
   </body>
 </html>
