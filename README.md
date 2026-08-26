@@ -19,6 +19,24 @@ npm install
 npm run dev
 ```
 
+## Desktop application
+
+Run TimeMaster in Electron:
+
+```sh
+npm run desktop
+```
+
+Build the Windows installer and portable executable into `release/`:
+
+```sh
+npm run desktop:dist
+```
+
+The desktop build remains local-first and offline. Use **File** in TimeMaster to
+open or save the JSON workspace; Electron's Chromium renderer provides the same
+file workflow as the browser app.
+
 Validation:
 
 ```sh
