@@ -35,7 +35,7 @@ function ManageProjectRow({ project, updateProject, deleteProject, editProject }
       <div className="manage-project-identity">
         <span className="manage-project-swatch" style={{ background: project.color || 'var(--muted)' }} />
         <div>
-          <label className="sr-only" htmlFor={`manage-name-${project.id}`}>Project name</label>
+          {project.client && <span className="manage-project-client">{project.client}</span>}<label className="sr-only" htmlFor={`manage-name-${project.id}`}>Project name</label>
           <input
             id={`manage-name-${project.id}`}
             type="text"
@@ -47,7 +47,7 @@ function ManageProjectRow({ project, updateProject, deleteProject, editProject }
             placeholder="Project name"
           />
           <span className="manage-project-meta">
-            {`${[project.client, project.code].filter(Boolean).join(' · ') || 'No client or project code'} · ${(project.tasks || [{id:'general'}]).length} task${(project.tasks || [{id:'general'}]).length === 1 ? '' : 's'}`}
+            {`${[project.code].filter(Boolean).join(' · ') || 'No project code'} · ${(project.tasks || [{id:'general'}]).length} task${(project.tasks || [{id:'general'}]).length === 1 ? '' : 's'}`}
           </span>
         </div>
       </div>

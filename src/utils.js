@@ -71,3 +71,7 @@ export function remainingStatus(remaining,resourced){ if(resourced==null)return'
 export function remainingLabel(remaining,resourced){ if(resourced==null)return'Unlimited'; if(remaining < -EPSILON)return`${fmt(-remaining)}h over`; if(Math.abs(remaining)<=EPSILON)return'At allocation'; return`${fmt(remaining)}h left`; }
 export function dayLabel(date){ return date.toLocaleDateString('en-AU',{weekday:'short',day:'numeric'}); }
 export function getCategorizedProjects(projects,visibleProjects){ const visible=new Set(visibleProjects.map(p=>p.id)); const available=projects.filter(p=>!visible.has(p.id)); return {active:available.filter(p=>!p.archived),inactive:available.filter(p=>p.archived)}; }
+
+export const isPhaseTask = task => task.id !== 'general' && task.name.toLowerCase() !== 'general';
+export const taskLinesFor = (project, week) => (project.tasks || []).filter(task => isPhaseTask(task) && ((project.taskRows?.[week] || []).includes(task.id) || Object.values(project.taskEntries?.[task.id]?.[week] || {}).some(value => Number(value) > 0))).sort((a, b) => a.name.localeCompare(b.name));
+export const addablePhasesFor = (project, week) => { const onSheet = new Set(taskLinesFor(project, week).map(task => task.id)); return (project.tasks || []).filter(task => isPhaseTask(task) && !onSheet.has(task.id)).sort((a, b) => a.name.localeCompare(b.name)); };
