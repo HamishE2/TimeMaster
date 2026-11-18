@@ -3,7 +3,20 @@
 //   1. Resourcing CSV  — project budgets with daily hours
 //   2. Copy-paste Timesheet — actual hours per project/task
 
-const MONTHS = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5, Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 };
+const MONTHS = {
+  Jan: 0,
+  Feb: 1,
+  Mar: 2,
+  Apr: 3,
+  May: 4,
+  Jun: 5,
+  Jul: 6,
+  Aug: 7,
+  Sep: 8,
+  Oct: 9,
+  Nov: 10,
+  Dec: 11,
+};
 
 // ─── Shared helpers ─────────────────────────────────────────────────────
 
@@ -29,7 +42,11 @@ export function parseHoursMins(str) {
 
 /** Naïve CSV/TSV line parser that respects quoted fields. */
 export function parseCSVLine(line) {
-  const delimiter = line.includes('\t') ? '\t' : ((line.match(/;/g)||[]).length > (line.match(/,/g)||[]).length ? ';' : ',');
+  const delimiter = line.includes('\t')
+    ? '\t'
+    : (line.match(/;/g) || []).length > (line.match(/,/g) || []).length
+      ? ';'
+      : ',';
   const fields = [];
   let current = '';
   let inQuotes = false;
@@ -58,28 +75,54 @@ export function parseCSVLine(line) {
 function parseCSVRows(text) {
   const source = text.replace(/^\uFEFF/, '');
   const firstLine = source.split(/\r?\n/, 1)[0] || '';
-  const delimiter = firstLine.includes('\t') ? '\t' : ((firstLine.match(/;/g)||[]).length > (firstLine.match(/,/g)||[]).length ? ';' : ',');
-  const rows=[]; let row=[],field='',quoted=false;
-  for(let i=0;i<source.length;i++){
-    const ch=source[i];
-    if(ch==='"'){
-      if(quoted&&source[i+1]==='"'){field+='"';i++;}
-      else quoted=!quoted;
-    }else if(ch===delimiter&&!quoted){row.push(field);field='';}
-    else if((ch==='\n'||ch==='\r')&&!quoted){if(ch==='\r'&&source[i+1]==='\n')i++;row.push(field);if(row.some(cell=>cell.trim()))rows.push(row);row=[];field='';}
-    else field+=ch;
+  const delimiter = firstLine.includes('\t')
+    ? '\t'
+    : (firstLine.match(/;/g) || []).length >
+        (firstLine.match(/,/g) || []).length
+      ? ';'
+      : ',';
+  const rows = [];
+  let row = [],
+    field = '',
+    quoted = false;
+  for (let i = 0; i < source.length; i++) {
+    const ch = source[i];
+    if (ch === '"') {
+      if (quoted && source[i + 1] === '"') {
+        field += '"';
+        i++;
+      } else quoted = !quoted;
+    } else if (ch === delimiter && !quoted) {
+      row.push(field);
+      field = '';
+    } else if ((ch === '\n' || ch === '\r') && !quoted) {
+      if (ch === '\r' && source[i + 1] === '\n') i++;
+      row.push(field);
+      if (row.some((cell) => cell.trim())) rows.push(row);
+      row = [];
+      field = '';
+    } else field += ch;
   }
-  row.push(field);if(row.some(cell=>cell.trim()))rows.push(row);
+  row.push(field);
+  if (row.some((cell) => cell.trim())) rows.push(row);
   return rows;
 }
 
 // ─── Format detection ───────────────────────────────────────────────────
 
 export function detectFormat(text) {
-  const firstLine = (text.replace(/^\uFEFF/, '').split(/[\r\n]/)[0] || '').toLowerCase();
-  if (firstLine.includes('person') || firstLine.includes('project name')) return 'resourcing';
-  if (firstLine.startsWith('timecode') || firstLine.includes('total logged hours')) return 'timesheet';
-  if (firstLine.includes('startdate') || firstLine.includes('billable hours')) return 'summary'; // weekly summary — not supported
+  const firstLine = (
+    text.replace(/^\uFEFF/, '').split(/[\r\n]/)[0] || ''
+  ).toLowerCase();
+  if (firstLine.includes('person') || firstLine.includes('project name'))
+    return 'resourcing';
+  if (
+    firstLine.startsWith('timecode') ||
+    firstLine.includes('total logged hours')
+  )
+    return 'timesheet';
+  if (firstLine.includes('startdate') || firstLine.includes('billable hours'))
+    return 'summary'; // weekly summary — not supported
   return 'unknown';
 }
 
@@ -121,7 +164,7 @@ function inferYear(dayCols) {
 /** Get the Monday weekKey from the day columns. */
 function weekKeyFromDayCols(dayCols, year) {
   // Find the Monday column (dowLetter === 'M')
-  const monCol = dayCols.find(c => c.dowLetter === 'M');
+  const monCol = dayCols.find((c) => c.dowLetter === 'M');
   if (monCol) {
     const d = new Date(year, monCol.month, monCol.day);
     return toDateStr(d);
@@ -145,10 +188,12 @@ function toDateStr(d) {
 
 /** Resolve ambiguous T (Tue vs Thu) using position among day columns. */
 function resolveWeekdayIndices(dayCols, year) {
-  return [...dayCols].sort((a,b)=>a.colIndex-b.colIndex).map(col=>({
-    ...col,
-    dayIndex:(new Date(year,col.month,col.day).getDay()+6)%7
-  }));
+  return [...dayCols]
+    .sort((a, b) => a.colIndex - b.colIndex)
+    .map((col) => ({
+      ...col,
+      dayIndex: (new Date(year, col.month, col.day).getDay() + 6) % 7,
+    }));
 }
 
 export function parseResourcingCSV(text) {
@@ -156,7 +201,9 @@ export function parseResourcingCSV(text) {
   if (rows.length < 2) return null;
 
   const headers = rows[0];
-  const projectNameIdx = headers.findIndex(h => h.trim().toLowerCase() === 'project name');
+  const projectNameIdx = headers.findIndex(
+    (h) => h.trim().toLowerCase() === 'project name',
+  );
   if (projectNameIdx === -1) return null;
 
   const dayCols = parseDayColumns(headers);
@@ -188,7 +235,12 @@ export function parseResourcingCSV(text) {
     // Round to avoid floating point issues
     totalResourced = Math.round(totalResourced * 100) / 100;
 
-    projects.push({ name, resourcedHours: totalResourced, dailyHours, rawName });
+    projects.push({
+      name,
+      resourcedHours: totalResourced,
+      dailyHours,
+      rawName,
+    });
   }
 
   return { format: 'resourcing', weekKey, projects };
@@ -219,10 +271,13 @@ export function parseTimesheetPaste(text) {
 
   const year = inferYear(dayCols);
   const weekKey = dayCols.length > 0 ? weekKeyFromDayCols(dayCols, year) : null;
-  const weekdayCols = dayCols.length > 0 ? resolveWeekdayIndices(dayCols, year) : [];
+  const weekdayCols =
+    dayCols.length > 0 ? resolveWeekdayIndices(dayCols, year) : [];
 
   // The "My Total Logged Hours" column
-  const totalColIdx = headers.findIndex(h => h.trim().toLowerCase().includes('total logged hours'));
+  const totalColIdx = headers.findIndex((h) =>
+    h.trim().toLowerCase().includes('total logged hours'),
+  );
 
   // Parse rows
   const projectMap = new Map();
@@ -261,14 +316,22 @@ export function parseTimesheetPaste(text) {
       let rawName = firstCell;
       if (/[\uFFFD]/.test(firstCell)) {
         const parts = firstCell.split(/[\uFFFD]/).filter(Boolean);
-        rawName = parts.length > 1 ? parts.slice(1).join(' - ').trim() : parts[0]?.trim() || '';
+        rawName =
+          parts.length > 1
+            ? parts.slice(1).join(' - ').trim()
+            : parts[0]?.trim() || '';
       }
-      
+
       const name = cleanProjectName(rawName);
       if (name && name.toLowerCase() !== 'actions') {
         currentProject = name;
         if (!projectMap.has(name)) {
-          projectMap.set(name, { name, totalHours: 0, dailyHours: {}, rawName: firstCell });
+          projectMap.set(name, {
+            name,
+            totalHours: 0,
+            dailyHours: {},
+            rawName: firstCell,
+          });
         }
       }
     } else if (currentProject) {
@@ -282,7 +345,7 @@ export function parseTimesheetPaste(text) {
       if (!taskTotal && totalColIdx >= 0 && row[totalColIdx + 1]) {
         taskTotal = parseHoursMins(row[totalColIdx + 1]);
       }
-      
+
       // Fallback: Look for "H:MM hrs" pattern anywhere
       if (!taskTotal) {
         for (const cell of row) {
@@ -301,9 +364,17 @@ export function parseTimesheetPaste(text) {
       // Parse daily values
       for (const col of weekdayCols) {
         let val = row[col.colIndex]?.trim();
-        if (!val && row[col.colIndex + 1]?.trim() && /\d+:\d+/.test(row[col.colIndex + 1])) {
+        if (
+          !val &&
+          row[col.colIndex + 1]?.trim() &&
+          /\d+:\d+/.test(row[col.colIndex + 1])
+        ) {
           val = row[col.colIndex + 1].trim();
-        } else if (!val && row[col.colIndex - 1]?.trim() && /\d+:\d+/.test(row[col.colIndex - 1])) {
+        } else if (
+          !val &&
+          row[col.colIndex - 1]?.trim() &&
+          /\d+:\d+/.test(row[col.colIndex - 1])
+        ) {
           val = row[col.colIndex - 1].trim();
         }
 
@@ -312,7 +383,8 @@ export function parseTimesheetPaste(text) {
           if (hours > 0) {
             const proj = projectMap.get(currentProject);
             if (proj) {
-              proj.dailyHours[col.dayIndex] = (proj.dailyHours[col.dayIndex] || 0) + hours;
+              proj.dailyHours[col.dayIndex] =
+                (proj.dailyHours[col.dayIndex] || 0) + hours;
             }
           }
         }
@@ -332,9 +404,21 @@ export function parseTimesheetPaste(text) {
 export function parseCSV(text) {
   const format = detectFormat(text);
   switch (format) {
-    case 'resourcing': return parseResourcingCSV(text);
-    case 'timesheet': return parseTimesheetPaste(text);
-    case 'summary': return { format: 'summary', error: 'Weekly summary CSVs don\'t contain per-project data. Please use the resourcing export or copy-paste timesheet instead.' };
-    default: return { format: 'unknown', error: 'Could not detect the CSV format. Supported formats: Resourcing export, Copy-paste timesheet.' };
+    case 'resourcing':
+      return parseResourcingCSV(text);
+    case 'timesheet':
+      return parseTimesheetPaste(text);
+    case 'summary':
+      return {
+        format: 'summary',
+        error:
+          "Weekly summary CSVs don't contain per-project data. Please use the resourcing export or copy-paste timesheet instead.",
+      };
+    default:
+      return {
+        format: 'unknown',
+        error:
+          'Could not detect the CSV format. Supported formats: Resourcing export, Copy-paste timesheet.',
+      };
   }
 }

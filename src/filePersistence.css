@@ -27,13 +27,24 @@
   white-space: nowrap;
 }
 
-.file-status strong { font-size: 12px; }
-.file-status span { color: var(--muted); font-size: 10px; }
+.file-status strong {
+  font-size: 12px;
+}
+.file-status span {
+  color: var(--muted);
+  font-size: 10px;
+}
 .file-status-dirty span,
-.file-status-saving span { color: var(--warning); }
+.file-status-saving span {
+  color: var(--warning);
+}
 .file-status-conflict span,
-.file-status-error span { color: var(--danger); }
-.file-status-saved span { color: var(--healthy); }
+.file-status-error span {
+  color: var(--danger);
+}
+.file-status-saved span {
+  color: var(--healthy);
+}
 
 .active-file-card {
   display: grid;
@@ -75,7 +86,9 @@
   margin-top: 18px;
 }
 
-.file-primary-actions button { min-height: 44px; }
+.file-primary-actions button {
+  min-height: 44px;
+}
 
 .file-secondary-actions {
   grid-template-columns: repeat(3, minmax(0, 1fr));

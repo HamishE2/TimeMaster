@@ -3,7 +3,15 @@ import { useState, useEffect, useRef } from 'react';
 import { getCategorizedProjects, monthlyPlan, uuid } from './utils';
 import { validateProjectDraft } from './projectOperations';
 
-export default function ProjectModal({ isOpen, onClose, onSave, initial, projects = [], visibleProjects = [], weekKey }) {
+export default function ProjectModal({
+  isOpen,
+  onClose,
+  onSave,
+  initial,
+  projects = [],
+  visibleProjects = [],
+  weekKey,
+}) {
   const [projectType, setProjectType] = useState('standard');
   const [durationPreset, setDurationPreset] = useState('1 week');
   const [durationWeeks, setDurationWeeks] = useState(1);
@@ -23,13 +31,16 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
   const [errors, setErrors] = useState({});
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [selectedExistingId, setSelectedExistingId] = useState(null);
-  const [tasks, setTasks] = useState([{id:'general',name:'General'}]);
+  const [tasks, setTasks] = useState([{ id: 'general', name: 'General' }]);
   const [newTask, setNewTask] = useState('');
   const [pendingTaskRemoval, setPendingTaskRemoval] = useState(null);
   const nameRef = useRef(null);
   const dropdownRef = useRef(null);
 
-  const { active, inactive } = getCategorizedProjects(projects, visibleProjects);
+  const { active, inactive } = getCategorizedProjects(
+    projects,
+    visibleProjects,
+  );
 
   // Opening the dialog creates a fresh editable draft from the selected project.
   useEffect(() => {
@@ -39,8 +50,10 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
         setDurationWeeks(initial.durationWeeks || 0);
         setDurationDays(initial.durationDays || 0);
         setRemainderLimit(initial.remainderLimit ?? '');
-        if (initial.durationWeeks === 0 && initial.durationDays === 1) setDurationPreset('1 day');
-        else if (initial.durationWeeks === 1 && initial.durationDays === 0) setDurationPreset('1 week');
+        if (initial.durationWeeks === 0 && initial.durationDays === 1)
+          setDurationPreset('1 day');
+        else if (initial.durationWeeks === 1 && initial.durationDays === 0)
+          setDurationPreset('1 week');
         else setDurationPreset('custom');
       } else {
         setDurationPreset('1 week');
@@ -54,12 +67,18 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
       setCode(initial?.code ?? '');
       setStatus(initial?.status ?? 'active');
       setColor(initial?.color ?? '#6366f1');
-      
-      const isUnlim = initial?.resourcedHours === null || initial?.resourcedHours === undefined;
+
+      const isUnlim =
+        initial?.resourcedHours === null ||
+        initial?.resourcedHours === undefined;
       let initHours = isUnlim ? '' : (initial?.resourcedHours ?? '');
-      
+
       // Check if there's a weekly override for the current week
-      if (initial && initial.weeklyOverrides && Object.hasOwn(initial.weeklyOverrides, weekKey)) {
+      if (
+        initial &&
+        initial.weeklyOverrides &&
+        Object.hasOwn(initial.weeklyOverrides, weekKey)
+      ) {
         initHours = initial.weeklyOverrides[weekKey];
         setApplyScope(initial.projectType === 'one-time' ? 'onwards' : 'week');
         setUnlimited(initHours === null || initHours === undefined);
@@ -67,19 +86,24 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
         setApplyScope(initial ? 'project' : 'onwards');
         setUnlimited(initial ? isUnlim : false);
       }
-      
+
       setHours(initHours);
-      
-      const currentMonthly=initial?monthlyPlan(initial,weekKey):null;
-      const isMonthlyUnlim = currentMonthly === null || currentMonthly === undefined;
+
+      const currentMonthly = initial ? monthlyPlan(initial, weekKey) : null;
+      const isMonthlyUnlim =
+        currentMonthly === null || currentMonthly === undefined;
       setMonthlyHours(isMonthlyUnlim ? '' : currentMonthly);
       setHistoricalMonthly(initial?.historicalMonthlyHours ?? '');
-      
+
       setIsBillable(initial?.isBillable ?? true);
       setErrors({});
       setDropdownOpen(false);
       setSelectedExistingId(null);
-      setTasks(initial?.tasks?.length ? initial.tasks : [{id:'general',name:'General'}]);
+      setTasks(
+        initial?.tasks?.length
+          ? initial.tasks
+          : [{ id: 'general', name: 'General' }],
+      );
       setNewTask('');
       setPendingTaskRemoval(null);
       setTimeout(() => nameRef.current?.focus(), 50);
@@ -88,7 +112,9 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
 
   useEffect(() => {
     if (!isOpen) return;
-    const onKey = e => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [isOpen, onClose]);
@@ -111,8 +137,10 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
       setDurationWeeks(project.durationWeeks || 0);
       setDurationDays(project.durationDays || 0);
       setRemainderLimit(project.remainderLimit ?? '');
-      if (project.durationWeeks === 0 && project.durationDays === 1) setDurationPreset('1 day');
-      else if (project.durationWeeks === 1 && project.durationDays === 0) setDurationPreset('1 week');
+      if (project.durationWeeks === 0 && project.durationDays === 1)
+        setDurationPreset('1 day');
+      else if (project.durationWeeks === 1 && project.durationDays === 0)
+        setDurationPreset('1 week');
       else setDurationPreset('custom');
     } else {
       setDurationPreset('1 week');
@@ -125,15 +153,21 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
     setCode(project.code ?? '');
     setStatus(project.status ?? 'active');
     setColor(project.color ?? '#6366f1');
-    const isUnlim = project.resourcedHours === null || project.resourcedHours === undefined;
+    const isUnlim =
+      project.resourcedHours === null || project.resourcedHours === undefined;
     setUnlimited(isUnlim);
     setHours(isUnlim ? '' : project.resourcedHours);
     setApplyScope(initial ? 'project' : 'onwards');
-    const currentMonthly=monthlyPlan(project,weekKey),isMonthlyUnlim = currentMonthly === null || currentMonthly === undefined;
+    const currentMonthly = monthlyPlan(project, weekKey),
+      isMonthlyUnlim = currentMonthly === null || currentMonthly === undefined;
     setMonthlyHours(isMonthlyUnlim ? '' : currentMonthly);
     setHistoricalMonthly(project.historicalMonthlyHours ?? '');
     setIsBillable(project.isBillable ?? true);
-    setTasks(project.tasks?.length ? project.tasks : [{id:'general',name:'General'}]);
+    setTasks(
+      project.tasks?.length
+        ? project.tasks
+        : [{ id: 'general', name: 'General' }],
+    );
     setNewTask('');
     setDropdownOpen(false);
   };
@@ -141,7 +175,17 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
   if (!isOpen) return null;
 
   const validate = () => {
-    const e = validateProjectDraft({name, unlimited, hours, monthlyHours, historicalMonthly, projectType, durationWeeks, durationDays, remainderLimit});
+    const e = validateProjectDraft({
+      name,
+      unlimited,
+      hours,
+      monthlyHours,
+      historicalMonthly,
+      projectType,
+      durationWeeks,
+      durationDays,
+      remainderLimit,
+    });
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -149,10 +193,10 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
   const handleSave = () => {
     if (validate()) {
       const saved = onSave(
-        name.trim(), 
-        unlimited ? null : Number(hours), 
-        isBillable, 
-        applyScope, 
+        name.trim(),
+        unlimited ? null : Number(hours),
+        isBillable,
+        applyScope,
         monthlyHours === '' ? null : Number(monthlyHours),
         historicalMonthly === '' ? 0 : Number(historicalMonthly),
         client.trim(),
@@ -160,11 +204,14 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
         status,
         color,
         selectedExistingId,
-        tasks.map(task => ({...task, name: task.name.trim() || 'Untitled task'})),
+        tasks.map((task) => ({
+          ...task,
+          name: task.name.trim() || 'Untitled task',
+        })),
         projectType,
         durationWeeks,
         durationDays,
-        remainderLimit === '' ? null : Number(remainderLimit)
+        remainderLimit === '' ? null : Number(remainderLimit),
       );
       if (saved !== false) onClose();
     }
@@ -176,12 +223,17 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>{initial ? 'Edit project' : 'Add project'}</h2>
           <button className="modal-close" onClick={onClose} aria-label="Close">
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              <path
+                d="M5 5l10 10M15 5L5 15"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
             </svg>
           </button>
         </div>
@@ -189,23 +241,36 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
         <div className="modal-body">
           <div className="field" style={{ marginBottom: '16px' }}>
             <label>Project type</label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '8px',
+              }}
+            >
               <button
                 type="button"
                 onClick={() => {
                   setProjectType('standard');
-                  if (initial?.projectType === 'one-time') setApplyScope('onwards');
+                  if (initial?.projectType === 'one-time')
+                    setApplyScope('onwards');
                 }}
                 style={{
                   padding: '10px 12px',
                   fontSize: '13px',
                   border: `1px solid ${projectType === 'standard' ? 'var(--brand)' : 'var(--border)'}`,
                   borderRadius: 'var(--radius-sm)',
-                  backgroundColor: projectType === 'standard' ? 'var(--brand-glow)' : 'var(--bg-elevated)',
-                  color: projectType === 'standard' ? 'var(--brand-light)' : 'var(--text-muted)',
+                  backgroundColor:
+                    projectType === 'standard'
+                      ? 'var(--brand-glow)'
+                      : 'var(--bg-elevated)',
+                  color:
+                    projectType === 'standard'
+                      ? 'var(--brand-light)'
+                      : 'var(--text-muted)',
                   cursor: 'pointer',
                   fontWeight: projectType === 'standard' ? 600 : 500,
-                  transition: 'all 0.2s ease'
+                  transition: 'all 0.2s ease',
                 }}
               >
                 Standard
@@ -218,11 +283,17 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
                   fontSize: '13px',
                   border: `1px solid ${projectType === 'one-time' ? 'var(--brand)' : 'var(--border)'}`,
                   borderRadius: 'var(--radius-sm)',
-                  backgroundColor: projectType === 'one-time' ? 'var(--brand-glow)' : 'var(--bg-elevated)',
-                  color: projectType === 'one-time' ? 'var(--brand-light)' : 'var(--text-muted)',
+                  backgroundColor:
+                    projectType === 'one-time'
+                      ? 'var(--brand-glow)'
+                      : 'var(--bg-elevated)',
+                  color:
+                    projectType === 'one-time'
+                      ? 'var(--brand-light)'
+                      : 'var(--text-muted)',
                   cursor: 'pointer',
                   fontWeight: projectType === 'one-time' ? 600 : 500,
-                  transition: 'all 0.2s ease'
+                  transition: 'all 0.2s ease',
                 }}
               >
                 One-Time
@@ -233,17 +304,34 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
           {projectType === 'one-time' && (
             <div className="field" style={{ marginBottom: '16px' }}>
               <label>Duration</label>
-              <div style={{ display: 'flex', gap: '16px', marginBottom: '8px' }}>
-                {['1 day', '1 week', 'custom'].map(preset => (
-                  <label key={preset} style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: 'var(--text)' }}>
-                    <input 
-                      type="radio" 
-                      checked={durationPreset === preset} 
+              <div
+                style={{ display: 'flex', gap: '16px', marginBottom: '8px' }}
+              >
+                {['1 day', '1 week', 'custom'].map((preset) => (
+                  <label
+                    key={preset}
+                    style={{
+                      fontSize: '13px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      cursor: 'pointer',
+                      color: 'var(--text)',
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      checked={durationPreset === preset}
                       onChange={() => {
                         setDurationPreset(preset);
-                        if (preset === '1 day') { setDurationWeeks(0); setDurationDays(1); }
-                        else if (preset === '1 week') { setDurationWeeks(1); setDurationDays(0); }
-                      }} 
+                        if (preset === '1 day') {
+                          setDurationWeeks(0);
+                          setDurationDays(1);
+                        } else if (preset === '1 week') {
+                          setDurationWeeks(1);
+                          setDurationDays(0);
+                        }
+                      }}
                     />
                     {preset.charAt(0).toUpperCase() + preset.slice(1)}
                   </label>
@@ -252,23 +340,71 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
               {durationPreset === 'custom' && (
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <div style={{ flex: 1 }}>
-                    <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Weeks</label>
-                    <input type="number" min="0" value={durationWeeks} onChange={e => setDurationWeeks(Number(e.target.value) || 0)} style={{ width: '100%', padding: '6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--border)' }} />
+                    <label
+                      style={{ fontSize: '11px', color: 'var(--text-muted)' }}
+                    >
+                      Weeks
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={durationWeeks}
+                      onChange={(e) =>
+                        setDurationWeeks(Number(e.target.value) || 0)
+                      }
+                      style={{
+                        width: '100%',
+                        padding: '6px',
+                        fontSize: '13px',
+                        borderRadius: '4px',
+                        border: '1px solid var(--border)',
+                      }}
+                    />
                   </div>
                   <div style={{ flex: 1 }}>
-                    <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Days</label>
-                    <input type="number" min="0" max="6" value={durationDays} onChange={e => setDurationDays(Number(e.target.value) || 0)} style={{ width: '100%', padding: '6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--border)' }} />
+                    <label
+                      style={{ fontSize: '11px', color: 'var(--text-muted)' }}
+                    >
+                      Days
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="6"
+                      value={durationDays}
+                      onChange={(e) =>
+                        setDurationDays(Number(e.target.value) || 0)
+                      }
+                      style={{
+                        width: '100%',
+                        padding: '6px',
+                        fontSize: '13px',
+                        borderRadius: '4px',
+                        border: '1px solid var(--border)',
+                      }}
+                    />
                   </div>
                 </div>
               )}
-              {errors.duration && <span className="field-error" style={{marginTop: '4px', display: 'block'}}>{errors.duration}</span>}
+              {errors.duration && (
+                <span
+                  className="field-error"
+                  style={{ marginTop: '4px', display: 'block' }}
+                >
+                  {errors.duration}
+                </span>
+              )}
             </div>
           )}
 
           {!initial && (
             <div className="field" style={{ marginBottom: '16px' }}>
               <label>Select project</label>
-              <div className="project-select-container" ref={dropdownRef} style={{ position: 'relative' }}>
+              <div
+                className="project-select-container"
+                ref={dropdownRef}
+                style={{ position: 'relative' }}
+              >
                 <button
                   type="button"
                   className="project-select-btn"
@@ -286,17 +422,24 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
                     fontSize: '14px',
                     cursor: 'pointer',
                     textAlign: 'left',
-                    transition: 'all var(--transition)'
+                    transition: 'all var(--transition)',
                   }}
-                  onMouseOver={(e) => { e.currentTarget.style.borderColor = 'var(--border-light)'; e.currentTarget.style.backgroundColor = 'var(--bg-hover)'; }}
-                  onMouseOut={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.backgroundColor = 'var(--bg-elevated)'; }}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--border-light)';
+                    e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--border)';
+                    e.currentTarget.style.backgroundColor =
+                      'var(--bg-elevated)';
+                  }}
                 >
                   <span>Select an existing project...</span>
                   <svg
                     style={{
                       transform: dropdownOpen ? 'rotate(180deg)' : 'rotate(0)',
                       transition: 'transform var(--transition)',
-                      color: 'var(--text-muted)'
+                      color: 'var(--text-muted)',
                     }}
                     width="16"
                     height="16"
@@ -326,7 +469,7 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
                       zIndex: 1000,
                       maxHeight: '260px',
                       overflowY: 'auto',
-                      padding: '6px 0'
+                      padding: '6px 0',
                     }}
                   >
                     {active.length > 0 && (
@@ -339,12 +482,12 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
                             textTransform: 'uppercase',
                             color: 'var(--brand-light)',
                             padding: '8px 14px 4px',
-                            letterSpacing: '0.05em'
+                            letterSpacing: '0.05em',
                           }}
                         >
                           Active
                         </div>
-                        {active.map(p => (
+                        {active.map((p) => (
                           <button
                             key={p.id}
                             type="button"
@@ -362,14 +505,28 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
                               fontSize: '13.5px',
                               textAlign: 'left',
                               cursor: 'pointer',
-                              transition: 'all var(--transition)'
+                              transition: 'all var(--transition)',
                             }}
-                            onMouseOver={(e) => { e.currentTarget.style.backgroundColor = 'var(--bg-hover)'; }}
-                            onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                            onMouseOver={(e) => {
+                              e.currentTarget.style.backgroundColor =
+                                'var(--bg-hover)';
+                            }}
+                            onMouseOut={(e) => {
+                              e.currentTarget.style.backgroundColor =
+                                'transparent';
+                            }}
                           >
                             <span>{p.name}</span>
-                            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                              {p.resourcedHours === null || p.resourcedHours === undefined ? '∞' : `${p.resourcedHours}h/wk`}
+                            <span
+                              style={{
+                                fontSize: '12px',
+                                color: 'var(--text-muted)',
+                              }}
+                            >
+                              {p.resourcedHours === null ||
+                              p.resourcedHours === undefined
+                                ? '∞'
+                                : `${p.resourcedHours}h/wk`}
                             </span>
                           </button>
                         ))}
@@ -386,13 +543,16 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
                             color: 'var(--text-dim)',
                             padding: '8px 14px 4px',
                             letterSpacing: '0.05em',
-                            borderTop: active.length > 0 ? '1px solid var(--border)' : 'none',
-                            marginTop: active.length > 0 ? '4px' : '0'
+                            borderTop:
+                              active.length > 0
+                                ? '1px solid var(--border)'
+                                : 'none',
+                            marginTop: active.length > 0 ? '4px' : '0',
                           }}
                         >
                           Inactive
                         </div>
-                        {inactive.map(p => (
+                        {inactive.map((p) => (
                           <button
                             key={p.id}
                             type="button"
@@ -410,21 +570,44 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
                               fontSize: '13.5px',
                               textAlign: 'left',
                               cursor: 'pointer',
-                              transition: 'all var(--transition)'
+                              transition: 'all var(--transition)',
                             }}
-                            onMouseOver={(e) => { e.currentTarget.style.backgroundColor = 'var(--bg-hover)'; e.currentTarget.style.color = 'var(--text)'; }}
-                            onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+                            onMouseOver={(e) => {
+                              e.currentTarget.style.backgroundColor =
+                                'var(--bg-hover)';
+                              e.currentTarget.style.color = 'var(--text)';
+                            }}
+                            onMouseOut={(e) => {
+                              e.currentTarget.style.backgroundColor =
+                                'transparent';
+                              e.currentTarget.style.color = 'var(--text-muted)';
+                            }}
                           >
                             <span>{p.name}</span>
-                            <span style={{ fontSize: '12px', color: 'var(--text-dim)' }}>
-                              {p.resourcedHours === null || p.resourcedHours === undefined ? '∞' : `${p.resourcedHours}h/wk`}
+                            <span
+                              style={{
+                                fontSize: '12px',
+                                color: 'var(--text-dim)',
+                              }}
+                            >
+                              {p.resourcedHours === null ||
+                              p.resourcedHours === undefined
+                                ? '∞'
+                                : `${p.resourcedHours}h/wk`}
                             </span>
                           </button>
                         ))}
                       </div>
                     )}
                     {active.length === 0 && inactive.length === 0 && (
-                      <div style={{ padding: '12px 14px', fontSize: '13.5px', color: 'var(--text-dim)', textAlign: 'center' }}>
+                      <div
+                        style={{
+                          padding: '12px 14px',
+                          fontSize: '13.5px',
+                          color: 'var(--text-dim)',
+                          textAlign: 'center',
+                        }}
+                      >
                         No previous projects available
                       </div>
                     )}
@@ -441,7 +624,7 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
               id="project-name"
               type="text"
               value={name}
-              onChange={e => setName(e.target.value)}
+              onChange={(e) => setName(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="e.g. Client Dashboard Redesign"
               className={errors.name ? 'input-error' : ''}
@@ -455,7 +638,7 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
               id="project-client"
               type="text"
               value={client}
-              onChange={e => setClient(e.target.value)}
+              onChange={(e) => setClient(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="e.g. Contoso Pty Ltd"
             />
@@ -467,7 +650,7 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
               id="project-code"
               type="text"
               value={code}
-              onChange={e => setCode(e.target.value)}
+              onChange={(e) => setCode(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="e.g. PRJ-1042"
             />
@@ -478,7 +661,7 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
             <select
               id="project-status"
               value={status}
-              onChange={e => setStatus(e.target.value)}
+              onChange={(e) => setStatus(e.target.value)}
               style={{
                 width: '100%',
                 padding: '10px 14px',
@@ -495,10 +678,28 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
             </select>
           </div>
 
-          <div className="field" style={{ marginTop: '16px', marginBottom: '16px' }}>
+          <div
+            className="field"
+            style={{ marginTop: '16px', marginBottom: '16px' }}
+          >
             <label>Colour</label>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              {["#6b7280","#334155","#0f9e8e","#2563eb","#7c3aed","#db2777","#f59e0b","#16a34a","#dc2626","#4f46e5","#06b6d4","#ea580c","#92400e","#65a30d"].map(c => (
+              {[
+                '#6b7280',
+                '#334155',
+                '#0f9e8e',
+                '#2563eb',
+                '#7c3aed',
+                '#db2777',
+                '#f59e0b',
+                '#16a34a',
+                '#dc2626',
+                '#4f46e5',
+                '#06b6d4',
+                '#ea580c',
+                '#92400e',
+                '#65a30d',
+              ].map((c) => (
                 <button
                   key={c}
                   type="button"
@@ -509,8 +710,11 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
                     height: '34px',
                     borderRadius: '50%',
                     backgroundColor: c,
-                    border: color === c ? '2px solid var(--text)' : '2px solid transparent',
-                    cursor: 'pointer'
+                    border:
+                      color === c
+                        ? '2px solid var(--text)'
+                        : '2px solid transparent',
+                    cursor: 'pointer',
                   }}
                   title={`Use ${c}`}
                   aria-label={`Use colour ${c}`}
@@ -522,7 +726,9 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
           <div className="field">
             <label htmlFor="project-hours">
               {projectType === 'one-time'
-                ? (durationWeeks === 0 && durationDays > 0 ? `Usage limit for ${durationDays} day(s)` : 'Weekly usage limit')
+                ? durationWeeks === 0 && durationDays > 0
+                  ? `Usage limit for ${durationDays} day(s)`
+                  : 'Weekly usage limit'
                 : 'Weekly resourced hours'}
             </label>
             <div className="hours-field-row">
@@ -532,226 +738,400 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
                 min="0"
                 step="0.25"
                 value={unlimited ? '' : hours}
-                onChange={e => setHours(e.target.value)}
+                onChange={(e) => setHours(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={unlimited ? '∞ Unlimited' : 'e.g. 12'}
                 className={errors.hours ? 'input-error' : ''}
                 disabled={unlimited}
               />
-              <label className="unlimited-toggle" title="Set to unlimited (no budget cap)">
+              <label
+                className="unlimited-toggle"
+                title="Set to unlimited (no budget cap)"
+              >
                 <input
                   type="checkbox"
                   checked={unlimited}
-                  onChange={e => {
+                  onChange={(e) => {
                     setUnlimited(e.target.checked);
-                    if (e.target.checked) setApplyScope(initial ? 'project' : 'onwards'); // overrides usually aren't unlimited
+                    if (e.target.checked)
+                      setApplyScope(initial ? 'project' : 'onwards'); // overrides usually aren't unlimited
                   }}
                 />
                 <span className="unlimited-label">∞</span>
               </label>
             </div>
-            {errors.hours && <span className="field-error">{errors.hours}</span>}
-            
-            {projectType === 'one-time' && durationWeeks > 0 && durationDays > 0 && (
-              <div style={{ marginTop: '16px' }}>
-                <label htmlFor="project-remainder-hours" style={{ fontSize: '13px', display: 'block', marginBottom: '8px' }}>
-                  Usage limit for remaining {durationDays} day(s)
-                </label>
-                <div className="hours-field-row">
-                  <input
-                    id="project-remainder-hours"
-                    type="number"
-                    min="0"
-                    step="0.25"
-                    value={remainderLimit}
-                    onChange={e => setRemainderLimit(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder="e.g. 5"
-                    className={errors.remainderLimit ? 'input-error' : ''}
-                  />
-                </div>
-                {errors.remainderLimit && <span className="field-error">{errors.remainderLimit}</span>}
-              </div>
+            {errors.hours && (
+              <span className="field-error">{errors.hours}</span>
             )}
-            
-            {projectType !== 'one-time' && (((initial && !unlimited) || !initial) && (
-              <div style={{ marginTop: '16px' }}>
-                <label style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px', display: 'block', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  {initial ? 'Apply changes to:' : 'Add to:'}
-                </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                  {initial ? (
-                    [
-                      { id: 'retro', label: 'Retrospectively' },
-                      { id: 'onwards', label: 'This Week Onwards' },
-                      { id: 'week', label: 'This Week Only' },
-                      { id: 'project', label: 'Entire Project' }
-                    ].map(opt => (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => setApplyScope(opt.id)}
-                        style={{
-                          padding: '10px 12px',
-                          fontSize: '13px',
-                          border: `1px solid ${applyScope === opt.id ? 'var(--brand)' : 'var(--border)'}`,
-                          borderRadius: 'var(--radius-sm)',
-                          backgroundColor: applyScope === opt.id ? 'var(--brand-glow)' : 'var(--bg-elevated)',
-                          color: applyScope === opt.id ? 'var(--brand-light)' : 'var(--text-muted)',
-                          cursor: 'pointer',
-                          fontWeight: applyScope === opt.id ? 600 : 500,
-                          transition: 'all 0.2s ease',
-                          textAlign: 'center'
-                        }}
-                        onMouseOver={(e) => { 
-                          if (applyScope !== opt.id) {
-                            e.currentTarget.style.borderColor = 'var(--border-light)';
-                            e.currentTarget.style.color = 'var(--text)';
-                          }
-                        }}
-                        onMouseOut={(e) => { 
-                          if (applyScope !== opt.id) {
-                            e.currentTarget.style.borderColor = 'var(--border)';
-                            e.currentTarget.style.color = 'var(--text-muted)';
-                          }
-                        }}
-                      >
-                        {opt.label}
-                      </button>
-                    ))
-                  ) : (
-                    [
-                      { id: 'week', label: 'This Week Only' },
-                      { id: 'onwards', label: 'This Week Onwards' },
-                      { id: 'next-onwards', label: 'Next Week Onwards' }
-                    ].map(opt => (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => setApplyScope(opt.id)}
-                        style={{
-                          padding: '10px 12px',
-                          fontSize: '13px',
-                          border: `1px solid ${applyScope === opt.id ? 'var(--brand)' : 'var(--border)'}`,
-                          borderRadius: 'var(--radius-sm)',
-                          backgroundColor: applyScope === opt.id ? 'var(--brand-glow)' : 'var(--bg-elevated)',
-                          color: applyScope === opt.id ? 'var(--brand-light)' : 'var(--text-muted)',
-                          cursor: 'pointer',
-                          fontWeight: applyScope === opt.id ? 600 : 500,
-                          transition: 'all 0.2s ease',
-                          textAlign: 'center',
-                          gridColumn: opt.id === 'next-onwards' ? 'span 2' : 'auto'
-                        }}
-                        onMouseOver={(e) => { 
-                          if (applyScope !== opt.id) {
-                            e.currentTarget.style.borderColor = 'var(--border-light)';
-                            e.currentTarget.style.color = 'var(--text)';
-                          }
-                        }}
-                        onMouseOut={(e) => { 
-                          if (applyScope !== opt.id) {
-                            e.currentTarget.style.borderColor = 'var(--border)';
-                            e.currentTarget.style.color = 'var(--text-muted)';
-                          }
-                        }}
-                      >
-                        {opt.label}
-                      </button>
-                    ))
+
+            {projectType === 'one-time' &&
+              durationWeeks > 0 &&
+              durationDays > 0 && (
+                <div style={{ marginTop: '16px' }}>
+                  <label
+                    htmlFor="project-remainder-hours"
+                    style={{
+                      fontSize: '13px',
+                      display: 'block',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    Usage limit for remaining {durationDays} day(s)
+                  </label>
+                  <div className="hours-field-row">
+                    <input
+                      id="project-remainder-hours"
+                      type="number"
+                      min="0"
+                      step="0.25"
+                      value={remainderLimit}
+                      onChange={(e) => setRemainderLimit(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      placeholder="e.g. 5"
+                      className={errors.remainderLimit ? 'input-error' : ''}
+                    />
+                  </div>
+                  {errors.remainderLimit && (
+                    <span className="field-error">{errors.remainderLimit}</span>
                   )}
                 </div>
-              </div>
-            ))}
+              )}
+
+            {projectType !== 'one-time' &&
+              ((initial && !unlimited) || !initial) && (
+                <div style={{ marginTop: '16px' }}>
+                  <label
+                    style={{
+                      fontSize: '11px',
+                      color: 'var(--text-muted)',
+                      marginBottom: '8px',
+                      display: 'block',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                    }}
+                  >
+                    {initial ? 'Apply changes to:' : 'Add to:'}
+                  </label>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: '8px',
+                    }}
+                  >
+                    {initial
+                      ? [
+                          { id: 'retro', label: 'Retrospectively' },
+                          { id: 'onwards', label: 'This Week Onwards' },
+                          { id: 'week', label: 'This Week Only' },
+                          { id: 'project', label: 'Entire Project' },
+                        ].map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => setApplyScope(opt.id)}
+                            style={{
+                              padding: '10px 12px',
+                              fontSize: '13px',
+                              border: `1px solid ${applyScope === opt.id ? 'var(--brand)' : 'var(--border)'}`,
+                              borderRadius: 'var(--radius-sm)',
+                              backgroundColor:
+                                applyScope === opt.id
+                                  ? 'var(--brand-glow)'
+                                  : 'var(--bg-elevated)',
+                              color:
+                                applyScope === opt.id
+                                  ? 'var(--brand-light)'
+                                  : 'var(--text-muted)',
+                              cursor: 'pointer',
+                              fontWeight: applyScope === opt.id ? 600 : 500,
+                              transition: 'all 0.2s ease',
+                              textAlign: 'center',
+                            }}
+                            onMouseOver={(e) => {
+                              if (applyScope !== opt.id) {
+                                e.currentTarget.style.borderColor =
+                                  'var(--border-light)';
+                                e.currentTarget.style.color = 'var(--text)';
+                              }
+                            }}
+                            onMouseOut={(e) => {
+                              if (applyScope !== opt.id) {
+                                e.currentTarget.style.borderColor =
+                                  'var(--border)';
+                                e.currentTarget.style.color =
+                                  'var(--text-muted)';
+                              }
+                            }}
+                          >
+                            {opt.label}
+                          </button>
+                        ))
+                      : [
+                          { id: 'week', label: 'This Week Only' },
+                          { id: 'onwards', label: 'This Week Onwards' },
+                          { id: 'next-onwards', label: 'Next Week Onwards' },
+                        ].map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => setApplyScope(opt.id)}
+                            style={{
+                              padding: '10px 12px',
+                              fontSize: '13px',
+                              border: `1px solid ${applyScope === opt.id ? 'var(--brand)' : 'var(--border)'}`,
+                              borderRadius: 'var(--radius-sm)',
+                              backgroundColor:
+                                applyScope === opt.id
+                                  ? 'var(--brand-glow)'
+                                  : 'var(--bg-elevated)',
+                              color:
+                                applyScope === opt.id
+                                  ? 'var(--brand-light)'
+                                  : 'var(--text-muted)',
+                              cursor: 'pointer',
+                              fontWeight: applyScope === opt.id ? 600 : 500,
+                              transition: 'all 0.2s ease',
+                              textAlign: 'center',
+                              gridColumn:
+                                opt.id === 'next-onwards' ? 'span 2' : 'auto',
+                            }}
+                            onMouseOver={(e) => {
+                              if (applyScope !== opt.id) {
+                                e.currentTarget.style.borderColor =
+                                  'var(--border-light)';
+                                e.currentTarget.style.color = 'var(--text)';
+                              }
+                            }}
+                            onMouseOut={(e) => {
+                              if (applyScope !== opt.id) {
+                                e.currentTarget.style.borderColor =
+                                  'var(--border)';
+                                e.currentTarget.style.color =
+                                  'var(--text-muted)';
+                              }
+                            }}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                  </div>
+                </div>
+              )}
           </div>
 
           {projectType !== 'one-time' && (
             <>
               <div className="field" style={{ marginTop: '16px' }}>
-                <label htmlFor="project-monthly-hours">Monthly resourced hours (optional)</label>
-            <div className="hours-field-row">
-              <input
-                id="project-monthly-hours"
-                type="number"
-                min="0"
-                step="0.25"
-                value={monthlyHours}
-                onChange={e => setMonthlyHours(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="e.g. 40"
-                className={errors.monthlyHours ? 'input-error' : ''}
-              />
-            </div>
-            {errors.monthlyHours && <span className="field-error">{errors.monthlyHours}</span>}
-          </div>
-
-          <div className="field" style={{ marginTop: '16px' }}>
-            <label htmlFor="project-historical-hours">Historical monthly usage (optional)</label>
-            <div className="hours-field-row">
-              <input
-                id="project-historical-hours"
-                type="number"
-                min="0"
-                step="0.25"
-                value={historicalMonthly}
-                onChange={e => setHistoricalMonthly(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="e.g. 10"
-                className={errors.historicalMonthly ? 'input-error' : ''}
-              />
+                <label htmlFor="project-monthly-hours">
+                  Monthly resourced hours (optional)
+                </label>
+                <div className="hours-field-row">
+                  <input
+                    id="project-monthly-hours"
+                    type="number"
+                    min="0"
+                    step="0.25"
+                    value={monthlyHours}
+                    onChange={(e) => setMonthlyHours(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="e.g. 40"
+                    className={errors.monthlyHours ? 'input-error' : ''}
+                  />
+                </div>
+                {errors.monthlyHours && (
+                  <span className="field-error">{errors.monthlyHours}</span>
+                )}
               </div>
-              {errors.historicalMonthly && <span className="field-error">{errors.historicalMonthly}</span>}
-            </div>
+
+              <div className="field" style={{ marginTop: '16px' }}>
+                <label htmlFor="project-historical-hours">
+                  Historical monthly usage (optional)
+                </label>
+                <div className="hours-field-row">
+                  <input
+                    id="project-historical-hours"
+                    type="number"
+                    min="0"
+                    step="0.25"
+                    value={historicalMonthly}
+                    onChange={(e) => setHistoricalMonthly(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="e.g. 10"
+                    className={errors.historicalMonthly ? 'input-error' : ''}
+                  />
+                </div>
+                {errors.historicalMonthly && (
+                  <span className="field-error">
+                    {errors.historicalMonthly}
+                  </span>
+                )}
+              </div>
             </>
           )}
 
           <div className="field project-tasks-field">
             <label>Tasks / phases</label>
-            <p className="field-help">Use General for unassigned time, or add task lines for a more detailed timesheet.</p>
+            <p className="field-help">
+              Use General for unassigned time, or add task lines for a more
+              detailed timesheet.
+            </p>
             <div className="project-task-list">
-              {tasks.map(task => (
+              {tasks.map((task) => (
                 <div className="project-task-item" key={task.id}>
                   <input
                     aria-label={`Task name: ${task.name}`}
                     value={task.name}
-                    onChange={event => setTasks(current => current.map(item => item.id === task.id ? {...item, name:event.target.value} : item))}
-                    onBlur={() => setTasks(current => current.map(item => item.id === task.id ? {...item, name:item.name.trim() || 'Untitled task'} : item))}
+                    onChange={(event) =>
+                      setTasks((current) =>
+                        current.map((item) =>
+                          item.id === task.id
+                            ? { ...item, name: event.target.value }
+                            : item,
+                        ),
+                      )
+                    }
+                    onBlur={() =>
+                      setTasks((current) =>
+                        current.map((item) =>
+                          item.id === task.id
+                            ? {
+                                ...item,
+                                name: item.name.trim() || 'Untitled task',
+                              }
+                            : item,
+                        ),
+                      )
+                    }
                   />
-                  <button type="button" onClick={() => {
-                    if (tasks.length === 1) return;
-                    const hasLoggedTime = Object.values(initial?.taskEntries?.[task.id] || {}).some(week => Object.values(week || {}).some(value => Number(value) > 0));
-                    if (hasLoggedTime) setPendingTaskRemoval(task.id);
-                    else setTasks(current => current.filter(item => item.id !== task.id));
-                  }} disabled={tasks.length === 1} aria-label={`Remove task ${task.name}`}>×</button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (tasks.length === 1) return;
+                      const hasLoggedTime = Object.values(
+                        initial?.taskEntries?.[task.id] || {},
+                      ).some((week) =>
+                        Object.values(week || {}).some(
+                          (value) => Number(value) > 0,
+                        ),
+                      );
+                      if (hasLoggedTime) setPendingTaskRemoval(task.id);
+                      else
+                        setTasks((current) =>
+                          current.filter((item) => item.id !== task.id),
+                        );
+                    }}
+                    disabled={tasks.length === 1}
+                    aria-label={`Remove task ${task.name}`}
+                  >
+                    ×
+                  </button>
                 </div>
               ))}
             </div>
-            {pendingTaskRemoval && <div className="task-remove-confirm" role="alert">
-              <span>Removing this task also removes its logged task time.</span>
-              <button type="button" onClick={() => setPendingTaskRemoval(null)}>Cancel</button>
-              <button type="button" className="danger" onClick={() => {setTasks(current => current.filter(item => item.id !== pendingTaskRemoval));setPendingTaskRemoval(null)}}>Remove task and time</button>
-            </div>}
+            {pendingTaskRemoval && (
+              <div className="task-remove-confirm" role="alert">
+                <span>
+                  Removing this task also removes its logged task time.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPendingTaskRemoval(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="danger"
+                  onClick={() => {
+                    setTasks((current) =>
+                      current.filter((item) => item.id !== pendingTaskRemoval),
+                    );
+                    setPendingTaskRemoval(null);
+                  }}
+                >
+                  Remove task and time
+                </button>
+              </div>
+            )}
             <div className="project-task-add">
-              <input aria-label="New task or phase" value={newTask} onChange={event => setNewTask(event.target.value)} placeholder="New task or phase" onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();const value=newTask.trim();if(value){setTasks(current=>[...current,{id:uuid(),name:value}]);setNewTask('')}}}} />
-              <button type="button" onClick={()=>{const value=newTask.trim();if(value){setTasks(current=>[...current,{id:uuid(),name:value}]);setNewTask('')}}}>Add task</button>
+              <input
+                aria-label="New task or phase"
+                value={newTask}
+                onChange={(event) => setNewTask(event.target.value)}
+                placeholder="New task or phase"
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    const value = newTask.trim();
+                    if (value) {
+                      setTasks((current) => [
+                        ...current,
+                        { id: uuid(), name: value },
+                      ]);
+                      setNewTask('');
+                    }
+                  }
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const value = newTask.trim();
+                  if (value) {
+                    setTasks((current) => [
+                      ...current,
+                      { id: uuid(), name: value },
+                    ]);
+                    setNewTask('');
+                  }
+                }}
+              >
+                Add task
+              </button>
             </div>
           </div>
 
-          <div className="field" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px' }}>
+          <div
+            className="field"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginTop: '16px',
+            }}
+          >
             <input
               id="project-billable"
               type="checkbox"
               checked={isBillable}
-              onChange={e => setIsBillable(e.target.checked)}
-              style={{ width: '16px', height: '16px', margin: 0, cursor: 'pointer' }}
+              onChange={(e) => setIsBillable(e.target.checked)}
+              style={{
+                width: '16px',
+                height: '16px',
+                margin: 0,
+                cursor: 'pointer',
+              }}
             />
-            <label htmlFor="project-billable" style={{ margin: 0, cursor: 'pointer', fontSize: '14px', color: 'var(--text)' }}>
+            <label
+              htmlFor="project-billable"
+              style={{
+                margin: 0,
+                cursor: 'pointer',
+                fontSize: '14px',
+                color: 'var(--text)',
+              }}
+            >
               Billable project
             </label>
           </div>
         </div>
 
         <div className="modal-footer">
-          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
           <button className="btn btn-primary" onClick={handleSave}>
             {initial ? 'Save changes' : 'Add project'}
           </button>
@@ -760,4 +1140,3 @@ export default function ProjectModal({ isOpen, onClose, onSave, initial, project
     </div>
   );
 }
-
