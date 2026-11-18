@@ -2,15 +2,15 @@
 
 TimeMaster is a static, local-first resourcing and timesheet planner. It runs entirely in the browser and keeps a browser-local recovery copy in IndexedDB.
 
-## OneDrive file workflow
+## File workflow
 
 In a recent Chrome or Edge browser:
 
 1. Open **File**.
-2. Choose an existing JSON file inside a folder synced by the OneDrive desktop client, or create a new `TimeMaster.json` there.
+2. Choose an existing JSON file, or create a new `TimeMaster.json`.
 3. TimeMaster automatically saves edits back to the chosen local file. **Save now** and **Refresh from file** are also available.
 
-TimeMaster does not connect to OneDrive, Vercel APIs, or any other data service. The OneDrive desktop client is solely responsible for syncing the file. If OneDrive produces a conflict copy, keep both copies, compare them, and choose the newest complete JSON file after reviewing the contents.
+TimeMaster does not connect to any data service. It reads and writes only the local file you choose.
 
 ## Development
 
