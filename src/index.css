@@ -255,3 +255,35 @@ table{min-width:700px}
 .is-inline .allocation-meter>i{flex:1 1 auto;width:auto;min-width:40px}
 /* Project heading rows use a brand tint so they read apart from the grey column header */
 .project-header-row>th.project-header-cell,.project-header-row>td{background:color-mix(in srgb,var(--brand) 9%,var(--surface))}
+/* Usage column: readable weekly and monthly bars for every unphased project */
+.usage-cell{display:none;text-align:left!important;min-width:190px}
+.is-usage{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:14px!important;margin:0!important;width:100%}
+.is-usage .allocation-meter>div{font-size:11px;gap:6px}
+.is-usage .allocation-meter>i{height:6px;margin-top:4px}
+.is-usage .allocation-unlimited{font-size:11px;color:var(--muted)}
+@media(min-width:1340px){.usage-cell{display:table-cell}.is-edge{display:none}}
+/* Grouping: a project colour rail down every row of a project and a clear gap between projects */
+.table-scroll tbody tr[style*="--pc"]>th:first-child{box-shadow:inset 4px 0 0 var(--pc)}
+.table-scroll tbody tr.project-start:not(:first-child)>*{border-top:10px solid var(--canvas)}
+.table-scroll tbody tr.timesheet-group-row+tr.project-start>*{border-top-width:1px}
+.table-scroll tbody tr.task-entry-row>*{border-bottom-style:dashed}
+.table-scroll tbody tr.task-entry-row>th{padding-left:14px}
+.task-entry-row .task-indent{padding-left:26px}
+.task-entry-row .task-indent::before{left:10px}
+.project-header-row>th.project-header-cell{padding-left:14px}
+.table-scroll tbody tr.project-start:not(.project-header-row)>th{padding-left:14px}
+.header-line .timesheet-allocation-bars.is-inline{flex:1 1 auto;min-width:270px}
+.is-inline .allocation-meter{flex:1 1 auto;min-width:max-content}
+.usage-cell{min-width:170px}
+.header-id .project-client{max-width:120px}
+.is-usage{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:5px!important}
+.is-usage .allocation-meter{display:flex;align-items:center;gap:6px;min-width:0}
+.is-usage .allocation-meter>div{flex:none;gap:5px;white-space:nowrap}
+.is-usage .allocation-meter>i{flex:1 1 auto;min-width:24px;margin:0;height:5px}
+.usage-cell{min-width:160px}
+@media(min-width:1181px) and (max-width:1599px){.workspace{grid-template-columns:minmax(0,1fr) 250px}}
+.table-scroll tbody td,.table-scroll thead th:not(:first-child){padding-left:3px;padding-right:3px}
+.table-scroll thead th.usage-cell{width:24%}
+@media(min-width:1340px){.hdr-inline{display:none!important}.header-id{flex:1 1 auto}}
+.hdr-inline{min-width:0!important;gap:12px!important}
+.hdr-inline .allocation-meter>i{flex:0 1 30px!important;min-width:16px!important;width:auto!important}
