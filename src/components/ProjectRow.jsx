@@ -1,5 +1,6 @@
-import { DAY_NAMES, EPSILON, fmt, projectMetrics } from '../lib/utils.js';
-import { projectStatus, projectStatusLabel } from '../lib/projectGrouping.js';
+import { DAY_NAMES, EPSILON, fmt } from '../lib/utils.js';
+import { hasPhases } from '../lib/tasks.js';
+import { projectSummary } from '../lib/projectSummary.js';
 import EntryFrontloadButton from './EntryFrontloadButton.jsx';
 import FrontloadButton from './FrontloadButton.jsx';
 import FrontloadWarning from './FrontloadWarning.jsx';
@@ -24,21 +25,20 @@ export default function ProjectRow({
   onRemove,
   onMove,
 }) {
-  const m = projectMetrics(p, week, leaveWeeks),
-    hasTasks = (p.tasks || []).some(
-      (task) => task.id !== 'general' && task.name.toLowerCase() !== 'general',
-    ),
+  const {
+    metrics: m,
+    status,
+    statusLabel,
+    remainingLabel,
+    sourceNote,
+    sourceNoteTitle,
+  } = projectSummary(p, week, leaveWeeks);
+  const hasTasks = hasPhases(p),
     hasLines = taskLinesFor(p, week).length > 0,
-    sourceNote =
-      m.frontloadedOut > EPSILON
-        ? `−${fmt(m.frontloadedOut)}h frontloaded to previous week`
-        : null,
     incomingNote =
       m.frontloadedIn > EPSILON
         ? `+${fmt(m.frontloadedIn)}h due to frontloading from next week`
-        : null,
-    over = m.remaining != null && m.remaining < -EPSILON,
-    status = projectStatus(p.status);
+        : null;
   return (
     <tr
       className={`project-start${hasTasks ? ' project-header-row' : ''}`}
@@ -67,7 +67,7 @@ export default function ProjectRow({
             <span className="row-chips">
               {status !== 'active' && (
                 <span className={`project-status-badge status-${status}`}>
-                  {projectStatusLabel(status)}
+                  {statusLabel}
                 </span>
               )}
               {p.isBillable === false && (
@@ -83,6 +83,7 @@ export default function ProjectRow({
               project={p}
               week={week}
               leaveWeeks={leaveWeeks}
+              metrics={m}
               className="timesheet-allocation-bars is-inline hdr-inline"
             />
           </div>
@@ -108,7 +109,7 @@ export default function ProjectRow({
             <span className="row-chips">
               {status !== 'active' && (
                 <span className={`project-status-badge status-${status}`}>
-                  {projectStatusLabel(status)}
+                  {statusLabel}
                 </span>
               )}
               {p.isBillable === false && (
@@ -120,6 +121,7 @@ export default function ProjectRow({
             project={p}
             week={week}
             leaveWeeks={leaveWeeks}
+            metrics={m}
             className="timesheet-allocation-bars is-edge"
           />
         </th>
@@ -163,10 +165,7 @@ export default function ProjectRow({
       >
         {m.plan == null ? 'Unlimited' : `${fmt(m.plan)}h`}
         {sourceNote && (
-          <small
-            className="frontload-source-note"
-            title={`Weekly limit reduced by ${fmt(m.frontloadedOut)} hours due to frontloading in the previous week`}
-          >
+          <small className="frontload-source-note" title={sourceNoteTitle}>
             {sourceNote}
           </small>
         )}
@@ -179,20 +178,13 @@ export default function ProjectRow({
           </small>
         )}
       </td>
-      <td className={m.status}>
-        {m.remaining == null
-          ? 'Unlimited'
-          : over
-            ? `${fmt(-m.remaining)}h over`
-            : Math.abs(m.remaining) <= EPSILON
-              ? 'At plan'
-              : `${fmt(Math.max(0, m.remaining))}h left`}
-      </td>
+      <td className={m.status}>{remainingLabel}</td>
       <td className="usage-cell">
         <ProjectAllocationBars
           project={p}
           week={week}
           leaveWeeks={leaveWeeks}
+          metrics={m}
           className="timesheet-allocation-bars is-inline is-usage"
         />
       </td>

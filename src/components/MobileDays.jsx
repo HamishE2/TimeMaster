@@ -1,10 +1,7 @@
 import { Fragment } from 'react';
 import { DAY_NAMES, fmt, weekDates } from '../lib/utils.js';
-import {
-  taskHoursForDay,
-  projectHasPhases,
-  taskLinesFor,
-} from '../lib/taskLines.js';
+import { taskHoursForDay, taskLinesFor } from '../lib/taskLines.js';
+import { hasPhases } from '../lib/tasks.js';
 
 export default function MobileDays({
   projects,
@@ -47,12 +44,12 @@ export default function MobileDays({
             <div className="mobile-day-projects">
               {projects.map((project) => (
                 <Fragment key={project.id}>
-                  {projectHasPhases(project) && (
+                  {hasPhases(project) && (
                     <strong className="mobile-line-label">
                       {project.name}
                     </strong>
                   )}
-                  {!projectHasPhases(project) && (
+                  {!hasPhases(project) && (
                     <label>
                       <span>{project.name}</span>
                       <input

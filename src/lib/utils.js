@@ -246,6 +246,7 @@ export function migrateBackup(raw) {
             name: String(task.name || 'Untitled task').trim(),
           }))
         : [{ id: 'general', name: 'General' }];
+    // Flat backups identified the General entry bucket by the task name.
     const generalIds = new Set(
       tasks
         .filter((task) => task.name.toLowerCase() === 'general')
