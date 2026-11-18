@@ -248,3 +248,8 @@ table{min-width:700px}
 .mobile-cards footer{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px}
 .mobile-cards footer .mobile-add-line{margin:0;min-height:28px}
 }
+/* Header usage bars stretch to fill the free row width */
+.header-id{flex:0 1 auto;min-width:150px}
+.header-line .timesheet-allocation-bars.is-inline{flex:1 1 0;min-width:190px;gap:22px;justify-content:stretch}
+.is-inline .allocation-meter{flex:1 1 0;min-width:0}
+.is-inline .allocation-meter>i{flex:1 1 auto;width:auto;min-width:40px}
