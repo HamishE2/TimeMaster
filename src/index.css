@@ -157,3 +157,94 @@ main,.week-head{width:100%;max-width:none}.topbar,.week-head{padding-left:clamp(
 .manage-project-client{display:block;font-size:13px;font-weight:650;color:var(--ink);padding:0 9px;margin-bottom:2px}
 .project-header-row>th{padding-top:6px;padding-bottom:4px}.project-header-row .project-meta{margin-top:2px}.project-header-row .timesheet-allocation-bars{margin-top:0}.project-header-row .table-project-title{min-width:0;max-width:100%;min-height:0}.project-header-row .table-project-title .frontload-button,.project-header-row .table-project-title .frontload-warning{width:24px;height:24px;min-height:24px;padding:2px}.project-header-row .table-project-title .frontload-button svg,.project-header-row .table-project-title .frontload-warning svg{width:16px;height:16px}.project-header-row .project-name{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .project-header-row>th,.project-header-row>td.project-header-cell{background:var(--surface-2)}.project-header-cell .timesheet-allocation-bars{width:100%;max-width:520px;margin:0 0 0 12px;align-self:center}.project-header-cell{vertical-align:middle}
+
+/* Compact timesheet rows: every entry row is one even height, headings are slim single lines */
+table{min-width:700px}
+@media(min-width:1600px){.workspace{grid-template-columns:minmax(170px,190px) minmax(0,1fr) minmax(250px,290px)}}
+/* Mid-width screens: the timesheet gets the full width beside one slim right column of counters and usage */
+@media(min-width:1181px) and (max-width:1599px){.workspace{grid-template-columns:minmax(0,1fr) 270px;grid-template-areas:"horizon horizon" "sheet dial" "sheet capacity" "sheet projects" "sheet insights";align-items:start}.counter-rail{display:contents}.counter-rail>:nth-child(1){grid-area:dial}.counter-rail>:nth-child(2){grid-area:capacity}.counter-rail>:nth-child(3){grid-area:projects}.counter-rail>article{padding:14px}}
+.table-scroll th,.table-scroll td{padding:6px 8px}
+.table-scroll tbody th{min-width:200px;max-width:260px;vertical-align:middle}
+.table-scroll tbody td{vertical-align:middle;height:48px}
+.table-scroll tbody tr:not(.project-header-row):not(.timesheet-group-row)>*{height:48px}
+.table-scroll td input{width:48px;padding:4px}
+.table-scroll tbody th{position:relative}
+.entry-top{display:flex;align-items:center;gap:6px;min-width:0;line-height:1.2}
+.entry-top .project-client{padding:0;margin:0;font-size:11px;font-weight:700;letter-spacing:.02em;text-transform:uppercase;min-width:0;flex:0 1 auto}
+.entry-top .project-client.is-empty{color:var(--muted);font-weight:500}
+.entry-top .project-meta-text{font-size:11px;white-space:nowrap;flex:none}
+.row-chips{display:inline-flex;align-items:center;gap:5px;margin-left:auto;flex:none}
+.table-scroll .table-project-title{display:flex;align-items:center;gap:6px;min-width:0;margin-top:1px}
+.table-scroll .table-project-title .project-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;line-height:1.25}
+.table-scroll .table-project-title>i{width:8px;height:8px;border-radius:50%;flex:none}
+.table-scroll .table-project-title .frontload-button,.table-scroll .table-project-title .frontload-warning{width:22px;height:22px;min-height:22px;padding:2px;flex:none}
+.table-scroll .table-project-title .frontload-button svg,.table-scroll .table-project-title .frontload-warning svg{width:15px;height:15px}
+/* Weekly and monthly progress sit on the bottom edge of an unphased row */
+.is-edge{position:absolute;left:0;right:0;bottom:0;margin:0!important;gap:1px!important;display:grid;pointer-events:auto}
+.is-edge .allocation-meter>div{display:none}
+.is-edge .allocation-meter>i{height:3px;margin:0;border-radius:0;background:color-mix(in srgb,var(--surface-3) 70%,transparent)}
+.is-edge .allocation-meter:not(:first-child)>i{height:2px}
+.is-edge .allocation-unlimited{display:none}
+/* Phased project header: a slim group heading that uses the row width */
+.project-header-row>th.project-header-cell{padding:4px 8px;height:auto;background:var(--surface-2);position:static;max-width:none;min-width:0;border-bottom:1px solid var(--border)}
+.project-header-row>td{background:var(--surface-2);height:auto;padding:4px 8px}
+.header-line{display:flex;align-items:center;gap:12px;min-height:26px;min-width:0}
+.header-id{display:flex;align-items:center;gap:8px;min-width:0;flex:0 1 auto}
+.header-id .project-client{padding:0;margin:0;font-size:11px;font-weight:700;letter-spacing:.02em;text-transform:uppercase;flex:none;max-width:140px}
+.header-id .project-client::after{content:"/";margin-left:8px;color:var(--muted);font-weight:400}
+.header-id .project-meta-text{font-size:11px;white-space:nowrap}
+.header-line .row-chips{margin-left:0}
+.header-line .timesheet-allocation-bars.is-inline{display:flex;flex:1 1 0;min-width:0;align-items:center;gap:16px;margin:0 0 0 auto;max-width:none;width:auto;justify-content:flex-end}
+.is-inline .allocation-meter{display:flex;align-items:center;gap:7px;flex:1 1 0;max-width:230px;min-width:0}
+.is-inline .allocation-meter>div{flex:none;gap:6px;font-size:11px}
+.is-inline .allocation-meter>i{flex:1;min-width:30px;margin:0}
+.is-inline .allocation-unlimited{font-size:11px;color:var(--muted)}
+/* Phase lines: single-line, same height as other entry rows */
+.task-entry-row th{padding-top:6px;padding-bottom:6px}
+.task-entry-row .task-indent{padding-left:20px}
+.task-entry-row .task-indent::before{content:"\21b3";position:absolute;left:4px;color:var(--muted)}
+.table-scroll .row-actions{gap:2px}
+.table-scroll .row-actions button{padding:3px 6px;min-height:28px}
+.header-line{contain:inline-size}
+.table-scroll tbody .project-header-row>*{height:auto}
+.table-scroll tbody tr.project-header-row>td{height:auto}
+.table-scroll tbody th{max-width:280px}
+.table-scroll tbody .project-header-row>th.project-header-cell{max-width:none}
+.table-scroll tbody th{min-width:180px;max-width:240px;padding-top:3px;padding-bottom:5px}
+.table-scroll .table-project-title .frontload-button,.table-scroll .table-project-title .frontload-warning{width:20px;height:20px;min-height:20px;padding:1px}
+.table-scroll td input{width:44px}
+.table-scroll thead th:not(:first-child),.table-scroll tbody td{padding-left:4px;padding-right:4px}
+.table-scroll .row-actions button{min-width:22px;padding:2px 3px}
+.table-scroll tbody td:last-child,.table-scroll thead th:last-child{padding-left:2px;padding-right:6px}
+.header-id{flex:1 1 0;min-width:120px}
+.header-id .project-client{max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.header-line .timesheet-allocation-bars.is-inline{flex:0 0 auto;gap:14px}
+.is-inline .allocation-meter{flex:none;width:auto;max-width:none}
+.is-inline .allocation-meter>i{flex:none;width:44px}
+.is-inline .allocation-meter>div{white-space:nowrap}
+.header-id .project-client{max-width:170px}
+.task-entry-row th,.task-entry-row td{background:var(--surface)}
+.table-scroll .row-actions .row-delete{border:0;background:transparent;color:var(--muted)}
+.table-scroll .row-actions .row-delete:hover{color:var(--danger);background:color-mix(in srgb,var(--danger) 12%,transparent)}
+.table-scroll .row-actions .row-options:hover,.table-scroll .row-actions button:not(:disabled):hover{color:var(--ink)}
+.table-scroll .row-actions .row-options{border:0;background:transparent;color:var(--muted);font-size:13px}
+.table-scroll .row-actions .row-options:hover{background:var(--surface-3);color:var(--ink)}
+/* Phone cards: tight, with day inputs in one row */
+@media(max-width:700px){
+.mobile-cards{gap:8px;padding:10px}
+.mobile-cards article{padding:10px 12px}
+.mobile-cards .project-client{padding:0;margin:0 0 2px;font-size:11px;font-weight:700;letter-spacing:.02em;text-transform:uppercase}
+.mobile-cards header{align-items:center;gap:8px}
+.mobile-cards .mobile-project-title{display:flex;align-items:center;gap:4px;min-width:0}
+.mobile-cards header button{font-size:15px}
+.mobile-cards .mobile-project-meta{margin:6px 0 0}
+.mobile-cards .mobile-allocation-bars{display:flex;gap:12px;margin-top:8px}
+.mobile-cards .mobile-allocation-bars .allocation-meter{flex:1;min-width:0}
+.mobile-cards article>div:not(.mobile-project-title):not(.mobile-project-meta):not(.project-client):not(.mobile-allocation-bars),.mobile-task-block>div{display:grid;grid-template-columns:repeat(auto-fit,minmax(48px,1fr));gap:5px;margin:8px 0 4px}
+.mobile-cards input{height:34px;margin-top:2px;padding:4px;text-align:center}
+.mobile-task-block{margin-top:8px;padding-top:0}
+.mobile-task-block>strong{margin-top:8px;font-size:12px}
+.mobile-task-block>strong button{min-height:24px;padding:0 8px}
+.mobile-cards footer{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px}
+.mobile-cards footer .mobile-add-line{margin:0;min-height:28px}
+}
