@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import {existsSync,readFileSync} from 'node:fs';
-import {addablePhasesFor,capacityFor,frontloadLimit,isVisible,migrateBackup,monthlyAllowance,monthlyLogged,monthlyPlan,parseHours,projectMetrics,shiftWeek,taskLinesFor,weekKeyFor,weeklyPlan,weeklyResourcedHours} from '../src/utils.js';
-import {detectFormat,parseCSV,parseCSVLine,parseHoursMins} from '../src/csvParser.js';
-import {createProjectRecord,editProjectRecord,pinTaskLineRecord,removeTaskLineRecord,restoreProjectRecord,validateManagedProject,validateProjectDraft} from '../src/projectOperations.js';
-import {buildTimesheetCsv} from '../src/csvExport.js';
-import {FILE_CHANGED_CODE,backupPayload,revisionsMatch,workspaceSignature,writeHandle} from '../src/backupService.js';
+import {capacityFor,frontloadLimit,isVisible,migrateBackup,monthlyAllowance,monthlyLogged,monthlyPlan,parseHours,projectMetrics,shiftWeek,weekKeyFor,weeklyPlan,weeklyResourcedHours} from '../src/lib/utils.js';
+import {addablePhasesFor,taskLinesFor} from '../src/lib/taskLines.js';
+import {detectFormat,parseCSV,parseCSVLine,parseHoursMins} from '../src/lib/csvParser.js';
+import {createProjectRecord,editProjectRecord,pinTaskLineRecord,removeTaskLineRecord,restoreProjectRecord,validateManagedProject,validateProjectDraft} from '../src/lib/projectOperations.js';
+import {buildTimesheetCsv} from '../src/lib/csvExport.js';
+import {FILE_CHANGED_CODE,backupPayload,revisionsMatch,workspaceSignature,writeHandle} from '../src/lib/backupService.js';
 
 const test=(name,fn)=>{try{fn();console.log(`✓ ${name}`)}catch(error){console.error(`✗ ${name}`);throw error}};
 const asyncTest=async(name,fn)=>{try{await fn();console.log(`✓ ${name}`)}catch(error){console.error(`✗ ${name}`);throw error}};

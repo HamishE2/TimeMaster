@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useState, useEffect, useRef } from 'react';
-import { getCategorizedProjects, monthlyPlan, uuid } from './utils';
-import { validateProjectDraft } from './projectOperations';
+import { getCategorizedProjects, monthlyPlan, uuid } from '../lib/utils.js';
+import { validateProjectDraft } from '../lib/projectOperations.js';
 
 export default function ProjectModal({
   isOpen,

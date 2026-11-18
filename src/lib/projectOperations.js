@@ -1,4 +1,4 @@
-import { shiftWeek, uuid } from './utils.js';
+import { EPSILON, shiftWeek, uuid, weeklyPlan } from './utils.js';
 
 const knownWeeks = (project) =>
   new Set([
@@ -394,4 +394,116 @@ export function removeTaskLineRecord(project, taskId, week) {
   if (Object.keys(entries).length) taskEntries[taskId] = entries;
   else delete taskEntries[taskId];
   return { ...project, taskRows, taskEntries };
+}
+
+const cleanWeek = (week) =>
+  Object.fromEntries(
+    Object.entries(week || {}).filter(
+      ([, v]) => v !== undefined && v !== null && v !== '',
+    ),
+  );
+
+export function setEntryRecord(project, week, day, value) {
+  const current = { ...(project.entries?.[week] || {}) };
+  if (value == null) delete current[day];
+  else current[day] = value;
+  const entries = { ...(project.entries || {}) };
+  const cleaned = cleanWeek(current);
+  if (Object.keys(cleaned).length) entries[week] = cleaned;
+  else delete entries[week];
+  return { ...project, entries };
+}
+
+export function setTaskEntryRecord(project, taskId, targetWeek, day, value) {
+  const taskEntries = { ...(project.taskEntries || {}) },
+    entries = { ...(taskEntries[taskId] || {}) },
+    current = { ...(entries[targetWeek] || {}) };
+  if (value == null) delete current[day];
+  else current[day] = value;
+  const cleaned = cleanWeek(current);
+  if (Object.keys(cleaned).length) entries[targetWeek] = cleaned;
+  else delete entries[targetWeek];
+  if (Object.keys(entries).length) taskEntries[taskId] = entries;
+  else delete taskEntries[taskId];
+  return { ...project, taskEntries };
+}
+
+export function toggleLeaveRecord(workspace, week, day) {
+  const cur = workspace.settings.leaveWeeks?.[week] || [],
+    next = cur.includes(day)
+      ? cur.filter((x) => x !== day)
+      : [...cur, day].sort();
+  return {
+    ...workspace,
+    settings: {
+      ...workspace.settings,
+      leaveWeeks: { ...workspace.settings.leaveWeeks, [week]: next },
+    },
+  };
+}
+
+export function moveProjectRecord(workspace, id, direction) {
+  const list = [...workspace.projects],
+    index = list.findIndex((p) => p.id === id),
+    next = index + direction;
+  if (index < 0 || next < 0 || next >= list.length) return workspace;
+  [list[index], list[next]] = [list[next], list[index]];
+  return { ...workspace, projects: list };
+}
+
+export function showProjectRecord(project, targetWeek) {
+  return {
+    ...project,
+    archived: false,
+    hiddenWeeks: (project.hiddenWeeks || []).filter(
+      (key) => key !== targetWeek,
+    ),
+    hiddenOnwardsFrom:
+      project.hiddenOnwardsFrom && project.hiddenOnwardsFrom > targetWeek
+        ? project.hiddenOnwardsFrom
+        : null,
+    visibleOnwardsFrom:
+      project.visibleOnwardsFrom && project.visibleOnwardsFrom > targetWeek
+        ? targetWeek
+        : project.visibleOnwardsFrom,
+  };
+}
+
+export function hideProjectRecord(project, from, only) {
+  return only
+    ? {
+        ...project,
+        hiddenWeeks: [...new Set([...(project.hiddenWeeks || []), from])],
+      }
+    : { ...project, hiddenOnwardsFrom: from };
+}
+
+export function setFrontloadRecord(item, targetWeek, rounded) {
+  const frontloads = { ...(item.frontloads || {}) };
+  if (rounded <= EPSILON) delete frontloads[targetWeek];
+  else frontloads[targetWeek] = rounded;
+  return { ...item, frontloads };
+}
+
+export function fillProjectResourcingRecord(project, week, amount) {
+  return {
+    ...project,
+    archived: false,
+    hiddenWeeks: (project.hiddenWeeks || []).filter((key) => key !== week),
+    hiddenOnwardsFrom:
+      project.hiddenOnwardsFrom && project.hiddenOnwardsFrom > week
+        ? project.hiddenOnwardsFrom
+        : null,
+    visibleOnwardsFrom:
+      project.visibleOnwardsFrom && project.visibleOnwardsFrom > week
+        ? week
+        : project.visibleOnwardsFrom,
+    weeklyOverrides: {
+      ...(project.weeklyOverrides || {}),
+      [week]:
+        Math.round(
+          (Math.max(0, Number(weeklyPlan(project, week) || 0)) + amount) * 100,
+        ) / 100,
+    },
+  };
 }
