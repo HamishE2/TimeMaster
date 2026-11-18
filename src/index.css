@@ -287,3 +287,19 @@ table{min-width:700px}
 @media(min-width:1340px){.hdr-inline{display:none!important}.header-id{flex:1 1 auto}}
 .hdr-inline{min-width:0!important;gap:12px!important}
 .hdr-inline .allocation-meter>i{flex:0 1 30px!important;min-width:16px!important;width:auto!important}
+/* Unphased rows share the heading layout: client / dot name, chips at the end */
+.table-scroll tbody tr.project-start:not(.project-header-row)>th>.header-id{display:flex;align-items:center;gap:8px;min-width:0;width:100%;min-height:30px}
+.table-scroll tbody tr.project-start:not(.project-header-row)>th>.header-id .row-chips{margin-left:auto}
+.table-scroll .header-id .table-project-title{flex:0 1 auto;min-width:0;margin-top:0}
+@media(min-width:1340px){.table-scroll thead th.usage-cell{width:21%}.table-scroll tbody th{max-width:300px}}
+.table-scroll .header-id .project-client{flex:0 1 auto;min-width:36px;max-width:100px;overflow:hidden;text-overflow:ellipsis}
+.table-scroll .header-id .table-project-title{flex:1 1 auto}
+@media(min-width:1340px){.table-scroll thead th:first-child{width:280px}.table-scroll thead th.usage-cell{width:19%}}
+/* Same two-line identity for headings and project rows: client above, dot and name below */
+.table-scroll .header-id{display:grid!important;grid-template-columns:minmax(0,1fr) auto;column-gap:8px;row-gap:1px;align-items:center;min-width:0}
+.table-scroll .header-id .project-client{grid-column:1/-1;max-width:none;min-width:0;flex:none}
+.table-scroll .header-id .project-client::after{content:none}
+.table-scroll .header-id .table-project-title{grid-column:1}
+.table-scroll .header-id .row-chips{grid-column:2;margin:0}
+.project-header-row .header-line{gap:12px}
+.project-header-row .header-id{flex:1 1 auto}
