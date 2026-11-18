@@ -10,7 +10,7 @@
     "desktop": "npm run build && electron .",
     "desktop:pack": "npm run build && electron-builder --dir",
     "desktop:dist": "npm run build && electron-builder --win",
-    "test": "node tests/run-tests.mjs",
+    "test": "node tests/run-tests.mjs && vitest run",
     "lint": "eslint .",
     "format": "prettier --write src/",
     "preview": "vite preview"
@@ -21,6 +21,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
@@ -30,9 +32,11 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
+    "jsdom": "^31.0.1",
     "prettier": "^3.10.1",
     "vite": "^8.0.12",
-    "vite-plugin-singlefile": "^2.3.3"
+    "vite-plugin-singlefile": "^2.3.3",
+    "vitest": "^5.1.0"
   },
   "build": {
     "appId": "com.pixelchew.timemaster",

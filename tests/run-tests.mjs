@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import {existsSync,readFileSync} from 'node:fs';
 import {capacityFor,frontloadLimit,isVisible,migrateBackup,monthlyAllowance,monthlyLogged,monthlyPlan,parseHours,projectMetrics,shiftWeek,weekKeyFor,weeklyPlan,weeklyResourcedHours} from '../src/lib/utils.js';
 import {addablePhasesFor,taskLinesFor} from '../src/lib/taskLines.js';
+import { hasPhases, isGeneralTask, phasesOf } from '../src/lib/tasks.js';
+import { categoriseProjects } from '../src/lib/projectGrouping.js';
 import {detectFormat,parseCSV,parseCSVLine,parseHoursMins} from '../src/lib/csvParser.js';
 import {createProjectRecord,editProjectRecord,pinTaskLineRecord,removeTaskLineRecord,restoreProjectRecord,validateManagedProject,validateProjectDraft} from '../src/lib/projectOperations.js';
 import {buildTimesheetCsv} from '../src/lib/csvExport.js';
@@ -55,6 +57,95 @@ test('orphaned task time is not added to visible timesheet totals',()=>{const pr
 test('removing a project task prunes its time and pinned rows',()=>{const project={...baseProject,tasks:[{id:'general',name:'General'},{id:'t1',name:'Old task'}],taskEntries:{t1:{'2026-07-13':{0:2}}},taskRows:{'2026-07-13':['t1']}};const fields={name:project.name,hours:8,isBillable:true,monthly:null,historical:0,client:'',code:'',status:'active',color:'#000',tasks:[{id:'general',name:'General'}]};const changed=editProjectRecord(project,fields,'project','2026-07-13');assert.deepEqual(changed.taskEntries,{});assert.deepEqual(changed.taskRows['2026-07-13'],[])});
 test('task lines pin once and remove only the selected week',()=>{const project={...baseProject,taskRows:{'2026-07-13':['t1']},taskEntries:{t1:{'2026-07-13':{0:2},'2026-07-20':{0:3}}}};const pinned=pinTaskLineRecord(project,'t1','2026-07-13');assert.deepEqual(pinned.taskRows['2026-07-13'],['t1']);const removed=removeTaskLineRecord(pinned,'t1','2026-07-13');assert.deepEqual(removed.taskRows['2026-07-13'],[]);assert.equal(removed.taskEntries.t1['2026-07-13'],undefined);assert.equal(removed.taskEntries.t1['2026-07-20'][0],3)});
 test('phase lines and addable phases hide phases already on the week',()=>{const project={...baseProject,tasks:[{id:'general',name:'General'},{id:'t2',name:'Build'},{id:'t1',name:'Design'},{id:'t3',name:'general'}],taskRows:{'2026-07-13':['t2']},taskEntries:{}};assert.deepEqual(taskLinesFor(project,'2026-07-13').map(task=>task.id),['t2']);assert.deepEqual(addablePhasesFor(project,'2026-07-13').map(task=>task.id),['t1']);assert.deepEqual(addablePhasesFor({...project,taskRows:{'2026-07-13':['t2','t1']}},'2026-07-13'),[]);assert.deepEqual(addablePhasesFor(project,'2026-07-20').map(task=>task.id),['t2','t1']);assert.deepEqual(taskLinesFor({...project,taskRows:{},taskEntries:{t1:{'2026-07-13':{0:1}}}},'2026-07-13').map(task=>task.id),['t1'])});
+test('General is recognized by reserved ID or case-insensitive name', () => {
+  const byId = { id: 'general', name: 'Unassigned' };
+  const byName = { id: 'legacy-general', name: 'gEnErAl' };
+  const design = { id: 'design', name: 'Design' };
+  const build = { id: 'build', name: 'Build' };
+  const project = { tasks: [byId, design, byName, build] };
+  assert.equal(isGeneralTask(byId), true);
+  assert.equal(isGeneralTask(byName), true);
+  assert.equal(isGeneralTask(design), false);
+  assert.deepEqual(phasesOf(project), [design, build]);
+  assert.equal(hasPhases(project), true);
+  assert.equal(hasPhases({ tasks: [byId, byName] }), false);
+  assert.equal(hasPhases({}), false);
+  assert.deepEqual(phasesOf({}), []);
+});
+
+test('phase lines combine pinned and logged tasks in name order for the selected week', () => {
+  const week = '2026-07-13';
+  const project = {
+    tasks: [
+      { id: 'design', name: 'Design' },
+      { id: 'build', name: 'Build' },
+      { id: 'review', name: 'Review' },
+      { id: 'general', name: 'General' },
+      { id: 'legacy-general', name: 'GENERAL' },
+    ],
+    taskRows: { [week]: ['design', 'design', 'general', 'missing'] },
+    taskEntries: {
+      build: { [week]: { 0: 2 } },
+      review: { [week]: { 0: 0 }, '2026-07-20': { 1: 1 } },
+      'legacy-general': { [week]: { 0: 3 } },
+      missing: { [week]: { 0: 4 } },
+    },
+  };
+  assert.deepEqual(taskLinesFor(project, week).map(({ id }) => id), ['build', 'design']);
+  assert.deepEqual(taskLinesFor(project, '2026-07-20').map(({ id }) => id), ['review']);
+  assert.deepEqual(taskLinesFor({}, week), []);
+});
+
+test('project groups preserve project order and sort status, client and billability groups', () => {
+  const projects = [
+    { id: 'closed', status: 'closed', client: ' Beta ', isBillable: false },
+    { id: 'default', client: 'alpha' },
+    { id: 'held', status: 'on-hold', client: 'BETA', isBillable: false },
+    { id: 'active', status: 'active', isBillable: true },
+  ];
+  const grouped = (category) => categoriseProjects(projects, category).map(
+    ({ label, projects: members }) => [label, members.map(({ id }) => id)],
+  );
+  assert.deepEqual(grouped('none'), [['All projects', projects.map(({ id }) => id)]]);
+  assert.deepEqual(grouped('status'), [
+    ['Active', ['default', 'active']],
+    ['On hold', ['held']],
+    ['Closed', ['closed']],
+  ]);
+  assert.deepEqual(grouped('client'), [
+    ['alpha', ['default']],
+    ['Beta', ['closed', 'held']],
+    ['No client', ['active']],
+  ]);
+  assert.deepEqual(grouped('billability'), [
+    ['Billable', ['default', 'active']],
+    ['Non-billable', ['closed', 'held']],
+  ]);
+});
+
+test('usage groups follow the selected week and leave', () => {
+  const week = '2026-07-13';
+  const projects = [
+    { ...baseProject, id: 'unlimited', resourcedHours: null },
+    { ...baseProject, id: 'under', entries: { [week]: { 0: 4 } } },
+    { ...baseProject, id: 'at', entries: { [week]: { 1: 8 } } },
+    { ...baseProject, id: 'over', entries: { [week]: { 0: 10 } } },
+  ];
+  const groups = (leaveWeeks) => categoriseProjects(projects, 'usage', week, leaveWeeks)
+    .map(({ key, label, projects: members }) => [key, label, members.map(({ id }) => id)]);
+  assert.deepEqual(groups({}), [
+    ['over', 'Over allocation', ['over']],
+    ['at', 'At allocation', ['at']],
+    ['under', 'Allowance left', ['under']],
+    ['unlimited', 'Unlimited', ['unlimited']],
+  ]);
+  assert.deepEqual(groups({ [week]: [0] }), [
+    ['at', 'At allocation', ['at']],
+    ['under', 'Allowance left', ['under', 'over']],
+    ['unlimited', 'Unlimited', ['unlimited']],
+  ]);
+});
+
 test('representative resourcing CSV parses allocations and dates',()=>{const text='Project Name,13 Jul M,14 Jul T,15 Jul W,16 Jul T,17 Jul F\n123 Project Alpha,2,3,0,1,0';const parsed=parseCSV(text);assert.equal(parsed.format,'resourcing');assert.ok(parsed.weekKey);assert.equal(parsed.projects[0].resourcedHours,6);assert.ok(Object.keys(parsed.projects[0].dailyHours).length>0)});
 test('representative timesheet copy parses daily logged entries',()=>{const text='TimeCode,Task,M13 Jul,T14 Jul,W15 Jul,T16 Jul,F17 Jul,Total Logged Hours\nProject Alpha,,,,,,,\n,Delivery,1:00,2:00,,,,3:00';const parsed=parseCSV(text);assert.equal(parsed.format,'timesheet');assert.ok(parsed.weekKey);assert.ok(parsed.projects.length>0);assert.ok(Object.keys(parsed.projects[0].dailyHours).length>0)});
 await asyncTest('safe file writes stop when the attached JSON changed externally',async()=>{let text='{"projects":[]}',lastModified=1;const handle={name:'TimeMaster.json',queryPermission:async()=> 'granted',requestPermission:async()=> 'granted',getFile:async()=>({name:'TimeMaster.json',lastModified,size:text.length,text:async()=>text}),createWritable:async()=>({write:async value=>{text=value},close:async()=>{lastModified+=1}})};const initial={name:'TimeMaster.json',lastModified:1,size:text.length,contentHash:'9fda8ca8'};let caught=null;try{await writeHandle(handle,backupPayload([],{theme:'system'}),initial)}catch(error){caught=error}assert.equal(caught?.code,FILE_CHANGED_CODE);assert.equal(text,'{"projects":[]}')});
