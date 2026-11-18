@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Modal from './Modal.jsx';
 import { addablePhasesFor } from '../lib/taskLines.js';
+import { hasPhases } from '../lib/tasks.js';
 
 export default function ProjectLineModal({
   projects,
@@ -21,9 +22,7 @@ export default function ProjectLineModal({
         : eligible[0]?.id || '',
     ),
     project = eligible.find((item) => item.id === projectId),
-    hasPhases = (project?.tasks || []).some(
-      (task) => task.id !== 'general' && task.name.toLowerCase() !== 'general',
-    ),
+    projectUsesPhases = hasPhases(project),
     tasks = project ? addablePhasesFor(project, week) : [],
     [taskId, setTaskId] = useState(tasks[0]?.id || ''),
     validTaskId = tasks.some((task) => task.id === taskId)
@@ -68,7 +67,7 @@ export default function ProjectLineModal({
                 ))}
               </select>
             </div>
-          ) : hasPhases ? (
+          ) : projectUsesPhases ? (
             <p className="help">
               All of this project's phases are already on this week's timesheet.
             </p>
@@ -102,7 +101,7 @@ export default function ProjectLineModal({
           >
             Add task line
           </button>
-        ) : hasPhases ? (
+        ) : projectUsesPhases ? (
           <button className="primary" disabled>
             No phases left to add
           </button>

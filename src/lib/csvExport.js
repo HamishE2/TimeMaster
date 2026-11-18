@@ -1,4 +1,5 @@
 import { DAY_SHORT, dayDate, dateString } from './utils.js';
+import { phasesOf } from './tasks.js';
 
 const escapeCell = (value) => {
   const text = String(value ?? '');
@@ -10,15 +11,10 @@ export function buildTimesheetCsv(projects) {
   for (const project of projects) {
     const sources = [
       { name: 'General', entries: project.entries || {} },
-      ...(project.tasks || [])
-        .filter(
-          (task) =>
-            task.id !== 'general' && task.name.toLowerCase() !== 'general',
-        )
-        .map((task) => ({
-          name: task.name,
-          entries: project.taskEntries?.[task.id] || {},
-        })),
+      ...phasesOf(project).map((task) => ({
+        name: task.name,
+        entries: project.taskEntries?.[task.id] || {},
+      })),
     ];
     for (const source of sources)
       for (const [week, entries] of Object.entries(source.entries)) {

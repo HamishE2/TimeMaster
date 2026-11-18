@@ -1,15 +1,7 @@
-import {
-  DAY_NAMES,
-  DAY_SHORT,
-  EPSILON,
-  fmt,
-  projectMetrics,
-} from '../lib/utils.js';
-import {
-  projectStatus,
-  projectStatusLabel,
-  categoriseProjects,
-} from '../lib/projectGrouping.js';
+import { DAY_NAMES, DAY_SHORT, fmt } from '../lib/utils.js';
+import { categoriseProjects } from '../lib/projectGrouping.js';
+import { hasPhases } from '../lib/tasks.js';
+import { projectSummary } from '../lib/projectSummary.js';
 import FrontloadButton from './FrontloadButton.jsx';
 import FrontloadWarning from './FrontloadWarning.jsx';
 import ProjectAllocationBars from './ProjectAllocationBars.jsx';
@@ -41,19 +33,16 @@ export default function MobileCards({
             </h3>
           )}
           {group.projects.map((p) => {
-            const m = projectMetrics(p, week, leaveWeeks),
-              taskLines = taskLinesFor(p, week),
-              hasTasks = (p.tasks || []).some(
-                (task) =>
-                  task.id !== 'general' &&
-                  task.name.toLowerCase() !== 'general',
-              ),
-              sourceNote =
-                m.frontloadedOut > EPSILON
-                  ? ` · −${fmt(m.frontloadedOut)}h frontloaded to previous week`
-                  : '',
-              over = m.remaining != null && m.remaining < -EPSILON,
-              status = projectStatus(p.status);
+            const {
+              metrics: m,
+              status,
+              statusLabel,
+              remainingLabel,
+              sourceNote,
+              sourceNoteTitle,
+            } = projectSummary(p, week, leaveWeeks);
+            const taskLines = taskLinesFor(p, week),
+              hasTasks = hasPhases(p);
             return (
               <article key={p.id}>
                 {p.client && category !== 'client' && (
@@ -69,21 +58,13 @@ export default function MobileCards({
                       onOpen={() => onFrontload(p)}
                     />
                   </div>
-                  <span className={m.status}>
-                    {m.remaining == null
-                      ? 'Unlimited'
-                      : over
-                        ? `${fmt(-m.remaining)}h over`
-                        : Math.abs(m.remaining) <= EPSILON
-                          ? 'At plan'
-                          : `${fmt(Math.max(0, m.remaining))}h left`}
-                  </span>
+                  <span className={m.status}>{remainingLabel}</span>
                 </header>
                 {(status !== 'active' || p.isBillable === false) && (
                   <div className="mobile-project-meta">
                     {status !== 'active' && (
                       <span className={`project-status-badge status-${status}`}>
-                        {projectStatusLabel(status)}
+                        {statusLabel}
                       </span>
                     )}
                     {p.isBillable === false && (
@@ -95,6 +76,7 @@ export default function MobileCards({
                   project={p}
                   week={week}
                   leaveWeeks={leaveWeeks}
+                  metrics={m}
                   className="mobile-allocation-bars"
                 />
                 {!hasTasks && (
@@ -165,9 +147,9 @@ export default function MobileCards({
                   {sourceNote && (
                     <span
                       className="frontload-source-note"
-                      title={`Weekly limit reduced by ${fmt(m.frontloadedOut)} hours due to frontloading in the previous week`}
+                      title={sourceNoteTitle}
                     >
-                      {sourceNote}
+                      {` · ${sourceNote}`}
                     </span>
                   )}
                   {hasTasks && (

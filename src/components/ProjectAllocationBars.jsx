@@ -12,10 +12,10 @@ export default function ProjectAllocationBars({
   project,
   week,
   leaveWeeks,
+  metrics = projectMetrics(project, week, leaveWeeks),
   className = '',
 }) {
-  const metrics = projectMetrics(project, week, leaveWeeks),
-    month = monthKey(dayDate(week, 3)),
+  const month = monthKey(dayDate(week, 3)),
     monthlyAllocation = monthlyPlan(project, week),
     monthlyUsed =
       monthlyAllocation == null ? 0 : monthlyLogged(project, month, leaveWeeks),

@@ -30,6 +30,7 @@ const latestLoggedEntry = (project, week) => {
       (!latest || day >= latest.day)
     )
       latest = { day, taskId: null };
+  // Entry suggestions have historically skipped the reserved ID only.
   for (const task of project.tasks || [])
     if (task.id !== 'general')
       for (let day = 0; day < 7; day++)
