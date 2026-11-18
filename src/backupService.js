@@ -18,13 +18,14 @@ const revisionFor = (file, text) => ({
   contentHash: hashText(text),
 });
 
-export const revisionsMatch = (left, right) => Boolean(
-  left
-  && right
-  && left.lastModified === right.lastModified
-  && left.size === right.size
-  && left.contentHash === right.contentHash
-);
+export const revisionsMatch = (left, right) =>
+  Boolean(
+    left &&
+    right &&
+    left.lastModified === right.lastModified &&
+    left.size === right.size &&
+    left.contentHash === right.contentHash,
+  );
 
 export const backupPayload = (projects, settings) => ({
   schemaVersion: SCHEMA_VERSION,
@@ -33,21 +34,23 @@ export const backupPayload = (projects, settings) => ({
   settings,
 });
 
-export const workspaceSignature = (data) => JSON.stringify({
-  schemaVersion: data?.schemaVersion ?? SCHEMA_VERSION,
-  projects: data?.projects ?? [],
-  settings: data?.settings ?? {},
-});
+export const workspaceSignature = (data) =>
+  JSON.stringify({
+    schemaVersion: data?.schemaVersion ?? SCHEMA_VERSION,
+    projects: data?.projects ?? [],
+    settings: data?.settings ?? {},
+  });
 
-export const supportsFileSystemAccess = () => (
-  typeof window !== 'undefined'
-  && typeof window.showOpenFilePicker === 'function'
-  && typeof window.showSaveFilePicker === 'function'
-);
+export const supportsFileSystemAccess = () =>
+  typeof window !== 'undefined' &&
+  typeof window.showOpenFilePicker === 'function' &&
+  typeof window.showSaveFilePicker === 'function';
 
 export class ExternalFileChangedError extends Error {
   constructor() {
-    super('The attached file changed outside this tab. TimeMaster stopped before overwriting it. Refresh from file or save your work as a new copy.');
+    super(
+      'The attached file changed outside this tab. TimeMaster stopped before overwriting it. Refresh from file or save your work as a new copy.',
+    );
     this.name = 'ExternalFileChangedError';
     this.code = FILE_CHANGED_CODE;
   }
@@ -55,7 +58,9 @@ export class ExternalFileChangedError extends Error {
 
 export function downloadBackup(data, name = 'TimeMaster-backup.json') {
   const anchor = document.createElement('a');
-  anchor.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+  anchor.href = URL.createObjectURL(
+    new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
+  );
   anchor.download = name;
   anchor.click();
   setTimeout(() => URL.revokeObjectURL(anchor.href), 500);
@@ -76,7 +81,12 @@ export async function openBackup() {
   if (supportsFileSystemAccess()) {
     const [handle] = await window.showOpenFilePicker({
       multiple: false,
-      types: [{ description: 'TimeMaster JSON', accept: { 'application/json': ['.json'] } }],
+      types: [
+        {
+          description: 'TimeMaster JSON',
+          accept: { 'application/json': ['.json'] },
+        },
+      ],
     });
     return readHandle(handle);
   }
@@ -107,16 +117,21 @@ export async function chooseNewBackupHandle() {
   if (!supportsFileSystemAccess()) return null;
   return window.showSaveFilePicker({
     suggestedName: 'TimeMaster.json',
-    types: [{ description: 'TimeMaster JSON', accept: { 'application/json': ['.json'] } }],
+    types: [
+      {
+        description: 'TimeMaster JSON',
+        accept: { 'application/json': ['.json'] },
+      },
+    ],
   });
 }
 
 export async function writeHandle(handle, data, expectedRevision = null) {
   const permission = { mode: 'readwrite' };
   if (
-    typeof handle.queryPermission === 'function'
-    && await handle.queryPermission(permission) !== 'granted'
-    && await handle.requestPermission(permission) !== 'granted'
+    typeof handle.queryPermission === 'function' &&
+    (await handle.queryPermission(permission)) !== 'granted' &&
+    (await handle.requestPermission(permission)) !== 'granted'
   ) {
     throw new Error('Permission to write the TimeMaster file was not granted.');
   }

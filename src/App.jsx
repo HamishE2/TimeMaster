@@ -1,144 +1,3128 @@
-import {Fragment,useCallback,useEffect,useMemo,useRef,useState} from 'react';
-import {DAY_NAMES,DAY_SHORT,DEFAULT_CAPACITY,DEFAULT_VISIBLE_DAYS,EPSILON,SCHEMA_VERSION,WEEKLY_RESOURCING_CAPACITY,addablePhasesFor,capacityFor,projectHasPhases,dayDate,fmt,frontloadAmount,frontloadLimit,isVisible,migrateBackup,monthKey,monthlyLogged,monthlyPlan,parseHours,projectMetrics,shiftWeek,taskEntrySources,taskLinesFor,uuid,weekDates,weekKeyFor,weekLabel,weeklyPlan,weeklyResourcedHours} from './utils';
-import {FILE_CHANGED_CODE,backupPayload,chooseNewBackupHandle,downloadBackup,openBackup,readHandle,supportsFileSystemAccess,workspaceSignature,writeHandle} from './backupService';
-import {loadSessionFromIdb,saveSessionToIdb} from './idb';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import {
+  DAY_NAMES,
+  DAY_SHORT,
+  DEFAULT_CAPACITY,
+  DEFAULT_VISIBLE_DAYS,
+  EPSILON,
+  SCHEMA_VERSION,
+  WEEKLY_RESOURCING_CAPACITY,
+  addablePhasesFor,
+  capacityFor,
+  projectHasPhases,
+  dayDate,
+  fmt,
+  frontloadAmount,
+  frontloadLimit,
+  isVisible,
+  migrateBackup,
+  monthKey,
+  monthlyLogged,
+  monthlyPlan,
+  parseHours,
+  projectMetrics,
+  shiftWeek,
+  taskEntrySources,
+  taskLinesFor,
+  uuid,
+  weekDates,
+  weekKeyFor,
+  weekLabel,
+  weeklyPlan,
+  weeklyResourcedHours,
+} from './utils';
+import {
+  FILE_CHANGED_CODE,
+  backupPayload,
+  chooseNewBackupHandle,
+  downloadBackup,
+  openBackup,
+  readHandle,
+  supportsFileSystemAccess,
+  workspaceSignature,
+  writeHandle,
+} from './backupService';
+import { loadSessionFromIdb, saveSessionToIdb } from './idb';
 import ProjectModal from './ProjectModal';
 import ImportModal from './ImportModal';
 import ManageProjectsModal from './ManageProjectsModal';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
-import {createProjectRecord,editProjectRecord,pinTaskLineRecord,removeTaskLineRecord,restoreProjectRecord,validateManagedProject} from './projectOperations';
-import {downloadTimesheetCsv} from './csvExport';
+import {
+  createProjectRecord,
+  editProjectRecord,
+  pinTaskLineRecord,
+  removeTaskLineRecord,
+  restoreProjectRecord,
+  validateManagedProject,
+} from './projectOperations';
+import { downloadTimesheetCsv } from './csvExport';
 
-const empty={schemaVersion:SCHEMA_VERSION,projects:[],settings:{visibleDays:DEFAULT_VISIBLE_DAYS,leaveWeeks:{},capacityByDay:DEFAULT_CAPACITY,theme:'system'}};
-const icon=d=><svg aria-hidden="true" viewBox="0 0 24 24"><path d={d}/></svg>;
-const cleanWeek=week=>Object.fromEntries(Object.entries(week||{}).filter(([,v])=>v!==undefined&&v!==null&&v!==''));
-const projectStatus=value=>['active','on-hold','closed'].includes(value)?value:'active';
-const projectStatusLabel=value=>({active:'Active','on-hold':'On hold',closed:'Closed'})[projectStatus(value)];
-const usageLabel=value=>({under:'Allowance left',at:'At allocation',over:'Over allocation',unlimited:'Unlimited'})[value]||'Allowance left';
-const categoriseProjects=(projects,category,week,leaveWeeks)=>{
- if(category==='none')return[{key:'all',label:'All projects',projects}];
- const groupFor=project=>{
-  if(category==='status'){const value=projectStatus(project.status);return{key:value,label:projectStatusLabel(value),order:['active','on-hold','closed'].indexOf(value)}}
-  if(category==='client'){const value=project.client?.trim()||'No client';return{key:value.toLocaleLowerCase(),label:value,order:0}}
-  if(category==='billability'){const value=project.isBillable!==false?'billable':'non-billable';return{key:value,label:value==='billable'?'Billable':'Non-billable',order:value==='billable'?0:1}}
-  const value=projectMetrics(project,week,leaveWeeks).status;return{key:value,label:usageLabel(value),order:['over','at','under','unlimited'].indexOf(value)}};
- const groups=new Map();
- projects.forEach(project=>{const group=groupFor(project),existing=groups.get(group.key)||{...group,projects:[]};existing.projects.push(project);groups.set(group.key,existing)});
- return [...groups.values()].sort((a,b)=>a.order-b.order||a.label.localeCompare(b.label));
+const empty = {
+  schemaVersion: SCHEMA_VERSION,
+  projects: [],
+  settings: {
+    visibleDays: DEFAULT_VISIBLE_DAYS,
+    leaveWeeks: {},
+    capacityByDay: DEFAULT_CAPACITY,
+    theme: 'system',
+  },
 };
-const taskHoursForDay=(project,week,day)=>taskEntrySources(project).reduce((sum,entries)=>sum+Number(entries?.[week]?.[day]||0),0);
-const hasFiniteWeeklyPlan=(project,week)=>{const plan=weeklyPlan(project,week);return plan!=null&&Number.isFinite(Number(plan))&&Number(plan)>=0};
-const canFrontload=(project,week)=>{const next=shiftWeek(week,1);return project.status!=='closed'&&isVisible(project,week)&&isVisible(project,next)&&hasFiniteWeeklyPlan(project,week)&&hasFiniteWeeklyPlan(project,next)};
-const clockForwardIcon=<svg aria-hidden="true" viewBox="0 0 32 32"><circle cx="12" cy="16" r="8"/><path d="M12 11v5l3.5 2.5M21 10h8m-4-4 4 4-4 4"/></svg>;
-const frontloadWarningIcon=<svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="10" cy="12" r="6"/><path d="M10 8v3.5M10 14.5v.5M16.5 6.5l3 5.25-3 5.25h-6"/></svg>;
-const FrontloadWarning=({metrics})=>metrics.overDueToFrontloading?<span className="frontload-warning" title="Over limit due to frontloading" tabIndex="0" aria-label="Over limit due to frontloading">{frontloadWarningIcon}</span>:null;
-const FrontloadButton=({project,week,onOpen})=>canFrontload(project,week)?<button className="frontload-button" onClick={onOpen} aria-label={`Frontload hours for ${project.name}`} title="Frontload hours from next week">{clockForwardIcon}</button>:null;
-const latestLoggedEntry=(project,week)=>{let latest=null;for(let day=0;day<7;day++)if(Number(project.entries?.[week]?.[day]||0)>EPSILON&&(!latest||day>=latest.day))latest={day,taskId:null};for(const task of project.tasks||[])if(task.id!=='general')for(let day=0;day<7;day++)if(Number(project.taskEntries?.[task.id]?.[week]?.[day]||0)>EPSILON&&(!latest||day>=latest.day))latest={day,taskId:task.id};return latest};
-const frontloadSuggestion=(project,week,leaveWeeks)=>{const metrics=projectMetrics(project,week,leaveWeeks);if(!canFrontload(project,week)||metrics.frontloadedIn>EPSILON||metrics.weeklyAllowance==null||metrics.logged<=metrics.weeklyAllowance+EPSILON)return null;const entry=latestLoggedEntry(project,week);if(!entry)return null;return {...entry,amount:Math.max(0,metrics.logged-metrics.weeklyAllowance)};};
-const frontloadAdjustment=(project,week,leaveWeeks)=>{const metrics=projectMetrics(project,week,leaveWeeks),overage=Math.max(0,metrics.logged-Math.max(0,Number(metrics.plan||0)));if(metrics.frontloadedIn<=overage+EPSILON)return null;const entry=latestLoggedEntry(project,week);return entry?{...entry,amount:overage,adjustment:true}:null;};
-const EntryFrontloadButton=({project,onOpen,adjustment=false})=>{const label=adjustment?'Adjust frontloaded hours to the weekly overage':'Frontload additional hours';return <button className="entry-frontload-button" onClick={onOpen} aria-label={`${label} for ${project.name}`} title={label}>{clockForwardIcon}</button>};
-
-function Modal({title,children,onClose,wide=false}){const ref=useRef();useEffect(()=>{ref.current?.focus();const k=e=>e.key==='Escape'&&onClose();document.addEventListener('keydown',k);return()=>document.removeEventListener('keydown',k)},[onClose]);return <div className="scrim" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><section className={`modal ${wide?'wide':''}`} role="dialog" aria-modal="true" aria-labelledby="dialog-title" tabIndex="-1" ref={ref}><div className="modal-head"><h2 id="dialog-title">{title}</h2><button className="icon-button" onClick={onClose} aria-label="Close dialog">×</button></div>{children}</section></div>}
-function ConfirmAction({confirmation,onClose}){return <Modal title={confirmation.title} onClose={onClose}><p className="help">{confirmation.text}</p><div className="modal-actions"><button onClick={onClose}>Cancel</button><button className={confirmation.danger?'danger primary':'primary'} onClick={()=>{confirmation.action();onClose()}}>{confirmation.confirmLabel}</button></div></Modal>}
-function CapacityModal({projects,week,leaveWeeks,totals,onClose,onFillCapacity}){const rows=projects.map(project=>({project,metrics:projectMetrics(project,week,leaveWeeks)})).filter(({metrics})=>metrics.plan!=null);return <Modal title="Capacity breakdown" onClose={onClose} wide><p className="help">Net weekly resourcing is measured against {fmt(WEEKLY_RESOURCING_CAPACITY)}h. Frontloaded hours adjust the week they are moved from and to.</p><div className="capacity-breakdown"><div className="capacity-breakdown-head"><span>Project</span><span>Original</span><span>Frontloading</span><span>Effective</span></div>{rows.length?rows.map(({project,metrics})=>{const adjustment=metrics.frontloadedIn-metrics.frontloadedOut;return <div className="capacity-breakdown-row" key={project.id}><strong>{project.name}</strong><span>{fmt(metrics.plan)}h</span><span className={adjustment<0?'capacity-out':adjustment>0?'capacity-in':''}>{adjustment===0?'—':`${adjustment>0?'+':''}${fmt(adjustment)}h`}</span><b>{fmt(Math.max(0,metrics.weeklyAllowance))}h</b></div>}):<p className="quiet">No projects have resourced hours this week.</p>}<div className="capacity-breakdown-total"><span>Total resourced</span><b>{fmt(totals.resourced)}h</b><span>Capacity</span><b className={totals.resourcingCapacity>3+EPSILON?'capacity-warning':''}>{fmt(totals.resourcingCapacity)}h</b></div></div><div className="modal-actions"><button onClick={onClose}>Done</button><button className="primary" disabled={totals.resourcingCapacity<=EPSILON} onClick={()=>{if(onFillCapacity()!==false)onClose()}}>Fill capacity</button></div></Modal>}
-function FrontloadModal({project,week,leaveWeeks,onClose,onSave,title='Frontload hours',initialAmount=0,preferInitial=false}){const existing=frontloadAmount(project,week),next=shiftWeek(week,1),cap=frontloadLimit(project,week),maximum=Math.max(existing,cap??0),suggested=Math.min(maximum,Math.max(0,initialAmount)),initial=preferInitial?suggested:existing||suggested,[value,setValue]=useState(initial?String(initial):''),[error,setError]=useState(''),candidate=value.trim()===''?0:Number(value),validFormat=value.trim()===''||/^\d+(\.\d{1,2})?$/.test(value.trim()),valid=validFormat&&Number.isFinite(candidate)&&candidate>=0&&candidate<=maximum+EPSILON,draft={...project,frontloads:{...(project.frontloads||{}),[week]:candidate}},currentSource=projectMetrics(project,next,leaveWeeks),nextSource=projectMetrics(draft,next,leaveWeeks),destination=projectMetrics(draft,week,leaveWeeks),metrics=projectMetrics(project,week,leaveWeeks),overage=Math.max(0,metrics.logged-Math.max(0,Number(metrics.plan||0))),currentLow=(currentSource.weeklyAvailable??0)<3-EPSILON,nextLow=(nextSource.weeklyAvailable??0)<3-EPSILON,warningHours=nextLow?nextSource.weeklyAvailable:currentSource.weeklyAvailable,monthlyLimited=destination.weeklyAllowance!=null&&destination.monthly!=null&&destination.monthly<destination.weeklyAllowance-EPSILON;const submit=()=>{if(!valid){setError(`Enter an amount between 0 and ${fmt(maximum)} hours.`);return}if(onSave(candidate)!==false)onClose()};const adjustToOverage=()=>{if(onSave(overage)!==false)onClose()};return <Modal title={title} onClose={onClose}><p className="help">Use hours from <b>{weekLabel(next)}</b> for <b>{weekLabel(week)}</b>.</p><div className="field"><label htmlFor="frontload-hours">Hours to frontload</label><input id="frontload-hours" type="number" min="0" max={maximum} step="0.01" value={value} onChange={event=>{setValue(event.target.value);setError('')}} autoFocus/><small className="field-help">Up to {fmt(maximum)}h can be frontloaded. Set this to 0 to remove the transfer.</small>{error&&<span className="field-error">{error}</span>}</div><div className="frontload-preview"><div><span>This week</span><b>{destination.weeklyAllowance==null?'Unlimited':`${fmt(Math.max(0,destination.weeklyAllowance))}h usable`}</b></div><div><span>Next week</span><b>{nextSource.weeklyAllowance==null?'Unlimited':`${fmt(Math.max(0,nextSource.weeklyAllowance))}h usable`}</b></div></div>{(currentLow||nextLow)&&<p className="frontload-low-warning" role="status">This project has {fmt(Math.max(0,warningHours))}h next week. Frontloading may make usable time too low.</p>}{monthlyLimited&&<p className="help">Monthly allowance still limits this week to {fmt(destination.monthly)}h.</p>}<div className="modal-actions"><button onClick={onClose}>Cancel</button>{existing>overage+EPSILON&&<button onClick={adjustToOverage}>Adjust to {fmt(overage)}h overage</button>}{existing>0&&<button onClick={()=>{setValue('0');setError('')}}>Remove frontloading</button>}<button className="primary" onClick={submit}>{candidate===0&&existing>0?'Remove frontloading':'Save frontloading'}</button></div></Modal>}
-
-function ProjectLineModal({projects,week,initialProjectId,onClose,onAddTask,onAddProject,onManage}){const eligible=projects.filter(project=>!project.archived&&project.status!=='closed'),[projectId,setProjectId]=useState(initialProjectId&&eligible.some(project=>project.id===initialProjectId)?initialProjectId:eligible[0]?.id||''),project=eligible.find(item=>item.id===projectId),hasPhases=(project?.tasks||[]).some(task=>task.id!=='general'&&task.name.toLowerCase()!=='general'),tasks=project?addablePhasesFor(project,week):[],[taskId,setTaskId]=useState(tasks[0]?.id||''),validTaskId=tasks.some(task=>task.id===taskId)?taskId:tasks[0]?.id||'',isVisibleNow=project?.__visibleNow===true;return <Modal title="Add line" onClose={onClose}>{eligible.length>0?<><div className="field"><label htmlFor="line-project">Project</label><select id="line-project" value={projectId} onChange={event=>{const id=event.target.value;setProjectId(id);setTaskId('')}}>{eligible.map(item=><option key={item.id} value={item.id}>{item.name}{item.__visibleNow?'':' · not scheduled this week'}</option>)}</select></div>{tasks.length>0?<div className="field"><label htmlFor="line-task">Task / phase</label><select id="line-task" value={validTaskId} onChange={event=>setTaskId(event.target.value)}>{tasks.map(task=><option key={task.id} value={task.id}>{task.name}</option>)}</select></div>:hasPhases?<p className="help">All of this project's phases are already on this week's timesheet.</p>:<p className="help">This project uses its General line. Add it to this week to start recording time.</p>}</>:<p className="help">No active projects are available. Add or restore a project in Projects first.</p>}<div className="modal-actions"><button onClick={onClose}>Cancel</button>{eligible.length===0?<button className="primary" onClick={onManage}>Manage projects</button>:tasks.length>0?<button className="primary" disabled={!projectId||!validTaskId} onClick={()=>{onAddTask(projectId,validTaskId,week);onClose()}}>Add task line</button>:hasPhases?<button className="primary" disabled>No phases left to add</button>:<button className="primary" disabled={!projectId||isVisibleNow} onClick={()=>{onAddProject(projectId,week);onClose()}}>{isVisibleNow?'Already on timesheet':'Add project'}</button>}</div></Modal>}
-
-export default function App(){
- const [data,setData]=useState(empty),[ready,setReady]=useState(false),[week,setWeek]=useState(weekKeyFor(new Date())),[panel,setPanel]=useState(null),[edit,setEdit]=useState(null),[returnToManage,setReturnToManage]=useState(false),[removeTarget,setRemoveTarget]=useState(null),[confirm,setConfirm]=useState(null),[lineTarget,setLineTarget]=useState(null),[frontloadTarget,setFrontloadTarget]=useState(null),[capacityDetails,setCapacityDetails]=useState(false),[query,setQuery]=useState(''),[filter,setFilter]=useState('all'),[category,setCategory]=useState('none'),[notice,setNotice]=useState(null),[file,setFile]=useState(null),[mobileView,setMobileView]=useState('projects');
- const [fileName,setFileName]=useState(null),[fileRevision,setFileRevision]=useState(null),[fileStatus,setFileStatus]=useState('local'),[lastSavedAt,setLastSavedAt]=useState(null),[savedFileSignature,setSavedFileSignature]=useState('');
- const cacheTimer=useRef(),autoSaveTimer=useRef(),saveInFlight=useRef(false),saveBlocked=useRef(false),latestSignature=useRef(workspaceSignature(empty));
-
- useEffect(()=>{loadSessionFromIdb().then(session=>{const restored=session?.data?migrateBackup(session.data):empty,signature=workspaceSignature(restored),handle=session?.fileHandle||null,saved=session?.savedSignature||(handle?signature:'');setData(restored);latestSignature.current=signature;setSavedFileSignature(saved);setFile(handle);setFileName(handle?.name||null);setFileRevision(session?.fileRevision||null);setLastSavedAt(session?.fileRevision?.lastModified?new Date(session.fileRevision.lastModified):null);setFileStatus(handle?(saved===signature?'saved':'dirty'):'local');if(/^\d{4}-\d{2}-\d{2}$/.test(session?.weekKey||''))setWeek(session.weekKey);setReady(true)}).catch(()=>setReady(true))},[]);
- const currentSignature=useMemo(()=>workspaceSignature(data),[data]);
- useEffect(()=>{latestSignature.current=currentSignature},[currentSignature]);
- const dirty=Boolean(file&&currentSignature!==savedFileSignature),hasLocalOnlyWork=!file&&data.projects.length>0,needsDiscardProtection=dirty||hasLocalOnlyWork;
-
- const days=data.settings.visibleDays||DEFAULT_VISIBLE_DAYS;
- const leave=useMemo(()=>data.settings.leaveWeeks?.[week]||[],[data.settings.leaveWeeks,week]);
- const visible=useMemo(()=>data.projects.filter(p=>isVisible(p,week)),[data.projects,week]);
- const matching=useMemo(()=>visible.filter(p=>{const m=projectMetrics(p,week,data.settings.leaveWeeks);const nameMatch=!query||p.name.toLowerCase().includes(query.toLowerCase());const typeMatch=filter==='all'||filter===m.status||(filter==='logged'&&m.logged>0)||(filter==='unlogged'&&m.logged===0)||(filter==='billable'&&p.isBillable!==false)||(filter==='nonbillable'&&p.isBillable===false);return nameMatch&&typeMatch}),[visible,query,filter,week,data.settings.leaveWeeks]);
- const totals=useMemo(()=>{const metrics=visible.map(p=>({p,m:projectMetrics(p,week,data.settings.leaveWeeks)})),logged=metrics.reduce((n,x)=>n+x.m.logged,0),capacity=capacityFor(week,data.settings),billable=metrics.filter(x=>x.p.isBillable!==false).reduce((n,x)=>n+x.m.logged,0),planned=metrics.reduce((n,x)=>n+Math.max(0,Number(x.m.plan||0)),0),resourced=weeklyResourcedHours(visible,week,data.settings.leaveWeeks),resourcingCapacity=Math.max(0,WEEKLY_RESOURCING_CAPACITY-resourced),frontloading=metrics.reduce((n,x)=>n+x.m.frontloadedIn+x.m.frontloadedOut,0),over=metrics.filter(x=>x.m.status==='over').length,todayDate=new Date(),todayIndex=(todayDate.getDay()+6)%7,today=week===weekKeyFor(todayDate)&&!leave.includes(todayIndex)?visible.reduce((sum,project)=>sum+Number(project.entries?.[week]?.[todayIndex]||0)+taskHoursForDay(project,week,todayIndex),0):0;return{logged,capacity,billable,planned,resourced,resourcingCapacity,frontloading,over,today,remaining:capacity-logged,billablePct:logged?billable/logged*100:0}},[visible,week,data.settings,leave]);
-
- const setEntry=(projectId,targetWeek,day,value)=>{const wk=typeof targetWeek==='string'?targetWeek:week,idx=typeof targetWeek==='string'?day:targetWeek,raw=typeof targetWeek==='string'?value:day;const parsed=typeof raw==='number'?{value:raw}:parseHours(raw);if(parsed.error){setNotice({type:'error',text:parsed.error});return}setData(d=>({...d,projects:d.projects.map(p=>{if(p.id!==projectId)return p;const current={...(p.entries?.[wk]||{})};if(parsed.value==null)delete current[idx];else current[idx]=parsed.value;const entries={...(p.entries||{})};const cleaned=cleanWeek(current);if(Object.keys(cleaned).length)entries[wk]=cleaned;else delete entries[wk];return{...p,entries}})}))};
- const setTaskEntry=(projectId,taskId,targetWeek,day,value)=>{const parsed=typeof value==='number'?{value}:parseHours(value);if(parsed.error){setNotice({type:'error',text:parsed.error});return}setData(d=>({...d,projects:d.projects.map(project=>{if(project.id!==projectId)return project;const taskEntries={...(project.taskEntries||{})},entries={...(taskEntries[taskId]||{})},current={...(entries[targetWeek]||{})};if(parsed.value==null)delete current[day];else current[day]=parsed.value;const cleaned=cleanWeek(current);if(Object.keys(cleaned).length)entries[targetWeek]=cleaned;else delete entries[targetWeek];if(Object.keys(entries).length)taskEntries[taskId]=entries;else delete taskEntries[taskId];return{...project,taskEntries}})}))};
- const pinTaskLine=(projectId,taskId,targetWeek=week)=>setData(d=>({...d,projects:d.projects.map(project=>project.id===projectId?pinTaskLineRecord(project,taskId,targetWeek):project)}));
- const removeTaskLine=(projectId,taskId)=>{const project=data.projects.find(item=>item.id===projectId),task=project?.tasks?.find(item=>item.id===taskId),hasTime=Object.values(project?.taskEntries?.[taskId]?.[week]||{}).some(value=>Number(value)>0),action=()=>setData(d=>({...d,projects:d.projects.map(item=>item.id===projectId?removeTaskLineRecord(item,taskId,week):item)}));if(hasTime)setConfirm({title:'Remove timesheet line?',text:`${task?.name||'This task'} has logged time this week. Removing the line will also remove those hours.`,confirmLabel:'Remove line and time',danger:true,action});else action()};
- const applyLeave=day=>setData(d=>{const cur=d.settings.leaveWeeks?.[week]||[],next=cur.includes(day)?cur.filter(x=>x!==day):[...cur,day].sort();return{...d,settings:{...d.settings,leaveWeeks:{...d.settings.leaveWeeks,[week]:next}}}});
- const toggleLeave=day=>{const hasTime=visible.some(p=>Number(p.entries?.[week]?.[day]||0)>0||Object.values(p.taskEntries||{}).some(entries=>Number(entries?.[week]?.[day]||0)>0)),isLeave=leave.includes(day);setConfirm(isLeave?{title:`Remove ${DAY_NAMES[day]} leave?`,text:'This will return the day to the working-week totals. Logged time is unchanged.',confirmLabel:'Remove leave',action:()=>applyLeave(day)}:{title:`Mark ${DAY_NAMES[day]} as leave?`,text:hasTime?'This day already contains time. The entries will be kept for your records but excluded from working totals while the day is marked as leave.':'This day will be excluded from working capacity and timesheet totals.',confirmLabel:hasTime?'Keep time and mark leave':'Mark as leave',action:()=>applyLeave(day)})};
- const move=(id,direction)=>setData(d=>{const list=[...d.projects],index=list.findIndex(p=>p.id===id),next=index+direction;if(index<0||next<0||next>=list.length)return d;[list[index],list[next]]=[list[next],list[index]];return{...d,projects:list}});
- const showProjectForWeek=(id,targetWeek)=>setData(d=>({...d,projects:d.projects.map(project=>project.id!==id?project:{...project,archived:false,hiddenWeeks:(project.hiddenWeeks||[]).filter(key=>key!==targetWeek),hiddenOnwardsFrom:project.hiddenOnwardsFrom&&project.hiddenOnwardsFrom>targetWeek?project.hiddenOnwardsFrom:null,visibleOnwardsFrom:project.visibleOnwardsFrom&&project.visibleOnwardsFrom>targetWeek?targetWeek:project.visibleOnwardsFrom})}));
- const saveFrontload=(projectId,targetWeek,amount)=>{const project=data.projects.find(item=>item.id===projectId),existing=frontloadAmount(project||{},targetWeek),limit=frontloadLimit(project||{},targetWeek),rounded=Math.round(Number(amount)*100)/100,maximum=Math.max(existing,limit??0);if(!project||!Number.isFinite(rounded)||rounded<0||rounded>maximum+EPSILON){setNotice({type:'error',text:`Frontloading must be between 0 and ${fmt(maximum)} hours.`});return false}setData(current=>({...current,projects:current.projects.map(item=>{if(item.id!==projectId)return item;const frontloads={...(item.frontloads||{})};if(rounded<=EPSILON)delete frontloads[targetWeek];else frontloads[targetWeek]=rounded;return {...item,frontloads}})}));return true};
-
- const saveProject=(name,hours,isBillable,scope='project',monthly=null,historical=0,client='',code='',status='active',color='#7aa600',selectedExistingId=null,tasks=null,projectType='standard',durationWeeks=0,durationDays=0,remainderLimit=null)=>{
-  const fields={name,hours,isBillable,monthly,historical,client,code,status,color,tasks,projectType,durationWeeks,durationDays,remainderLimit};
-  const normal=name.trim().toLowerCase(),duplicate=data.projects.find(p=>p.id!==edit?.id&&p.id!==selectedExistingId&&p.name.trim().toLowerCase()===normal);
-  if(duplicate){setNotice({type:'error',text:`“${duplicate.name}” already exists. Restore or edit it from Projects.`});return false}
-  setData(d=>{
-   if(!edit&&selectedExistingId)return{...d,projects:d.projects.map(p=>p.id===selectedExistingId?restoreProjectRecord(p,fields,scope,week):p)};
-   if(!edit)return{...d,projects:[...d.projects,createProjectRecord(fields,scope,week)]};
-   return{...d,projects:d.projects.map(p=>p.id===edit.id?editProjectRecord(p,fields,scope,week):p)}
+const icon = (d) => (
+  <svg aria-hidden="true" viewBox="0 0 24 24">
+    <path d={d} />
+  </svg>
+);
+const cleanWeek = (week) =>
+  Object.fromEntries(
+    Object.entries(week || {}).filter(
+      ([, v]) => v !== undefined && v !== null && v !== '',
+    ),
+  );
+const projectStatus = (value) =>
+  ['active', 'on-hold', 'closed'].includes(value) ? value : 'active';
+const projectStatusLabel = (value) =>
+  ({ active: 'Active', 'on-hold': 'On hold', closed: 'Closed' })[
+    projectStatus(value)
+  ];
+const usageLabel = (value) =>
+  ({
+    under: 'Allowance left',
+    at: 'At allocation',
+    over: 'Over allocation',
+    unlimited: 'Unlimited',
+  })[value] || 'Allowance left';
+const categoriseProjects = (projects, category, week, leaveWeeks) => {
+  if (category === 'none')
+    return [{ key: 'all', label: 'All projects', projects }];
+  const groupFor = (project) => {
+    if (category === 'status') {
+      const value = projectStatus(project.status);
+      return {
+        key: value,
+        label: projectStatusLabel(value),
+        order: ['active', 'on-hold', 'closed'].indexOf(value),
+      };
+    }
+    if (category === 'client') {
+      const value = project.client?.trim() || 'No client';
+      return { key: value.toLocaleLowerCase(), label: value, order: 0 };
+    }
+    if (category === 'billability') {
+      const value = project.isBillable !== false ? 'billable' : 'non-billable';
+      return {
+        key: value,
+        label: value === 'billable' ? 'Billable' : 'Non-billable',
+        order: value === 'billable' ? 0 : 1,
+      };
+    }
+    const value = projectMetrics(project, week, leaveWeeks).status;
+    return {
+      key: value,
+      label: usageLabel(value),
+      order: ['over', 'at', 'under', 'unlimited'].indexOf(value),
+    };
+  };
+  const groups = new Map();
+  projects.forEach((project) => {
+    const group = groupFor(project),
+      existing = groups.get(group.key) || { ...group, projects: [] };
+    existing.projects.push(project);
+    groups.set(group.key, existing);
   });
-  setEdit(null);setPanel(returnToManage?'manage':null);setReturnToManage(false);return true
- };
- const manageUpdate=(id,name,hours)=>{
-  const result=validateManagedProject(data.projects,id,name,hours);
-  if(result.error){setNotice({type:'error',text:result.error});return false}
-  setData(d=>({...d,projects:d.projects.map(p=>p.id===id?{...p,name:result.name,resourcedHours:result.hours}:p)}));return true
- };
- const deletePermanent=id=>{const project=data.projects.find(item=>item.id===id);if(!project)return;setConfirm({title:'Delete project permanently?',text:`“${project.name}” and all of its logged history will be removed. This cannot be undone.`,confirmLabel:'Delete project',danger:true,action:()=>setData(d=>({...d,projects:d.projects.filter(item=>item.id!==id)}))})};
- const hide=(id,from,only=false)=>setData(d=>({...d,projects:d.projects.map(p=>p.id===id?(only?{...p,hiddenWeeks:[...new Set([...(p.hiddenWeeks||[]),from])]}:{...p,hiddenOnwardsFrom:from}):p)}));
- const importData=(result,items)=>{setData(d=>{let projects=[...d.projects];for(const item of items){let index=projects.findIndex(p=>p.name.trim().toLowerCase()===item.name.trim().toLowerCase());if(index<0){projects.push({id:uuid(),name:item.name,isBillable:false,resourcedHours:result.format==='resourcing'?Number(item.resourcedHours||0):null,monthlyResourcedHours:null,entries:{},tasks:[{id:'general',name:'General'}],taskEntries:{},taskRows:{},weeklyOverrides:{},frontloads:{},hiddenWeeks:[],visibleOnwardsFrom:result.weekKey||week,createdAt:new Date().toISOString()});index=projects.length-1}const p={...projects[index]};if(result.format==='timesheet'){p.entries={...(p.entries||{}),[result.weekKey]:{...(p.entries?.[result.weekKey]||{}),...(item.dailyHours||{})}}}else if(result.format==='resourcing'){p.resourcedHours=Number(item.resourcedHours||0);p.weeklyOverrides={...(p.weeklyOverrides||{}),[result.weekKey]:Number(item.resourcedHours||0)}}projects[index]=p}return{...d,projects}});if(result.weekKey)setWeek(result.weekKey);setNotice({type:'success',text:`Imported ${items.length} project${items.length===1?'':'s'} into ${result.weekKey||'the workspace'}.`})};
- const fillDevelopment=()=>{const pd=data.projects.find(p=>p.name.trim().toLowerCase()==='professional development');if(!pd){setNotice({type:'error',text:'Create a project named Professional Development before using Fill remaining.'});return}let remaining=Math.max(0,totals.remaining);if(!remaining)return;const updates={};for(const day of days.filter(d=>!leave.includes(d))){const dayUsed=visible.reduce((n,p)=>n+Number(p.entries?.[week]?.[day]||0)+taskHoursForDay(p,week,day),0),space=Math.max(0,Number(data.settings.capacityByDay?.[day]||0)-dayUsed),add=Math.min(space,remaining);if(add>0){updates[day]=Number(pd.entries?.[week]?.[day]||0)+add;remaining-=add}}Object.entries(updates).forEach(([day,val])=>setEntry(pd.id,week,Number(day),Math.round(val*100)/100));setNotice({type:'success',text:'Filled available working capacity with Professional Development.'})};
- const fillCapacityWithDevelopment=()=>{const pd=data.projects.find(p=>p.name.trim().toLowerCase()==='professional development'),amount=totals.resourcingCapacity;if(!pd){setNotice({type:'error',text:'Create a project named Professional Development before filling capacity.'});return false}if(amount<=EPSILON)return false;setData(current=>({...current,projects:current.projects.map(project=>project.id!==pd.id?project:{...project,archived:false,hiddenWeeks:(project.hiddenWeeks||[]).filter(key=>key!==week),hiddenOnwardsFrom:project.hiddenOnwardsFrom&&project.hiddenOnwardsFrom>week?project.hiddenOnwardsFrom:null,visibleOnwardsFrom:project.visibleOnwardsFrom&&project.visibleOnwardsFrom>week?week:project.visibleOnwardsFrom,weeklyOverrides:{...(project.weeklyOverrides||{}),[week]:Math.round((Math.max(0,Number(weeklyPlan(project,week)||0))+amount)*100)/100}})}));setNotice({type:'success',text:`Allocated ${fmt(amount)}h of capacity to Professional Development.`});return true};
- const addSample=()=>{const sample=[{name:'Contoso M365 Adoption',hours:15,isBillable:true,monthly:null,historical:0,client:'Contoso Pty Ltd',code:'PRJ-1042',status:'active',color:'#0f9e8e'},{name:'Northwind Teams Governance',hours:8,isBillable:true,monthly:null,historical:0,client:'Northwind',code:'PRJ-1088',status:'active',color:'#8b5cf6'}];setData(d=>({...d,projects:[...d.projects,...sample.map(fields=>createProjectRecord(fields,'onwards',week))]}));setNotice({type:'success',text:'Added two sample projects. Edit or remove them whenever you are ready.'})};
- const attachLoadedFile=useCallback(result=>{const signature=workspaceSignature(result.data);setSavedFileSignature(signature);latestSignature.current=signature;saveBlocked.current=false;setData(result.data);setFile(result.handle);setFileName(result.name);setFileRevision(result.revision);setLastSavedAt(result.revision?.lastModified?new Date(result.revision.lastModified):new Date());setFileStatus(result.handle?'saved':'local')},[]);
- const doOpenFile=async()=>{try{const result=await openBackup();attachLoadedFile(result);setNotice({type:'success',text:result.handle?`Opened ${result.name}. Edits will save back to this file.`:`Imported ${result.name}. Direct saving requires Chrome or Edge.`})}catch(error){if(error?.name!=='AbortError')setNotice({type:'error',text:error?.message||'That TimeMaster file could not be opened.'})}};
- const openFile=()=>{if(needsDiscardProtection){setConfirm({title:'Open another file?',text:'This will replace the workspace currently shown. Save now or export a backup copy first if you need to keep these changes.',confirmLabel:'Replace workspace',danger:true,action:doOpenFile});return}doOpenFile()};
- const saveAs=async()=>{if(!supportsFileSystemAccess()){downloadBackup(backupPayload(data.projects,data.settings),'TimeMaster.json');setNotice({type:'success',text:'Downloaded TimeMaster.json. Direct saving requires a recent Chrome or Edge browser on HTTPS.'});return}try{const handle=await chooseNewBackupHandle(),payload=backupPayload(data.projects,data.settings),signature=workspaceSignature(payload),revision=await writeHandle(handle,payload);setSavedFileSignature(signature);saveBlocked.current=false;setFile(handle);setFileName(handle.name);setFileRevision(revision);setLastSavedAt(new Date(revision.lastModified));setFileStatus('saved');setNotice({type:'success',text:`Created and attached ${handle.name}.`})}catch(error){if(error?.name!=='AbortError')setNotice({type:'error',text:error?.message||'The TimeMaster file could not be created.'})}};
- const saveAttachedFile=useCallback(async({notify=false}={})=>{if(!file){if(notify)setPanel('file');return false}if(saveInFlight.current)return false;saveInFlight.current=true;setFileStatus('saving');const payload=backupPayload(data.projects,data.settings),signature=workspaceSignature(payload);try{const revision=await writeHandle(file,payload,fileRevision);setSavedFileSignature(signature);saveBlocked.current=false;setFileRevision(revision);setLastSavedAt(new Date(revision.lastModified));setFileStatus(latestSignature.current===signature?'saved':'dirty');if(notify)setNotice({type:'success',text:`Saved ${file.name}.`});return true}catch(error){if(error?.code===FILE_CHANGED_CODE){saveBlocked.current=true;setFileStatus('conflict');setNotice({type:'error',text:error.message})}else{setFileStatus('error');setNotice({type:'error',text:error?.message||'The workspace could not be saved. Export a backup copy from File.'})}return false}finally{saveInFlight.current=false}},[data,file,fileRevision]);
- const doRefreshFile=async()=>{if(!file)return;try{const result=await readHandle(file);attachLoadedFile(result);setNotice({type:'success',text:`Refreshed from ${result.name}.`})}catch(error){setNotice({type:'error',text:error?.message||'The attached file could not be refreshed.'})}};
- const refreshFile=()=>{if(!file)return;if(dirty){setConfirm({title:'Replace unsaved changes?',text:`Refreshing from ${file.name} will discard the unsaved changes in this tab.`,confirmLabel:'Refresh and discard',danger:true,action:doRefreshFile});return}doRefreshFile()};
+  return [...groups.values()].sort(
+    (a, b) => a.order - b.order || a.label.localeCompare(b.label),
+  );
+};
+const taskHoursForDay = (project, week, day) =>
+  taskEntrySources(project).reduce(
+    (sum, entries) => sum + Number(entries?.[week]?.[day] || 0),
+    0,
+  );
+const hasFiniteWeeklyPlan = (project, week) => {
+  const plan = weeklyPlan(project, week);
+  return plan != null && Number.isFinite(Number(plan)) && Number(plan) >= 0;
+};
+const canFrontload = (project, week) => {
+  const next = shiftWeek(week, 1);
+  return (
+    project.status !== 'closed' &&
+    isVisible(project, week) &&
+    isVisible(project, next) &&
+    hasFiniteWeeklyPlan(project, week) &&
+    hasFiniteWeeklyPlan(project, next)
+  );
+};
+const clockForwardIcon = (
+  <svg aria-hidden="true" viewBox="0 0 32 32">
+    <circle cx="12" cy="16" r="8" />
+    <path d="M12 11v5l3.5 2.5M21 10h8m-4-4 4 4-4 4" />
+  </svg>
+);
+const frontloadWarningIcon = (
+  <svg aria-hidden="true" viewBox="0 0 24 24">
+    <circle cx="10" cy="12" r="6" />
+    <path d="M10 8v3.5M10 14.5v.5M16.5 6.5l3 5.25-3 5.25h-6" />
+  </svg>
+);
+const FrontloadWarning = ({ metrics }) =>
+  metrics.overDueToFrontloading ? (
+    <span
+      className="frontload-warning"
+      title="Over limit due to frontloading"
+      tabIndex="0"
+      aria-label="Over limit due to frontloading"
+    >
+      {frontloadWarningIcon}
+    </span>
+  ) : null;
+const FrontloadButton = ({ project, week, onOpen }) =>
+  canFrontload(project, week) ? (
+    <button
+      className="frontload-button"
+      onClick={onOpen}
+      aria-label={`Frontload hours for ${project.name}`}
+      title="Frontload hours from next week"
+    >
+      {clockForwardIcon}
+    </button>
+  ) : null;
+const latestLoggedEntry = (project, week) => {
+  let latest = null;
+  for (let day = 0; day < 7; day++)
+    if (
+      Number(project.entries?.[week]?.[day] || 0) > EPSILON &&
+      (!latest || day >= latest.day)
+    )
+      latest = { day, taskId: null };
+  for (const task of project.tasks || [])
+    if (task.id !== 'general')
+      for (let day = 0; day < 7; day++)
+        if (
+          Number(project.taskEntries?.[task.id]?.[week]?.[day] || 0) >
+            EPSILON &&
+          (!latest || day >= latest.day)
+        )
+          latest = { day, taskId: task.id };
+  return latest;
+};
+const frontloadSuggestion = (project, week, leaveWeeks) => {
+  const metrics = projectMetrics(project, week, leaveWeeks);
+  if (
+    !canFrontload(project, week) ||
+    metrics.frontloadedIn > EPSILON ||
+    metrics.weeklyAllowance == null ||
+    metrics.logged <= metrics.weeklyAllowance + EPSILON
+  )
+    return null;
+  const entry = latestLoggedEntry(project, week);
+  if (!entry) return null;
+  return {
+    ...entry,
+    amount: Math.max(0, metrics.logged - metrics.weeklyAllowance),
+  };
+};
+const frontloadAdjustment = (project, week, leaveWeeks) => {
+  const metrics = projectMetrics(project, week, leaveWeeks),
+    overage = Math.max(
+      0,
+      metrics.logged - Math.max(0, Number(metrics.plan || 0)),
+    );
+  if (metrics.frontloadedIn <= overage + EPSILON) return null;
+  const entry = latestLoggedEntry(project, week);
+  return entry ? { ...entry, amount: overage, adjustment: true } : null;
+};
+const EntryFrontloadButton = ({ project, onOpen, adjustment = false }) => {
+  const label = adjustment
+    ? 'Adjust frontloaded hours to the weekly overage'
+    : 'Frontload additional hours';
+  return (
+    <button
+      className="entry-frontload-button"
+      onClick={onOpen}
+      aria-label={`${label} for ${project.name}`}
+      title={label}
+    >
+      {clockForwardIcon}
+    </button>
+  );
+};
 
- useEffect(()=>{if(!ready)return;const payload=backupPayload(data.projects,data.settings),signature=workspaceSignature(payload);clearTimeout(cacheTimer.current);cacheTimer.current=setTimeout(()=>saveSessionToIdb(file,week,payload,fileRevision,savedFileSignature).catch(()=>setNotice({type:'error',text:'The browser copy could not be saved. Export a backup copy from File.'})),200);clearTimeout(autoSaveTimer.current);if(file&&signature!==savedFileSignature&&!saveBlocked.current){setFileStatus(current=>current==='saving'?current:'dirty');autoSaveTimer.current=setTimeout(()=>saveAttachedFile(),800)}return()=>{clearTimeout(cacheTimer.current);clearTimeout(autoSaveTimer.current)}},[data,file,fileRevision,ready,saveAttachedFile,savedFileSignature,week]);
- useEffect(()=>{if(!dirty)return;const warn=event=>{event.preventDefault();event.returnValue=''};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn)},[dirty]);
-
- const saveStatusText=fileStatus==='saving'?'Saving…':fileStatus==='dirty'?'Unsaved changes':fileStatus==='conflict'?'Save blocked · file changed':fileStatus==='error'?'Save needs attention':fileStatus==='saved'&&lastSavedAt?`Saved ${lastSavedAt.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}`:file?'Attached':fileName?'Imported copy · browser only':'Stored in this browser';
-
- if(!ready)return <div className="loading">Opening workspace…</div>;
- return <div className="app" data-theme={data.settings.theme}>
-  <header className="topbar"><a className="brand" href="#workspace">Time<span>Master</span></a><button className={`file-status file-status-${fileStatus}`} onClick={()=>setPanel('file')} title="Open file controls"><strong>{fileName||'No JSON attached'}</strong><span>{saveStatusText}</span></button><nav className="top-actions"><button onClick={()=>setPanel('file')}>File</button><button onClick={()=>setPanel('import')}>Import</button><button onClick={()=>setPanel('manage')}>Projects</button><button onClick={()=>setPanel('settings')}>Settings</button><button className="primary" onClick={()=>{setEdit(null);setPanel('project')}}>New project</button></nav></header>
-  <main id="workspace"><section className="week-head"><div><p className="eyebrow">Weekly plan</p><h1>{weekLabel(week,days)}</h1></div><div className="week-nav"><button onClick={()=>setWeek(shiftWeek(week,-1))} aria-label="Previous week">{icon('M15 18l-6-6 6-6')}</button><button onClick={()=>setWeek(weekKeyFor(new Date()))}>Today</button><button onClick={()=>setWeek(shiftWeek(week,1))} aria-label="Next week">{icon('M9 18l6-6 6-6')}</button></div></section>
-   <div className="mobile-switch"><button className={mobileView==='projects'?'selected':''} onClick={()=>setMobileView('projects')}>By project</button><button className={mobileView==='days'?'selected':''} onClick={()=>setMobileView('days')}>By day</button></div>
-   <section className={`workspace ${mobileView==='days'?'day-mode':''}`}><Overview totals={totals} week={week} settings={data.settings}/><CounterRail totals={totals} projects={visible} onFill={fillDevelopment} onCapacity={()=>setCapacityDetails(true)}/><div className="sheet"><div className="sheet-toolbar"><div><h2>Timesheet</h2><span>{matching.length} of {visible.length} projects</span></div><label className="search"><span className="sr-only">Search projects</span>{icon('M21 21l-4.35-4.35m2.35-5.15a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0z')}<input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Find a project"/></label><select value={filter} onChange={e=>setFilter(e.target.value)} aria-label="Filter projects"><option value="all">All projects</option><option value="logged">Logged</option><option value="unlogged">Not logged</option><option value="under">Allowance left</option><option value="at">At allocation</option><option value="over">Over allocation</option><option value="unlimited">Unlimited</option><option value="billable">Billable</option><option value="nonbillable">Non-billable</option></select><label className="timesheet-grouping">Group<select value={category} onChange={e=>setCategory(e.target.value)} aria-label="Categorise timesheet"><option value="none">No grouping</option><option value="status">Status</option><option value="client">Client</option><option value="billability">Billable / non-billable</option><option value="usage">Usage</option></select></label>{(query||filter!=='all')&&<button onClick={()=>{setQuery('');setFilter('all')}}>Clear</button>}<button onClick={()=>{downloadTimesheetCsv(data.projects);setNotice({type:'success',text:'Exported the complete timesheet as CSV.'})}}>Export CSV</button><button className="primary" onClick={()=>setLineTarget(true)}>Add line</button></div>
-    {visible.length===0?<Empty projects={data.projects} onNew={()=>setPanel('project')} onManage={()=>setPanel('manage')} onSample={addSample}/>:<><TimesheetTable projects={matching} allProjects={visible} category={category} week={week} days={days} leave={leave} leaveWeeks={data.settings.leaveWeeks} totals={totals} onEntry={setEntry} onTaskEntry={setTaskEntry} onAddLine={project=>setLineTarget(project.id)} onRemoveTaskLine={removeTaskLine} onLeave={toggleLeave} onEdit={p=>{setEdit(p);setPanel('project')}} onFrontload={project=>setFrontloadTarget({id:project.id})} onSuggestFrontload={(project,prompt)=>setFrontloadTarget({id:project.id,prompt:true,amount:prompt.amount,adjustment:prompt.adjustment})} onRemove={setRemoveTarget} onMove={move}/>{mobileView==='projects'?<MobileCards projects={matching} category={category} week={week} days={days} leave={leave} leaveWeeks={data.settings.leaveWeeks} onEntry={setEntry} onTaskEntry={setTaskEntry} onAddLine={project=>setLineTarget(project.id)} onRemoveTaskLine={removeTaskLine} onEdit={p=>{setEdit(p);setPanel('project')}} onFrontload={project=>setFrontloadTarget({id:project.id})}/>:<MobileDays projects={matching} week={week} days={days} leave={leave} onEntry={setEntry} onTaskEntry={setTaskEntry}/>} {matching.length===0&&<div className="no-results"><h3>No projects match</h3><p>Clear the current search or filter to see the whole week.</p><button onClick={()=>{setQuery('');setFilter('all')}}>Clear filters</button></div>}</>}
-   </div><Insights projects={visible} week={week} leaveWeeks={data.settings.leaveWeeks}/></section>
-  </main>
-  {notice&&<div className={`toast ${notice.type}`} role="status"><span>{String(notice.text||'Something went wrong. Open File to export a backup.')}</span><button onClick={()=>setNotice(null)} aria-label="Dismiss notification">×</button></div>}
-  <ProjectModal isOpen={panel==='project'} onClose={()=>{setPanel(returnToManage?'manage':null);setEdit(null);setReturnToManage(false)}} onSave={saveProject} initial={edit} projects={data.projects} visibleProjects={visible} weekKey={week}/>
-  <ImportModal isOpen={panel==='import'} onClose={()=>setPanel(null)} existingProjects={data.projects} onImport={importData}/>
-  <ManageProjectsModal isOpen={panel==='manage'} onClose={()=>setPanel(null)} projects={data.projects} updateProject={manageUpdate} deleteProject={id=>{setPanel(null);deletePermanent(id)}} onImport={()=>setPanel('import')} onSample={addSample} onAdd={()=>{setEdit(null);setReturnToManage(true);setPanel('project')}} onEdit={project=>{setEdit(project);setReturnToManage(true);setPanel('project')}}/>
-  <ConfirmDeleteModal isOpen={!!removeTarget} onClose={()=>setRemoveTarget(null)} project={removeTarget} onDeleteThisWeek={()=>hide(removeTarget.id,week,true)} onDeleteThisWeekOnwards={()=>hide(removeTarget.id,week)} onDeleteNextWeekOnwards={()=>hide(removeTarget.id,shiftWeek(week,1))} onDeleteAllWeeks={()=>deletePermanent(removeTarget.id)}/>
-  {panel==='settings'&&<Settings settings={data.settings} onClose={()=>setPanel(null)} onSave={settings=>{setData(d=>({...d,settings}));setPanel(null)}}/>}
-  {confirm&&<ConfirmAction confirmation={confirm} onClose={()=>setConfirm(null)}/>} 
-  {capacityDetails&&<CapacityModal projects={visible} week={week} leaveWeeks={data.settings.leaveWeeks} totals={totals} onClose={()=>setCapacityDetails(false)} onFillCapacity={fillCapacityWithDevelopment}/>}
-  {frontloadTarget&&data.projects.find(project=>project.id===frontloadTarget.id)&&<FrontloadModal project={data.projects.find(project=>project.id===frontloadTarget.id)} week={week} leaveWeeks={data.settings.leaveWeeks} title={frontloadTarget.adjustment?'Adjust frontloaded hours?':frontloadTarget.prompt?'Frontload additional hours?':'Frontload hours'} initialAmount={frontloadTarget.amount} preferInitial={frontloadTarget.adjustment} onClose={()=>setFrontloadTarget(null)} onSave={amount=>saveFrontload(frontloadTarget.id,week,amount)}/>}
-  {lineTarget&&<ProjectLineModal projects={data.projects.map(project=>({...project,__visibleNow:visible.some(item=>item.id===project.id)}))} week={week} initialProjectId={lineTarget===true?null:lineTarget} onClose={()=>setLineTarget(null)} onAddTask={(id,task,targetWeek)=>{showProjectForWeek(id,targetWeek);pinTaskLine(id,task,targetWeek)}} onAddProject={showProjectForWeek} onManage={()=>{setLineTarget(null);setPanel('manage')}}/>} 
-  {panel==='file'&&<FilePanel attached={!!file} fileName={fileName} status={saveStatusText} dirty={dirty} supported={supportsFileSystemAccess()} onClose={()=>setPanel(null)} onOpen={openFile} onCreate={saveAs} onSaveNow={()=>saveAttachedFile({notify:true})} onRefresh={refreshFile} onExport={()=>{downloadBackup(backupPayload(data.projects,data.settings));setNotice({type:'success',text:'Exported a backup copy.'})}} onExportCsv={()=>{downloadTimesheetCsv(data.projects);setNotice({type:'success',text:'Exported the complete timesheet as CSV.'})}} onManage={()=>setPanel('manage')}/>}
- </div>
+function Modal({ title, children, onClose, wide = false }) {
+  const ref = useRef();
+  useEffect(() => {
+    ref.current?.focus();
+    const k = (e) => e.key === 'Escape' && onClose();
+    document.addEventListener('keydown', k);
+    return () => document.removeEventListener('keydown', k);
+  }, [onClose]);
+  return (
+    <div
+      className="scrim"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <section
+        className={`modal ${wide ? 'wide' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="dialog-title"
+        tabIndex="-1"
+        ref={ref}
+      >
+        <div className="modal-head">
+          <h2 id="dialog-title">{title}</h2>
+          <button
+            className="icon-button"
+            onClick={onClose}
+            aria-label="Close dialog"
+          >
+            ×
+          </button>
+        </div>
+        {children}
+      </section>
+    </div>
+  );
+}
+function ConfirmAction({ confirmation, onClose }) {
+  return (
+    <Modal title={confirmation.title} onClose={onClose}>
+      <p className="help">{confirmation.text}</p>
+      <div className="modal-actions">
+        <button onClick={onClose}>Cancel</button>
+        <button
+          className={confirmation.danger ? 'danger primary' : 'primary'}
+          onClick={() => {
+            confirmation.action();
+            onClose();
+          }}
+        >
+          {confirmation.confirmLabel}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+function CapacityModal({
+  projects,
+  week,
+  leaveWeeks,
+  totals,
+  onClose,
+  onFillCapacity,
+}) {
+  const rows = projects
+    .map((project) => ({
+      project,
+      metrics: projectMetrics(project, week, leaveWeeks),
+    }))
+    .filter(({ metrics }) => metrics.plan != null);
+  return (
+    <Modal title="Capacity breakdown" onClose={onClose} wide>
+      <p className="help">
+        Net weekly resourcing is measured against{' '}
+        {fmt(WEEKLY_RESOURCING_CAPACITY)}h. Frontloaded hours adjust the week
+        they are moved from and to.
+      </p>
+      <div className="capacity-breakdown">
+        <div className="capacity-breakdown-head">
+          <span>Project</span>
+          <span>Original</span>
+          <span>Frontloading</span>
+          <span>Effective</span>
+        </div>
+        {rows.length ? (
+          rows.map(({ project, metrics }) => {
+            const adjustment = metrics.frontloadedIn - metrics.frontloadedOut;
+            return (
+              <div className="capacity-breakdown-row" key={project.id}>
+                <strong>{project.name}</strong>
+                <span>{fmt(metrics.plan)}h</span>
+                <span
+                  className={
+                    adjustment < 0
+                      ? 'capacity-out'
+                      : adjustment > 0
+                        ? 'capacity-in'
+                        : ''
+                  }
+                >
+                  {adjustment === 0
+                    ? '—'
+                    : `${adjustment > 0 ? '+' : ''}${fmt(adjustment)}h`}
+                </span>
+                <b>{fmt(Math.max(0, metrics.weeklyAllowance))}h</b>
+              </div>
+            );
+          })
+        ) : (
+          <p className="quiet">No projects have resourced hours this week.</p>
+        )}
+        <div className="capacity-breakdown-total">
+          <span>Total resourced</span>
+          <b>{fmt(totals.resourced)}h</b>
+          <span>Capacity</span>
+          <b
+            className={
+              totals.resourcingCapacity > 3 + EPSILON ? 'capacity-warning' : ''
+            }
+          >
+            {fmt(totals.resourcingCapacity)}h
+          </b>
+        </div>
+      </div>
+      <div className="modal-actions">
+        <button onClick={onClose}>Done</button>
+        <button
+          className="primary"
+          disabled={totals.resourcingCapacity <= EPSILON}
+          onClick={() => {
+            if (onFillCapacity() !== false) onClose();
+          }}
+        >
+          Fill capacity
+        </button>
+      </div>
+    </Modal>
+  );
+}
+function FrontloadModal({
+  project,
+  week,
+  leaveWeeks,
+  onClose,
+  onSave,
+  title = 'Frontload hours',
+  initialAmount = 0,
+  preferInitial = false,
+}) {
+  const existing = frontloadAmount(project, week),
+    next = shiftWeek(week, 1),
+    cap = frontloadLimit(project, week),
+    maximum = Math.max(existing, cap ?? 0),
+    suggested = Math.min(maximum, Math.max(0, initialAmount)),
+    initial = preferInitial ? suggested : existing || suggested,
+    [value, setValue] = useState(initial ? String(initial) : ''),
+    [error, setError] = useState(''),
+    candidate = value.trim() === '' ? 0 : Number(value),
+    validFormat = value.trim() === '' || /^\d+(\.\d{1,2})?$/.test(value.trim()),
+    valid =
+      validFormat &&
+      Number.isFinite(candidate) &&
+      candidate >= 0 &&
+      candidate <= maximum + EPSILON,
+    draft = {
+      ...project,
+      frontloads: { ...(project.frontloads || {}), [week]: candidate },
+    },
+    currentSource = projectMetrics(project, next, leaveWeeks),
+    nextSource = projectMetrics(draft, next, leaveWeeks),
+    destination = projectMetrics(draft, week, leaveWeeks),
+    metrics = projectMetrics(project, week, leaveWeeks),
+    overage = Math.max(
+      0,
+      metrics.logged - Math.max(0, Number(metrics.plan || 0)),
+    ),
+    currentLow = (currentSource.weeklyAvailable ?? 0) < 3 - EPSILON,
+    nextLow = (nextSource.weeklyAvailable ?? 0) < 3 - EPSILON,
+    warningHours = nextLow
+      ? nextSource.weeklyAvailable
+      : currentSource.weeklyAvailable,
+    monthlyLimited =
+      destination.weeklyAllowance != null &&
+      destination.monthly != null &&
+      destination.monthly < destination.weeklyAllowance - EPSILON;
+  const submit = () => {
+    if (!valid) {
+      setError(`Enter an amount between 0 and ${fmt(maximum)} hours.`);
+      return;
+    }
+    if (onSave(candidate) !== false) onClose();
+  };
+  const adjustToOverage = () => {
+    if (onSave(overage) !== false) onClose();
+  };
+  return (
+    <Modal title={title} onClose={onClose}>
+      <p className="help">
+        Use hours from <b>{weekLabel(next)}</b> for <b>{weekLabel(week)}</b>.
+      </p>
+      <div className="field">
+        <label htmlFor="frontload-hours">Hours to frontload</label>
+        <input
+          id="frontload-hours"
+          type="number"
+          min="0"
+          max={maximum}
+          step="0.01"
+          value={value}
+          onChange={(event) => {
+            setValue(event.target.value);
+            setError('');
+          }}
+          autoFocus
+        />
+        <small className="field-help">
+          Up to {fmt(maximum)}h can be frontloaded. Set this to 0 to remove the
+          transfer.
+        </small>
+        {error && <span className="field-error">{error}</span>}
+      </div>
+      <div className="frontload-preview">
+        <div>
+          <span>This week</span>
+          <b>
+            {destination.weeklyAllowance == null
+              ? 'Unlimited'
+              : `${fmt(Math.max(0, destination.weeklyAllowance))}h usable`}
+          </b>
+        </div>
+        <div>
+          <span>Next week</span>
+          <b>
+            {nextSource.weeklyAllowance == null
+              ? 'Unlimited'
+              : `${fmt(Math.max(0, nextSource.weeklyAllowance))}h usable`}
+          </b>
+        </div>
+      </div>
+      {(currentLow || nextLow) && (
+        <p className="frontload-low-warning" role="status">
+          This project has {fmt(Math.max(0, warningHours))}h next week.
+          Frontloading may make usable time too low.
+        </p>
+      )}
+      {monthlyLimited && (
+        <p className="help">
+          Monthly allowance still limits this week to {fmt(destination.monthly)}
+          h.
+        </p>
+      )}
+      <div className="modal-actions">
+        <button onClick={onClose}>Cancel</button>
+        {existing > overage + EPSILON && (
+          <button onClick={adjustToOverage}>
+            Adjust to {fmt(overage)}h overage
+          </button>
+        )}
+        {existing > 0 && (
+          <button
+            onClick={() => {
+              setValue('0');
+              setError('');
+            }}
+          >
+            Remove frontloading
+          </button>
+        )}
+        <button className="primary" onClick={submit}>
+          {candidate === 0 && existing > 0
+            ? 'Remove frontloading'
+            : 'Save frontloading'}
+        </button>
+      </div>
+    </Modal>
+  );
 }
 
-function Overview({totals,week,settings}){const usedPct=totals.capacity?totals.logged/totals.capacity*100:0,over=totals.remaining< -EPSILON,capacityWarning=totals.resourcingCapacity>3+EPSILON;return <article className="horizon" aria-label="Week horizon"><div className="horizon-head"><div><p className="eyebrow">Week horizon</p><strong>{fmt(totals.logged)}h <span>logged</span></strong></div><div className="horizon-counters"><span className={over?'over-text':''}>{over?`${fmt(-totals.remaining)}h over`:`${fmt(Math.max(0,totals.remaining))}h free`}</span>{totals.resourcingCapacity>EPSILON&&<span className={capacityWarning?'capacity-warning':''}>{fmt(totals.resourcingCapacity)}h capacity{capacityWarning&&' !'}</span>}</div></div><div className="horizon-track"><span style={{width:`${Math.min(100,usedPct)}%`}}/><em className={usedPct>100+EPSILON?'show':''}>{Math.round(usedPct)}%</em></div><div className="horizon-days">{(settings.visibleDays||DEFAULT_VISIBLE_DAYS).map(day=><span key={day}>{DAY_SHORT[day]}<b>{fmt((settings.leaveWeeks?.[week]||[]).includes(day)?0:settings.capacityByDay?.[day]||0)}h</b></span>)}</div></article>}
-function CounterRail({totals,projects,onFill,onCapacity}){const bill=Math.round(totals.billablePct),capacityWarning=totals.resourcingCapacity>3+EPSILON;return <aside className="counter-rail" aria-label="Workspace counters"><article className="dial-card"><div className="dial" style={{'--dial':`${bill*3.6}deg`}}><div><strong>{totals.logged?`${bill}%`:'—'}</strong><span>Billable</span></div></div><p><b>{fmt(totals.billable)}h</b> billable<br/><span>{fmt(totals.logged-totals.billable)}h non-billable</span><span className="resourced-counter">{fmt(totals.resourced)}h of {fmt(WEEKLY_RESOURCING_CAPACITY)}h resourced</span></p></article><button className="overview-stat capacity-stat capacity-widget" onClick={onCapacity} aria-label="View capacity breakdown"><p>Capacity</p><strong className={capacityWarning?'capacity-warning':''}>{fmt(totals.resourcingCapacity)}h{capacityWarning&&' !'}</strong><span>Unresourced hours this week{totals.frontloading>EPSILON&&` · includes ${fmt(totals.frontloading)}h frontloading adjustment`}</span></button><article className="overview-stat"><p>Projects</p><strong>{projects.length}</strong><span>{fmt(totals.today)}h logged today · {totals.over?`${totals.over} over allocation`:'allocations in range'}</span><button onClick={onFill} disabled={totals.remaining<=0}>Fill remaining</button></article></aside>}
-function TimesheetTable({projects,allProjects,category,week,days,leave,leaveWeeks,totals,onEntry,onTaskEntry,onAddLine,onRemoveTaskLine,onLeave,onEdit,onFrontload,onSuggestFrontload,onRemove,onMove}){const dayTotal=day=>projects.reduce((sum,project)=>sum+(leave.includes(day)?0:Number(project.entries?.[week]?.[day]||0)+taskHoursForDay(project,week,day)),0),dailyTarget=totals.planned/Math.max(1,days.filter(day=>!leave.includes(day)).length),over=totals.remaining< -EPSILON,groups=categoriseProjects(projects,category,week,leaveWeeks),columnCount=days.length+6;return <div className="table-scroll"><table><thead><tr><th>Project / task</th>{days.map(d=>{const date=weekDates(week)[d],off=leave.includes(d);return <th key={d} className={off?'leave':''}><button className="leave-day-toggle" onClick={()=>onLeave(d)} aria-pressed={off} aria-label={`${off?'Remove':'Mark'} ${DAY_NAMES[d]} leave`}>{DAY_SHORT[d]}</button><b>{date.getDate()}</b></th>})}<th>Logged</th><th>Plan</th><th>Allowance</th><th className="usage-cell">Usage</th><th></th></tr></thead><tbody>{groups.map(group=><Fragment key={group.key}>{category!=='none'&&<tr className="timesheet-group-row"><th colSpan={columnCount}>{group.label}<small>{group.projects.length} project{group.projects.length===1?'':'s'}</small></th></tr>}{group.projects.map(p=>{const suggestion=frontloadAdjustment(p,week,leaveWeeks)||frontloadSuggestion(p,week,leaveWeeks),index=projects.indexOf(p);return <Fragment key={p.id}><ProjectRow hideClient={category==="client"} p={p} index={index} count={projects.length} week={week} days={days} leave={leave} leaveWeeks={leaveWeeks} suggestion={suggestion} onEntry={onEntry} onAddLine={()=>onAddLine(p)} onEdit={()=>onEdit(p)} onFrontload={()=>onFrontload(p)} onSuggestFrontload={()=>onSuggestFrontload(p,suggestion)} onRemove={()=>onRemove(p)} onMove={onMove}/>{taskLinesFor(p,week).map(task=><TaskEntryRow key={task.id} project={p} task={task} week={week} days={days} leave={leave} suggestion={suggestion} onEntry={onTaskEntry} onSuggestFrontload={()=>onSuggestFrontload(p,suggestion)} onRemove={()=>onRemoveTaskLine(p.id,task.id)}/>)}</Fragment>})}</Fragment>)}</tbody><tfoot><tr><th>{projects.length===allProjects.length?'Whole week':'Filtered subtotal'}<small>{projects.length===allProjects.length?'All scheduled work':`${projects.length} visible projects`}</small></th>{days.map(day=>{const value=dayTotal(day),pct=dailyTarget?Math.round(value/dailyTarget*100):0;return <td key={day} className={pct>100?'over':''}>{fmt(value)}h<small>{leave.includes(day)?'Leave':dailyTarget?`${pct}% plan`:'—'}</small></td>})}<td>{fmt(projects.reduce((n,p)=>n+projectMetrics(p,week,leaveWeeks).logged,0))}h</td><td>—</td><td className={over?'over':''}>{over?`${fmt(-totals.remaining)}h over`:`${fmt(Math.max(0,totals.remaining))}h free`}</td><td className="usage-cell"></td><td></td></tr></tfoot></table></div>}
-function AllocationMeter({label,fullLabel=label,used,allocation,frontloaded=0,nativeAllocation=0,frontloadedUsage=0}){const unlimited=allocation==null,debt=!unlimited&&allocation<0,available=unlimited?0:Math.max(0,allocation),totalUsed=used+frontloadedUsage,scale=Math.max(available,totalUsed,EPSILON),sourceUsedWidth=Math.min(100,Math.max(0,frontloadedUsage/scale*100)),actualWidth=Math.min(100-sourceUsedWidth,Math.max(0,used/scale*100)),native=Math.min(available,Math.max(0,nativeAllocation)),frontloadedAvailable=Math.min(frontloaded,Math.max(0,available-native)),frontloadedUsed=Math.max(0,Math.min(frontloadedAvailable,used-native)),nativeLeft=native/scale*100,frontloadedWidth=frontloadedAvailable/scale*100,frontloadedUsedWidth=frontloadedUsed/scale*100,status=unlimited?'unlimited':debt||totalUsed>available+EPSILON?'over':Math.abs(totalUsed-available)<=EPSILON?'at':'under';return <div className={`allocation-meter ${status}${frontloadedAvailable>EPSILON?' has-frontload':''}${frontloadedUsage>EPSILON?' has-frontload-usage':''}`}><div><span>{label}</span><b>{unlimited?'Unlimited':debt?`0h available · ${fmt(-allocation)}h debt`:`${fmt(totalUsed)} / ${fmt(available)}h`}</b></div><i title={unlimited?`${fullLabel}: unlimited`:debt?`${fullLabel}: ${fmt(-allocation)}h over due to frontloading`:`${fullLabel}: ${fmt(totalUsed)} / ${fmt(available)}h`} aria-label={unlimited?`${label}: unlimited`:debt?`${label}: ${fmt(-allocation)} hours over due to frontloading`:`${label}: ${Math.round(totalUsed/scale*100)}% allocated`}><b className="allocation-fill" style={{left:`${sourceUsedWidth}%`,width:`${actualWidth}%`}}/>{frontloadedUsage>EPSILON&&<span className="frontload-source-used" style={{width:`${sourceUsedWidth}%`}} title="frontloaded to previous week" tabIndex="0" aria-label="frontloaded to previous week"/>}{frontloadedAvailable>EPSILON&&<><span className="frontload-cap" style={{left:`${nativeLeft}%`,width:`${frontloadedWidth}%`}} title="frontloaded from next week" tabIndex="0" aria-label="frontloaded from next week"/><span className="frontload-used" style={{left:`${nativeLeft}%`,width:`${frontloadedUsedWidth}%`}}/></>}</i></div>}
-function ProjectAllocationBars({project,week,leaveWeeks,className=''}){const metrics=projectMetrics(project,week,leaveWeeks),month=monthKey(dayDate(week,3)),monthlyAllocation=monthlyPlan(project,week),monthlyUsed=monthlyAllocation==null?0:monthlyLogged(project,month,leaveWeeks),sourceWeek=metrics.frontloadedOut>EPSILON,weeklyAllocation=sourceWeek?metrics.plan:metrics.weeklyAllowance,nativeWeekly=sourceWeek?Math.max(0,Number(metrics.plan||0)):Math.max(0,Number(metrics.plan||0)-metrics.frontloadedOut),frontloadedWeekly=sourceWeek?0:Math.max(0,(metrics.weeklyAvailable||0)-nativeWeekly),fullyUnlimited=weeklyAllocation==null&&monthlyAllocation==null;return <div className={`project-allocation-bars ${className}`}>{fullyUnlimited?<span className="allocation-unlimited">Unlimited</span>:<><AllocationMeter label="Weekly" used={metrics.logged} allocation={weeklyAllocation} nativeAllocation={nativeWeekly} frontloaded={frontloadedWeekly} frontloadedUsage={metrics.frontloadedOut}/>{monthlyAllocation!=null&&<AllocationMeter label="Monthly" used={monthlyUsed} allocation={monthlyAllocation}/>}</>}</div>}
-function ProjectRow({p,index,count,week,days,leave,leaveWeeks,hideClient,suggestion,onEntry,onAddLine,onEdit,onFrontload,onSuggestFrontload,onRemove,onMove}){const m=projectMetrics(p,week,leaveWeeks),hasTasks=(p.tasks||[]).some(task=>task.id!=='general'&&task.name.toLowerCase()!=='general'),hasLines=taskLinesFor(p,week).length>0,sourceNote=m.frontloadedOut>EPSILON?`−${fmt(m.frontloadedOut)}h frontloaded to previous week`:null,incomingNote=m.frontloadedIn>EPSILON?`+${fmt(m.frontloadedIn)}h due to frontloading from next week`:null,over=m.remaining!=null&&m.remaining< -EPSILON,status=projectStatus(p.status);return <tr className={`project-start${hasTasks?" project-header-row":""}`} style={{"--pc":p.color||"var(--muted)"}}>{hasTasks?<th colSpan={days.length+2} className="project-header-cell"><div className="header-line"><span className="header-id">{p.client&&!hideClient&&<span className="project-client">{p.client}</span>}<span className="table-project-title"><i style={{background:p.color||'var(--muted)'}}/><button className="project-name" onClick={onEdit} title={p.code?`${p.name} · ${p.code}`:p.name}>{p.name}</button><FrontloadWarning metrics={m}/><FrontloadButton project={p} week={week} onOpen={onFrontload}/></span></span><span className="row-chips">{status!=='active'&&<span className={`project-status-badge status-${status}`}>{projectStatusLabel(status)}</span>}{p.isBillable===false&&<span className="billability-badge">Non-billable</span>}{hasTasks&&!hasLines&&<button className="inline-add-line" onClick={onAddLine}>add a task line</button>}</span><ProjectAllocationBars project={p} week={week} leaveWeeks={leaveWeeks} className="timesheet-allocation-bars is-inline hdr-inline"/></div></th>:<th><div className="header-id">{p.client&&!hideClient&&<span className="project-client">{p.client}</span>}<span className="table-project-title"><i style={{background:p.color||'var(--muted)'}}/><button className="project-name" onClick={onEdit} title={p.code?`${p.name} · ${p.code}`:p.name}>{p.name}</button><FrontloadWarning metrics={m}/><FrontloadButton project={p} week={week} onOpen={onFrontload}/></span><span className="row-chips">{status!=='active'&&<span className={`project-status-badge status-${status}`}>{projectStatusLabel(status)}</span>}{p.isBillable===false&&<span className="billability-badge">Non-billable</span>}</span></div><ProjectAllocationBars project={p} week={week} leaveWeeks={leaveWeeks} className="timesheet-allocation-bars is-edge"/></th>}{hasTasks?null:days.map(d=><td key={d} className={leave.includes(d)?'leave':''}>{leave.includes(d)?<span className="leave-label">Leave</span>:<>{suggestion&&suggestion.taskId==null&&suggestion.day===d&&<EntryFrontloadButton project={p} onOpen={onSuggestFrontload} adjustment={suggestion.adjustment}/>}<input aria-label={`${p.name}, General, ${DAY_NAMES[d]}`} key={`${p.id}-${week}-${d}-${p.entries?.[week]?.[d]??''}`} defaultValue={p.entries?.[week]?.[d]==null?'':fmt(p.entries[week][d])} onBlur={e=>onEntry(p.id,week,d,e.target.value)} placeholder="—" inputMode="decimal"/></>}</td>)}{!hasTasks&&<td>{fmt(m.logged)}h</td>}<td className={sourceNote||incomingNote?'frontload-reduced-limit':''}>{m.plan==null?'Unlimited':`${fmt(m.plan)}h`}{sourceNote&&<small className="frontload-source-note" title={`Weekly limit reduced by ${fmt(m.frontloadedOut)} hours due to frontloading in the previous week`}>{sourceNote}</small>}{incomingNote&&<small className="frontload-source-note" title={`Weekly capacity includes ${fmt(m.frontloadedIn)} hours frontloaded from next week`}>{incomingNote}</small>}</td><td className={m.status}>{m.remaining==null?'Unlimited':over?`${fmt(-m.remaining)}h over`:Math.abs(m.remaining)<=EPSILON?'At plan':`${fmt(Math.max(0,m.remaining))}h left`}</td><td className="usage-cell"><ProjectAllocationBars project={p} week={week} leaveWeeks={leaveWeeks} className="timesheet-allocation-bars is-inline is-usage"/></td><td><div className="row-actions">{hasTasks&&<button onClick={onAddLine} aria-label={`Add task line for ${p.name}`}>＋</button>}<button onClick={()=>onMove(p.id,-1)} disabled={index===0} aria-label={`Move ${p.name} up`}>↑</button><button onClick={()=>onMove(p.id,1)} disabled={index===count-1} aria-label={`Move ${p.name} down`}>↓</button><button className="row-options" onClick={onEdit} aria-label={`Options for ${p.name}`} title="Project options">✎</button><button className="row-delete" onClick={onRemove} aria-label={`Delete ${p.name}`} title="Delete project">✕</button></div></td></tr>}
-function TaskEntryRow({project,task,week,days,leave,suggestion,onEntry,onSuggestFrontload,onRemove}){const entries=project.taskEntries?.[task.id]?.[week]||{},logged=days.reduce((sum,day)=>sum+(leave.includes(day)?0:Number(entries[day]||0)),0);return <tr className="task-entry-row" style={{"--pc":project.color||"var(--muted)"}}><th><span className="task-indent" title={project.name+" · "+task.name}>{task.name}</span></th>{days.map(day=><td key={day} className={leave.includes(day)?'leave':''}>{leave.includes(day)?<span className="leave-label">Leave</span>:<>{suggestion?.taskId===task.id&&suggestion.day===day&&<EntryFrontloadButton project={project} onOpen={onSuggestFrontload} adjustment={suggestion.adjustment}/>}<input aria-label={`${project.name}, ${task.name}, ${DAY_NAMES[day]}`} key={`${project.id}-${task.id}-${week}-${day}-${entries[day]??''}`} defaultValue={entries[day]==null?'':fmt(entries[day])} onBlur={event=>onEntry(project.id,task.id,week,day,event.target.value)} placeholder="—" inputMode="decimal"/></>}</td>)}<td>{fmt(logged)}h</td><td>—</td><td>—</td><td className="usage-cell"></td><td><button className="task-line-remove" onClick={onRemove} aria-label={`Remove ${task.name} line`}>×</button></td></tr>}
-function MobileCards({projects,category,week,days,leave,leaveWeeks,onEntry,onTaskEntry,onAddLine,onRemoveTaskLine,onEdit,onFrontload}){const groups=categoriseProjects(projects,category,week,leaveWeeks);return <div className="mobile-cards">{groups.map(group=><section className="mobile-category" key={group.key}>{category!=='none'&&<h3>{group.label}<span>{group.projects.length}</span></h3>}{group.projects.map(p=>{const m=projectMetrics(p,week,leaveWeeks),taskLines=taskLinesFor(p,week),hasTasks=(p.tasks||[]).some(task=>task.id!=='general'&&task.name.toLowerCase()!=='general'),sourceNote=m.frontloadedOut>EPSILON?` · −${fmt(m.frontloadedOut)}h frontloaded to previous week`:'',over=m.remaining!=null&&m.remaining< -EPSILON,status=projectStatus(p.status);return <article key={p.id}>{p.client&&category!=="client"&&<div className="project-client">{p.client}</div>}<header><div className="mobile-project-title"><button onClick={()=>onEdit(p)}>{p.name}</button><FrontloadWarning metrics={m}/><FrontloadButton project={p} week={week} onOpen={()=>onFrontload(p)}/></div><span className={m.status}>{m.remaining==null?'Unlimited':over?`${fmt(-m.remaining)}h over`:Math.abs(m.remaining)<=EPSILON?'At plan':`${fmt(Math.max(0,m.remaining))}h left`}</span></header>{(status!=='active'||p.isBillable===false)&&<div className="mobile-project-meta">{status!=='active'&&<span className={`project-status-badge status-${status}`}>{projectStatusLabel(status)}</span>}{p.isBillable===false&&<span className="billability-badge">Non-billable</span>}</div>}<ProjectAllocationBars project={p} week={week} leaveWeeks={leaveWeeks} className="mobile-allocation-bars"/>{!hasTasks&&<div>{days.map(d=><label key={d}>{DAY_SHORT[d]}<input aria-label={`${p.name}, General, ${DAY_NAMES[d]}`} disabled={leave.includes(d)} key={`${p.id}-mobile-${week}-${d}-${p.entries?.[week]?.[d]??''}`} defaultValue={p.entries?.[week]?.[d]==null?'':fmt(p.entries[week][d])} onBlur={e=>onEntry(p.id,week,d,e.target.value)} placeholder={leave.includes(d)?'Leave':'—'}/></label>)}</div>}{taskLines.map(task=><section className="mobile-task-block" key={task.id}><strong>{task.name}<button onClick={()=>onRemoveTaskLine(p.id,task.id)} aria-label={`Remove ${task.name} line`}>×</button></strong><div>{days.map(day=>{const value=p.taskEntries?.[task.id]?.[week]?.[day];return <label key={day}>{DAY_SHORT[day]}<input aria-label={`${p.name}, ${task.name}, ${DAY_NAMES[day]}`} disabled={leave.includes(day)} key={`${p.id}-${task.id}-mobile-${week}-${day}-${value??''}`} defaultValue={value==null?'':fmt(value)} onBlur={event=>onTaskEntry(p.id,task.id,week,day,event.target.value)} placeholder={leave.includes(day)?'Leave':'—'}/></label>})}</div></section>)}<footer>{fmt(m.logged)}h logged · {m.plan==null?'Unlimited plan':`${fmt(m.plan)}h planned`}{sourceNote&&<span className="frontload-source-note" title={`Weekly limit reduced by ${fmt(m.frontloadedOut)} hours due to frontloading in the previous week`}>{sourceNote}</span>}{hasTasks&&<button className="mobile-add-line" onClick={()=>onAddLine(p)}>Add task line</button>}</footer></article>})}</section>)}</div>}
-function MobileDays({projects,week,days,leave,onEntry,onTaskEntry}){const dates=weekDates(week);return <div className="mobile-days">{days.map(day=>{const isLeave=leave.includes(day),total=projects.reduce((sum,project)=>sum+(isLeave?0:Number(project.entries?.[week]?.[day]||0)+taskHoursForDay(project,week,day)),0);return <article key={day}><header><div><strong>{DAY_NAMES[day]}</strong><span>{dates[day].toLocaleDateString('en-AU',{day:'numeric',month:'short'})}</span></div><b className={isLeave?'leave-day-total':''}>{isLeave?'Leave':`${fmt(total)}h logged`}</b></header><div className="mobile-day-projects">{projects.map(project=><Fragment key={project.id}>{projectHasPhases(project)&&<strong className="mobile-line-label">{project.name}</strong>}{!projectHasPhases(project)&&<label><span>{project.name}</span><input aria-label={`${DAY_NAMES[day]}, ${project.name}, General`} disabled={isLeave} key={`${project.id}-day-${week}-${day}-${project.entries?.[week]?.[day]??''}`} defaultValue={project.entries?.[week]?.[day]==null?'':fmt(project.entries[week][day])} onBlur={event=>onEntry(project.id,week,day,event.target.value)} placeholder={isLeave?'Leave':'—'}/></label>}{taskLinesFor(project,week).map(task=>{const value=project.taskEntries?.[task.id]?.[week]?.[day];return <label className="mobile-task-line" key={task.id}><span>{project.name} · {task.name}</span><input aria-label={`${DAY_NAMES[day]}, ${project.name}, ${task.name}`} disabled={isLeave} key={`${project.id}-${task.id}-day-${week}-${day}-${value??''}`} defaultValue={value==null?'':fmt(value)} onBlur={event=>onTaskEntry(project.id,task.id,week,day,event.target.value)} placeholder={isLeave?'Leave':'—'}/></label>})}</Fragment>)}</div>{projects.length===0&&<p className="quiet">No projects match the current filters.</p>}</article>})}</div>}
-function Insights({projects,week,leaveWeeks}){const groups={over:[],at:[],under:[],unlimited:[]};projects.forEach(p=>groups[projectMetrics(p,week,leaveWeeks).status].push(p));return <aside className="insights"><div><h2>Project usage</h2></div>{[['over','Over plan'],['at','At plan'],['under','Allowance left'],['unlimited','Unlimited']].map(([key,label])=>groups[key].length>0&&<section className="insight-group" key={key}><h3>{label}<span>{groups[key].length}</span></h3>{groups[key].slice(0,6).map(p=>{const m=projectMetrics(p,week,leaveWeeks),over=m.remaining!=null&&m.remaining< -EPSILON;return <div className={`insight-item ${key}`} key={p.id}><div><strong>{p.name}<FrontloadWarning metrics={m}/></strong><span>{m.remaining==null?`${fmt(m.logged)}h logged`:over?`${fmt(-m.remaining)}h over`:Math.abs(m.remaining)<=EPSILON?'At plan':`${fmt(m.logged)} / ${fmt(m.effective)}h`}</span></div><ProjectAllocationBars project={p} week={week} leaveWeeks={leaveWeeks}/></div>})}</section>)}{projects.length===0&&<p className="quiet">No projects are scheduled for this week.</p>}</aside>}
-function Empty({projects,onNew,onManage,onSample}){let title='No projects yet',copy='Create your first project to start planning the week.';if(projects.length){title='Nothing scheduled this week';copy='Projects exist, but they are hidden, archived, or scheduled for another week.'}return <div className="empty"><h2>{title}</h2><p>{copy}</p><div><button className="primary" onClick={onNew}>Create project</button>{projects.length===0&&<button onClick={onSample}>Add sample workspace</button>}{projects.length>0&&<button onClick={onManage}>Review projects</button>}</div></div>}
-function Settings({settings,onClose,onSave}){const [draft,setDraft]=useState({...settings,capacityByDay:[...(settings.capacityByDay||DEFAULT_CAPACITY)],visibleDays:[...(settings.visibleDays||DEFAULT_VISIBLE_DAYS)]});return <Modal title="Workspace settings" onClose={onClose}><label>Theme<select value={draft.theme} onChange={e=>setDraft({...draft,theme:e.target.value})}><option value="system">Use device theme</option><option value="light">Light</option><option value="dark">Dark</option></select></label><fieldset><legend>Visible days</legend><div className="checks">{DAY_NAMES.map((name,i)=><label className="check" key={name}><input type="checkbox" checked={draft.visibleDays.includes(i)} onChange={()=>{const next=draft.visibleDays.includes(i)?draft.visibleDays.filter(d=>d!==i):[...draft.visibleDays,i].sort();if(next.length)setDraft({...draft,visibleDays:next})}}/>{name}</label>)}</div></fieldset><fieldset><legend>Working capacity</legend><div className="capacity-inputs">{DAY_SHORT.map((day,i)=><label key={day}>{day}<input type="number" min="0" max="24" step="0.1" value={draft.capacityByDay[i]} onChange={e=>{const next=[...draft.capacityByDay];next[i]=Math.max(0,Math.min(24,Number(e.target.value)));setDraft({...draft,capacityByDay:next})}}/></label>)}</div></fieldset><div className="modal-actions"><button onClick={onClose}>Cancel</button><button className="primary" onClick={()=>onSave(draft)}>Save settings</button></div></Modal>}
-function FilePanel({attached,fileName,status,dirty,supported,onClose,onOpen,onCreate,onSaveNow,onRefresh,onExport,onExportCsv,onManage}){return <Modal title="TimeMaster file" onClose={onClose}><section className={`active-file-card ${attached?'attached':'local'}`}><span>Active file</span><strong>{fileName||'No JSON file attached'}</strong><small>{status}</small></section>{!supported&&<p className="file-warning" role="status">Direct read/write access requires a recent Chrome or Edge browser and this HTTPS site. You can still import and download JSON copies in other browsers.</p>}<div className="file-actions file-primary-actions"><button className="primary" onClick={onOpen}>Choose existing JSON</button><button onClick={onCreate}>Create new TimeMaster.json</button><button onClick={onSaveNow} disabled={!attached||!dirty}>Save now</button><button onClick={onRefresh} disabled={!attached}>Refresh from file</button></div><div className="file-actions file-secondary-actions"><button onClick={onExport}>Download backup copy</button><button onClick={onExportCsv}>Export timesheet CSV</button><button onClick={onManage}>Projects and archive</button></div></Modal>}
+function ProjectLineModal({
+  projects,
+  week,
+  initialProjectId,
+  onClose,
+  onAddTask,
+  onAddProject,
+  onManage,
+}) {
+  const eligible = projects.filter(
+      (project) => !project.archived && project.status !== 'closed',
+    ),
+    [projectId, setProjectId] = useState(
+      initialProjectId &&
+        eligible.some((project) => project.id === initialProjectId)
+        ? initialProjectId
+        : eligible[0]?.id || '',
+    ),
+    project = eligible.find((item) => item.id === projectId),
+    hasPhases = (project?.tasks || []).some(
+      (task) => task.id !== 'general' && task.name.toLowerCase() !== 'general',
+    ),
+    tasks = project ? addablePhasesFor(project, week) : [],
+    [taskId, setTaskId] = useState(tasks[0]?.id || ''),
+    validTaskId = tasks.some((task) => task.id === taskId)
+      ? taskId
+      : tasks[0]?.id || '',
+    isVisibleNow = project?.__visibleNow === true;
+  return (
+    <Modal title="Add line" onClose={onClose}>
+      {eligible.length > 0 ? (
+        <>
+          <div className="field">
+            <label htmlFor="line-project">Project</label>
+            <select
+              id="line-project"
+              value={projectId}
+              onChange={(event) => {
+                const id = event.target.value;
+                setProjectId(id);
+                setTaskId('');
+              }}
+            >
+              {eligible.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                  {item.__visibleNow ? '' : ' · not scheduled this week'}
+                </option>
+              ))}
+            </select>
+          </div>
+          {tasks.length > 0 ? (
+            <div className="field">
+              <label htmlFor="line-task">Task / phase</label>
+              <select
+                id="line-task"
+                value={validTaskId}
+                onChange={(event) => setTaskId(event.target.value)}
+              >
+                {tasks.map((task) => (
+                  <option key={task.id} value={task.id}>
+                    {task.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : hasPhases ? (
+            <p className="help">
+              All of this project's phases are already on this week's timesheet.
+            </p>
+          ) : (
+            <p className="help">
+              This project uses its General line. Add it to this week to start
+              recording time.
+            </p>
+          )}
+        </>
+      ) : (
+        <p className="help">
+          No active projects are available. Add or restore a project in Projects
+          first.
+        </p>
+      )}
+      <div className="modal-actions">
+        <button onClick={onClose}>Cancel</button>
+        {eligible.length === 0 ? (
+          <button className="primary" onClick={onManage}>
+            Manage projects
+          </button>
+        ) : tasks.length > 0 ? (
+          <button
+            className="primary"
+            disabled={!projectId || !validTaskId}
+            onClick={() => {
+              onAddTask(projectId, validTaskId, week);
+              onClose();
+            }}
+          >
+            Add task line
+          </button>
+        ) : hasPhases ? (
+          <button className="primary" disabled>
+            No phases left to add
+          </button>
+        ) : (
+          <button
+            className="primary"
+            disabled={!projectId || isVisibleNow}
+            onClick={() => {
+              onAddProject(projectId, week);
+              onClose();
+            }}
+          >
+            {isVisibleNow ? 'Already on timesheet' : 'Add project'}
+          </button>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+export default function App() {
+  const [data, setData] = useState(empty),
+    [ready, setReady] = useState(false),
+    [week, setWeek] = useState(weekKeyFor(new Date())),
+    [panel, setPanel] = useState(null),
+    [edit, setEdit] = useState(null),
+    [returnToManage, setReturnToManage] = useState(false),
+    [removeTarget, setRemoveTarget] = useState(null),
+    [confirm, setConfirm] = useState(null),
+    [lineTarget, setLineTarget] = useState(null),
+    [frontloadTarget, setFrontloadTarget] = useState(null),
+    [capacityDetails, setCapacityDetails] = useState(false),
+    [query, setQuery] = useState(''),
+    [filter, setFilter] = useState('all'),
+    [category, setCategory] = useState('none'),
+    [notice, setNotice] = useState(null),
+    [file, setFile] = useState(null),
+    [mobileView, setMobileView] = useState('projects');
+  const [fileName, setFileName] = useState(null),
+    [fileRevision, setFileRevision] = useState(null),
+    [fileStatus, setFileStatus] = useState('local'),
+    [lastSavedAt, setLastSavedAt] = useState(null),
+    [savedFileSignature, setSavedFileSignature] = useState('');
+  const cacheTimer = useRef(),
+    autoSaveTimer = useRef(),
+    saveInFlight = useRef(false),
+    saveBlocked = useRef(false),
+    latestSignature = useRef(workspaceSignature(empty));
+
+  useEffect(() => {
+    loadSessionFromIdb()
+      .then((session) => {
+        const restored = session?.data ? migrateBackup(session.data) : empty,
+          signature = workspaceSignature(restored),
+          handle = session?.fileHandle || null,
+          saved = session?.savedSignature || (handle ? signature : '');
+        setData(restored);
+        latestSignature.current = signature;
+        setSavedFileSignature(saved);
+        setFile(handle);
+        setFileName(handle?.name || null);
+        setFileRevision(session?.fileRevision || null);
+        setLastSavedAt(
+          session?.fileRevision?.lastModified
+            ? new Date(session.fileRevision.lastModified)
+            : null,
+        );
+        setFileStatus(
+          handle ? (saved === signature ? 'saved' : 'dirty') : 'local',
+        );
+        if (/^\d{4}-\d{2}-\d{2}$/.test(session?.weekKey || ''))
+          setWeek(session.weekKey);
+        setReady(true);
+      })
+      .catch(() => setReady(true));
+  }, []);
+  const currentSignature = useMemo(() => workspaceSignature(data), [data]);
+  useEffect(() => {
+    latestSignature.current = currentSignature;
+  }, [currentSignature]);
+  const dirty = Boolean(file && currentSignature !== savedFileSignature),
+    hasLocalOnlyWork = !file && data.projects.length > 0,
+    needsDiscardProtection = dirty || hasLocalOnlyWork;
+
+  const days = data.settings.visibleDays || DEFAULT_VISIBLE_DAYS;
+  const leave = useMemo(
+    () => data.settings.leaveWeeks?.[week] || [],
+    [data.settings.leaveWeeks, week],
+  );
+  const visible = useMemo(
+    () => data.projects.filter((p) => isVisible(p, week)),
+    [data.projects, week],
+  );
+  const matching = useMemo(
+    () =>
+      visible.filter((p) => {
+        const m = projectMetrics(p, week, data.settings.leaveWeeks);
+        const nameMatch =
+          !query || p.name.toLowerCase().includes(query.toLowerCase());
+        const typeMatch =
+          filter === 'all' ||
+          filter === m.status ||
+          (filter === 'logged' && m.logged > 0) ||
+          (filter === 'unlogged' && m.logged === 0) ||
+          (filter === 'billable' && p.isBillable !== false) ||
+          (filter === 'nonbillable' && p.isBillable === false);
+        return nameMatch && typeMatch;
+      }),
+    [visible, query, filter, week, data.settings.leaveWeeks],
+  );
+  const totals = useMemo(() => {
+    const metrics = visible.map((p) => ({
+        p,
+        m: projectMetrics(p, week, data.settings.leaveWeeks),
+      })),
+      logged = metrics.reduce((n, x) => n + x.m.logged, 0),
+      capacity = capacityFor(week, data.settings),
+      billable = metrics
+        .filter((x) => x.p.isBillable !== false)
+        .reduce((n, x) => n + x.m.logged, 0),
+      planned = metrics.reduce(
+        (n, x) => n + Math.max(0, Number(x.m.plan || 0)),
+        0,
+      ),
+      resourced = weeklyResourcedHours(visible, week, data.settings.leaveWeeks),
+      resourcingCapacity = Math.max(0, WEEKLY_RESOURCING_CAPACITY - resourced),
+      frontloading = metrics.reduce(
+        (n, x) => n + x.m.frontloadedIn + x.m.frontloadedOut,
+        0,
+      ),
+      over = metrics.filter((x) => x.m.status === 'over').length,
+      todayDate = new Date(),
+      todayIndex = (todayDate.getDay() + 6) % 7,
+      today =
+        week === weekKeyFor(todayDate) && !leave.includes(todayIndex)
+          ? visible.reduce(
+              (sum, project) =>
+                sum +
+                Number(project.entries?.[week]?.[todayIndex] || 0) +
+                taskHoursForDay(project, week, todayIndex),
+              0,
+            )
+          : 0;
+    return {
+      logged,
+      capacity,
+      billable,
+      planned,
+      resourced,
+      resourcingCapacity,
+      frontloading,
+      over,
+      today,
+      remaining: capacity - logged,
+      billablePct: logged ? (billable / logged) * 100 : 0,
+    };
+  }, [visible, week, data.settings, leave]);
+
+  const setEntry = (projectId, targetWeek, day, value) => {
+    const wk = typeof targetWeek === 'string' ? targetWeek : week,
+      idx = typeof targetWeek === 'string' ? day : targetWeek,
+      raw = typeof targetWeek === 'string' ? value : day;
+    const parsed = typeof raw === 'number' ? { value: raw } : parseHours(raw);
+    if (parsed.error) {
+      setNotice({ type: 'error', text: parsed.error });
+      return;
+    }
+    setData((d) => ({
+      ...d,
+      projects: d.projects.map((p) => {
+        if (p.id !== projectId) return p;
+        const current = { ...(p.entries?.[wk] || {}) };
+        if (parsed.value == null) delete current[idx];
+        else current[idx] = parsed.value;
+        const entries = { ...(p.entries || {}) };
+        const cleaned = cleanWeek(current);
+        if (Object.keys(cleaned).length) entries[wk] = cleaned;
+        else delete entries[wk];
+        return { ...p, entries };
+      }),
+    }));
+  };
+  const setTaskEntry = (projectId, taskId, targetWeek, day, value) => {
+    const parsed = typeof value === 'number' ? { value } : parseHours(value);
+    if (parsed.error) {
+      setNotice({ type: 'error', text: parsed.error });
+      return;
+    }
+    setData((d) => ({
+      ...d,
+      projects: d.projects.map((project) => {
+        if (project.id !== projectId) return project;
+        const taskEntries = { ...(project.taskEntries || {}) },
+          entries = { ...(taskEntries[taskId] || {}) },
+          current = { ...(entries[targetWeek] || {}) };
+        if (parsed.value == null) delete current[day];
+        else current[day] = parsed.value;
+        const cleaned = cleanWeek(current);
+        if (Object.keys(cleaned).length) entries[targetWeek] = cleaned;
+        else delete entries[targetWeek];
+        if (Object.keys(entries).length) taskEntries[taskId] = entries;
+        else delete taskEntries[taskId];
+        return { ...project, taskEntries };
+      }),
+    }));
+  };
+  const pinTaskLine = (projectId, taskId, targetWeek = week) =>
+    setData((d) => ({
+      ...d,
+      projects: d.projects.map((project) =>
+        project.id === projectId
+          ? pinTaskLineRecord(project, taskId, targetWeek)
+          : project,
+      ),
+    }));
+  const removeTaskLine = (projectId, taskId) => {
+    const project = data.projects.find((item) => item.id === projectId),
+      task = project?.tasks?.find((item) => item.id === taskId),
+      hasTime = Object.values(
+        project?.taskEntries?.[taskId]?.[week] || {},
+      ).some((value) => Number(value) > 0),
+      action = () =>
+        setData((d) => ({
+          ...d,
+          projects: d.projects.map((item) =>
+            item.id === projectId
+              ? removeTaskLineRecord(item, taskId, week)
+              : item,
+          ),
+        }));
+    if (hasTime)
+      setConfirm({
+        title: 'Remove timesheet line?',
+        text: `${task?.name || 'This task'} has logged time this week. Removing the line will also remove those hours.`,
+        confirmLabel: 'Remove line and time',
+        danger: true,
+        action,
+      });
+    else action();
+  };
+  const applyLeave = (day) =>
+    setData((d) => {
+      const cur = d.settings.leaveWeeks?.[week] || [],
+        next = cur.includes(day)
+          ? cur.filter((x) => x !== day)
+          : [...cur, day].sort();
+      return {
+        ...d,
+        settings: {
+          ...d.settings,
+          leaveWeeks: { ...d.settings.leaveWeeks, [week]: next },
+        },
+      };
+    });
+  const toggleLeave = (day) => {
+    const hasTime = visible.some(
+        (p) =>
+          Number(p.entries?.[week]?.[day] || 0) > 0 ||
+          Object.values(p.taskEntries || {}).some(
+            (entries) => Number(entries?.[week]?.[day] || 0) > 0,
+          ),
+      ),
+      isLeave = leave.includes(day);
+    setConfirm(
+      isLeave
+        ? {
+            title: `Remove ${DAY_NAMES[day]} leave?`,
+            text: 'This will return the day to the working-week totals. Logged time is unchanged.',
+            confirmLabel: 'Remove leave',
+            action: () => applyLeave(day),
+          }
+        : {
+            title: `Mark ${DAY_NAMES[day]} as leave?`,
+            text: hasTime
+              ? 'This day already contains time. The entries will be kept for your records but excluded from working totals while the day is marked as leave.'
+              : 'This day will be excluded from working capacity and timesheet totals.',
+            confirmLabel: hasTime
+              ? 'Keep time and mark leave'
+              : 'Mark as leave',
+            action: () => applyLeave(day),
+          },
+    );
+  };
+  const move = (id, direction) =>
+    setData((d) => {
+      const list = [...d.projects],
+        index = list.findIndex((p) => p.id === id),
+        next = index + direction;
+      if (index < 0 || next < 0 || next >= list.length) return d;
+      [list[index], list[next]] = [list[next], list[index]];
+      return { ...d, projects: list };
+    });
+  const showProjectForWeek = (id, targetWeek) =>
+    setData((d) => ({
+      ...d,
+      projects: d.projects.map((project) =>
+        project.id !== id
+          ? project
+          : {
+              ...project,
+              archived: false,
+              hiddenWeeks: (project.hiddenWeeks || []).filter(
+                (key) => key !== targetWeek,
+              ),
+              hiddenOnwardsFrom:
+                project.hiddenOnwardsFrom &&
+                project.hiddenOnwardsFrom > targetWeek
+                  ? project.hiddenOnwardsFrom
+                  : null,
+              visibleOnwardsFrom:
+                project.visibleOnwardsFrom &&
+                project.visibleOnwardsFrom > targetWeek
+                  ? targetWeek
+                  : project.visibleOnwardsFrom,
+            },
+      ),
+    }));
+  const saveFrontload = (projectId, targetWeek, amount) => {
+    const project = data.projects.find((item) => item.id === projectId),
+      existing = frontloadAmount(project || {}, targetWeek),
+      limit = frontloadLimit(project || {}, targetWeek),
+      rounded = Math.round(Number(amount) * 100) / 100,
+      maximum = Math.max(existing, limit ?? 0);
+    if (
+      !project ||
+      !Number.isFinite(rounded) ||
+      rounded < 0 ||
+      rounded > maximum + EPSILON
+    ) {
+      setNotice({
+        type: 'error',
+        text: `Frontloading must be between 0 and ${fmt(maximum)} hours.`,
+      });
+      return false;
+    }
+    setData((current) => ({
+      ...current,
+      projects: current.projects.map((item) => {
+        if (item.id !== projectId) return item;
+        const frontloads = { ...(item.frontloads || {}) };
+        if (rounded <= EPSILON) delete frontloads[targetWeek];
+        else frontloads[targetWeek] = rounded;
+        return { ...item, frontloads };
+      }),
+    }));
+    return true;
+  };
+
+  const saveProject = (
+    name,
+    hours,
+    isBillable,
+    scope = 'project',
+    monthly = null,
+    historical = 0,
+    client = '',
+    code = '',
+    status = 'active',
+    color = '#7aa600',
+    selectedExistingId = null,
+    tasks = null,
+    projectType = 'standard',
+    durationWeeks = 0,
+    durationDays = 0,
+    remainderLimit = null,
+  ) => {
+    const fields = {
+      name,
+      hours,
+      isBillable,
+      monthly,
+      historical,
+      client,
+      code,
+      status,
+      color,
+      tasks,
+      projectType,
+      durationWeeks,
+      durationDays,
+      remainderLimit,
+    };
+    const normal = name.trim().toLowerCase(),
+      duplicate = data.projects.find(
+        (p) =>
+          p.id !== edit?.id &&
+          p.id !== selectedExistingId &&
+          p.name.trim().toLowerCase() === normal,
+      );
+    if (duplicate) {
+      setNotice({
+        type: 'error',
+        text: `“${duplicate.name}” already exists. Restore or edit it from Projects.`,
+      });
+      return false;
+    }
+    setData((d) => {
+      if (!edit && selectedExistingId)
+        return {
+          ...d,
+          projects: d.projects.map((p) =>
+            p.id === selectedExistingId
+              ? restoreProjectRecord(p, fields, scope, week)
+              : p,
+          ),
+        };
+      if (!edit)
+        return {
+          ...d,
+          projects: [...d.projects, createProjectRecord(fields, scope, week)],
+        };
+      return {
+        ...d,
+        projects: d.projects.map((p) =>
+          p.id === edit.id ? editProjectRecord(p, fields, scope, week) : p,
+        ),
+      };
+    });
+    setEdit(null);
+    setPanel(returnToManage ? 'manage' : null);
+    setReturnToManage(false);
+    return true;
+  };
+  const manageUpdate = (id, name, hours) => {
+    const result = validateManagedProject(data.projects, id, name, hours);
+    if (result.error) {
+      setNotice({ type: 'error', text: result.error });
+      return false;
+    }
+    setData((d) => ({
+      ...d,
+      projects: d.projects.map((p) =>
+        p.id === id
+          ? { ...p, name: result.name, resourcedHours: result.hours }
+          : p,
+      ),
+    }));
+    return true;
+  };
+  const deletePermanent = (id) => {
+    const project = data.projects.find((item) => item.id === id);
+    if (!project) return;
+    setConfirm({
+      title: 'Delete project permanently?',
+      text: `“${project.name}” and all of its logged history will be removed. This cannot be undone.`,
+      confirmLabel: 'Delete project',
+      danger: true,
+      action: () =>
+        setData((d) => ({
+          ...d,
+          projects: d.projects.filter((item) => item.id !== id),
+        })),
+    });
+  };
+  const hide = (id, from, only = false) =>
+    setData((d) => ({
+      ...d,
+      projects: d.projects.map((p) =>
+        p.id === id
+          ? only
+            ? {
+                ...p,
+                hiddenWeeks: [...new Set([...(p.hiddenWeeks || []), from])],
+              }
+            : { ...p, hiddenOnwardsFrom: from }
+          : p,
+      ),
+    }));
+  const importData = (result, items) => {
+    setData((d) => {
+      let projects = [...d.projects];
+      for (const item of items) {
+        let index = projects.findIndex(
+          (p) => p.name.trim().toLowerCase() === item.name.trim().toLowerCase(),
+        );
+        if (index < 0) {
+          projects.push({
+            id: uuid(),
+            name: item.name,
+            isBillable: false,
+            resourcedHours:
+              result.format === 'resourcing'
+                ? Number(item.resourcedHours || 0)
+                : null,
+            monthlyResourcedHours: null,
+            entries: {},
+            tasks: [{ id: 'general', name: 'General' }],
+            taskEntries: {},
+            taskRows: {},
+            weeklyOverrides: {},
+            frontloads: {},
+            hiddenWeeks: [],
+            visibleOnwardsFrom: result.weekKey || week,
+            createdAt: new Date().toISOString(),
+          });
+          index = projects.length - 1;
+        }
+        const p = { ...projects[index] };
+        if (result.format === 'timesheet') {
+          p.entries = {
+            ...(p.entries || {}),
+            [result.weekKey]: {
+              ...(p.entries?.[result.weekKey] || {}),
+              ...(item.dailyHours || {}),
+            },
+          };
+        } else if (result.format === 'resourcing') {
+          p.resourcedHours = Number(item.resourcedHours || 0);
+          p.weeklyOverrides = {
+            ...(p.weeklyOverrides || {}),
+            [result.weekKey]: Number(item.resourcedHours || 0),
+          };
+        }
+        projects[index] = p;
+      }
+      return { ...d, projects };
+    });
+    if (result.weekKey) setWeek(result.weekKey);
+    setNotice({
+      type: 'success',
+      text: `Imported ${items.length} project${items.length === 1 ? '' : 's'} into ${result.weekKey || 'the workspace'}.`,
+    });
+  };
+  const fillDevelopment = () => {
+    const pd = data.projects.find(
+      (p) => p.name.trim().toLowerCase() === 'professional development',
+    );
+    if (!pd) {
+      setNotice({
+        type: 'error',
+        text: 'Create a project named Professional Development before using Fill remaining.',
+      });
+      return;
+    }
+    let remaining = Math.max(0, totals.remaining);
+    if (!remaining) return;
+    const updates = {};
+    for (const day of days.filter((d) => !leave.includes(d))) {
+      const dayUsed = visible.reduce(
+          (n, p) =>
+            n +
+            Number(p.entries?.[week]?.[day] || 0) +
+            taskHoursForDay(p, week, day),
+          0,
+        ),
+        space = Math.max(
+          0,
+          Number(data.settings.capacityByDay?.[day] || 0) - dayUsed,
+        ),
+        add = Math.min(space, remaining);
+      if (add > 0) {
+        updates[day] = Number(pd.entries?.[week]?.[day] || 0) + add;
+        remaining -= add;
+      }
+    }
+    Object.entries(updates).forEach(([day, val]) =>
+      setEntry(pd.id, week, Number(day), Math.round(val * 100) / 100),
+    );
+    setNotice({
+      type: 'success',
+      text: 'Filled available working capacity with Professional Development.',
+    });
+  };
+  const fillCapacityWithDevelopment = () => {
+    const pd = data.projects.find(
+        (p) => p.name.trim().toLowerCase() === 'professional development',
+      ),
+      amount = totals.resourcingCapacity;
+    if (!pd) {
+      setNotice({
+        type: 'error',
+        text: 'Create a project named Professional Development before filling capacity.',
+      });
+      return false;
+    }
+    if (amount <= EPSILON) return false;
+    setData((current) => ({
+      ...current,
+      projects: current.projects.map((project) =>
+        project.id !== pd.id
+          ? project
+          : {
+              ...project,
+              archived: false,
+              hiddenWeeks: (project.hiddenWeeks || []).filter(
+                (key) => key !== week,
+              ),
+              hiddenOnwardsFrom:
+                project.hiddenOnwardsFrom && project.hiddenOnwardsFrom > week
+                  ? project.hiddenOnwardsFrom
+                  : null,
+              visibleOnwardsFrom:
+                project.visibleOnwardsFrom && project.visibleOnwardsFrom > week
+                  ? week
+                  : project.visibleOnwardsFrom,
+              weeklyOverrides: {
+                ...(project.weeklyOverrides || {}),
+                [week]:
+                  Math.round(
+                    (Math.max(0, Number(weeklyPlan(project, week) || 0)) +
+                      amount) *
+                      100,
+                  ) / 100,
+              },
+            },
+      ),
+    }));
+    setNotice({
+      type: 'success',
+      text: `Allocated ${fmt(amount)}h of capacity to Professional Development.`,
+    });
+    return true;
+  };
+  const addSample = () => {
+    const sample = [
+      {
+        name: 'Contoso M365 Adoption',
+        hours: 15,
+        isBillable: true,
+        monthly: null,
+        historical: 0,
+        client: 'Contoso Pty Ltd',
+        code: 'PRJ-1042',
+        status: 'active',
+        color: '#0f9e8e',
+      },
+      {
+        name: 'Northwind Teams Governance',
+        hours: 8,
+        isBillable: true,
+        monthly: null,
+        historical: 0,
+        client: 'Northwind',
+        code: 'PRJ-1088',
+        status: 'active',
+        color: '#8b5cf6',
+      },
+    ];
+    setData((d) => ({
+      ...d,
+      projects: [
+        ...d.projects,
+        ...sample.map((fields) => createProjectRecord(fields, 'onwards', week)),
+      ],
+    }));
+    setNotice({
+      type: 'success',
+      text: 'Added two sample projects. Edit or remove them whenever you are ready.',
+    });
+  };
+  const attachLoadedFile = useCallback((result) => {
+    const signature = workspaceSignature(result.data);
+    setSavedFileSignature(signature);
+    latestSignature.current = signature;
+    saveBlocked.current = false;
+    setData(result.data);
+    setFile(result.handle);
+    setFileName(result.name);
+    setFileRevision(result.revision);
+    setLastSavedAt(
+      result.revision?.lastModified
+        ? new Date(result.revision.lastModified)
+        : new Date(),
+    );
+    setFileStatus(result.handle ? 'saved' : 'local');
+  }, []);
+  const doOpenFile = async () => {
+    try {
+      const result = await openBackup();
+      attachLoadedFile(result);
+      setNotice({
+        type: 'success',
+        text: result.handle
+          ? `Opened ${result.name}. Edits will save back to this file.`
+          : `Imported ${result.name}. Direct saving requires Chrome or Edge.`,
+      });
+    } catch (error) {
+      if (error?.name !== 'AbortError')
+        setNotice({
+          type: 'error',
+          text: error?.message || 'That TimeMaster file could not be opened.',
+        });
+    }
+  };
+  const openFile = () => {
+    if (needsDiscardProtection) {
+      setConfirm({
+        title: 'Open another file?',
+        text: 'This will replace the workspace currently shown. Save now or export a backup copy first if you need to keep these changes.',
+        confirmLabel: 'Replace workspace',
+        danger: true,
+        action: doOpenFile,
+      });
+      return;
+    }
+    doOpenFile();
+  };
+  const saveAs = async () => {
+    if (!supportsFileSystemAccess()) {
+      downloadBackup(
+        backupPayload(data.projects, data.settings),
+        'TimeMaster.json',
+      );
+      setNotice({
+        type: 'success',
+        text: 'Downloaded TimeMaster.json. Direct saving requires a recent Chrome or Edge browser on HTTPS.',
+      });
+      return;
+    }
+    try {
+      const handle = await chooseNewBackupHandle(),
+        payload = backupPayload(data.projects, data.settings),
+        signature = workspaceSignature(payload),
+        revision = await writeHandle(handle, payload);
+      setSavedFileSignature(signature);
+      saveBlocked.current = false;
+      setFile(handle);
+      setFileName(handle.name);
+      setFileRevision(revision);
+      setLastSavedAt(new Date(revision.lastModified));
+      setFileStatus('saved');
+      setNotice({
+        type: 'success',
+        text: `Created and attached ${handle.name}.`,
+      });
+    } catch (error) {
+      if (error?.name !== 'AbortError')
+        setNotice({
+          type: 'error',
+          text: error?.message || 'The TimeMaster file could not be created.',
+        });
+    }
+  };
+  const saveAttachedFile = useCallback(
+    async ({ notify = false } = {}) => {
+      if (!file) {
+        if (notify) setPanel('file');
+        return false;
+      }
+      if (saveInFlight.current) return false;
+      saveInFlight.current = true;
+      setFileStatus('saving');
+      const payload = backupPayload(data.projects, data.settings),
+        signature = workspaceSignature(payload);
+      try {
+        const revision = await writeHandle(file, payload, fileRevision);
+        setSavedFileSignature(signature);
+        saveBlocked.current = false;
+        setFileRevision(revision);
+        setLastSavedAt(new Date(revision.lastModified));
+        setFileStatus(
+          latestSignature.current === signature ? 'saved' : 'dirty',
+        );
+        if (notify) setNotice({ type: 'success', text: `Saved ${file.name}.` });
+        return true;
+      } catch (error) {
+        if (error?.code === FILE_CHANGED_CODE) {
+          saveBlocked.current = true;
+          setFileStatus('conflict');
+          setNotice({ type: 'error', text: error.message });
+        } else {
+          setFileStatus('error');
+          setNotice({
+            type: 'error',
+            text:
+              error?.message ||
+              'The workspace could not be saved. Export a backup copy from File.',
+          });
+        }
+        return false;
+      } finally {
+        saveInFlight.current = false;
+      }
+    },
+    [data, file, fileRevision],
+  );
+  const doRefreshFile = async () => {
+    if (!file) return;
+    try {
+      const result = await readHandle(file);
+      attachLoadedFile(result);
+      setNotice({ type: 'success', text: `Refreshed from ${result.name}.` });
+    } catch (error) {
+      setNotice({
+        type: 'error',
+        text: error?.message || 'The attached file could not be refreshed.',
+      });
+    }
+  };
+  const refreshFile = () => {
+    if (!file) return;
+    if (dirty) {
+      setConfirm({
+        title: 'Replace unsaved changes?',
+        text: `Refreshing from ${file.name} will discard the unsaved changes in this tab.`,
+        confirmLabel: 'Refresh and discard',
+        danger: true,
+        action: doRefreshFile,
+      });
+      return;
+    }
+    doRefreshFile();
+  };
+
+  useEffect(() => {
+    if (!ready) return;
+    const payload = backupPayload(data.projects, data.settings),
+      signature = workspaceSignature(payload);
+    clearTimeout(cacheTimer.current);
+    cacheTimer.current = setTimeout(
+      () =>
+        saveSessionToIdb(
+          file,
+          week,
+          payload,
+          fileRevision,
+          savedFileSignature,
+        ).catch(() =>
+          setNotice({
+            type: 'error',
+            text: 'The browser copy could not be saved. Export a backup copy from File.',
+          }),
+        ),
+      200,
+    );
+    clearTimeout(autoSaveTimer.current);
+    if (file && signature !== savedFileSignature && !saveBlocked.current) {
+      setFileStatus((current) => (current === 'saving' ? current : 'dirty'));
+      autoSaveTimer.current = setTimeout(() => saveAttachedFile(), 800);
+    }
+    return () => {
+      clearTimeout(cacheTimer.current);
+      clearTimeout(autoSaveTimer.current);
+    };
+  }, [
+    data,
+    file,
+    fileRevision,
+    ready,
+    saveAttachedFile,
+    savedFileSignature,
+    week,
+  ]);
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
+
+  const saveStatusText =
+    fileStatus === 'saving'
+      ? 'Saving…'
+      : fileStatus === 'dirty'
+        ? 'Unsaved changes'
+        : fileStatus === 'conflict'
+          ? 'Save blocked · file changed'
+          : fileStatus === 'error'
+            ? 'Save needs attention'
+            : fileStatus === 'saved' && lastSavedAt
+              ? `Saved ${lastSavedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+              : file
+                ? 'Attached'
+                : fileName
+                  ? 'Imported copy · browser only'
+                  : 'Stored in this browser';
+
+  if (!ready) return <div className="loading">Opening workspace…</div>;
+  return (
+    <div className="app" data-theme={data.settings.theme}>
+      <header className="topbar">
+        <a className="brand" href="#workspace">
+          Time<span>Master</span>
+        </a>
+        <button
+          className={`file-status file-status-${fileStatus}`}
+          onClick={() => setPanel('file')}
+          title="Open file controls"
+        >
+          <strong>{fileName || 'No JSON attached'}</strong>
+          <span>{saveStatusText}</span>
+        </button>
+        <nav className="top-actions">
+          <button onClick={() => setPanel('file')}>File</button>
+          <button onClick={() => setPanel('import')}>Import</button>
+          <button onClick={() => setPanel('manage')}>Projects</button>
+          <button onClick={() => setPanel('settings')}>Settings</button>
+          <button
+            className="primary"
+            onClick={() => {
+              setEdit(null);
+              setPanel('project');
+            }}
+          >
+            New project
+          </button>
+        </nav>
+      </header>
+      <main id="workspace">
+        <section className="week-head">
+          <div>
+            <p className="eyebrow">Weekly plan</p>
+            <h1>{weekLabel(week, days)}</h1>
+          </div>
+          <div className="week-nav">
+            <button
+              onClick={() => setWeek(shiftWeek(week, -1))}
+              aria-label="Previous week"
+            >
+              {icon('M15 18l-6-6 6-6')}
+            </button>
+            <button onClick={() => setWeek(weekKeyFor(new Date()))}>
+              Today
+            </button>
+            <button
+              onClick={() => setWeek(shiftWeek(week, 1))}
+              aria-label="Next week"
+            >
+              {icon('M9 18l6-6 6-6')}
+            </button>
+          </div>
+        </section>
+        <div className="mobile-switch">
+          <button
+            className={mobileView === 'projects' ? 'selected' : ''}
+            onClick={() => setMobileView('projects')}
+          >
+            By project
+          </button>
+          <button
+            className={mobileView === 'days' ? 'selected' : ''}
+            onClick={() => setMobileView('days')}
+          >
+            By day
+          </button>
+        </div>
+        <section
+          className={`workspace ${mobileView === 'days' ? 'day-mode' : ''}`}
+        >
+          <Overview totals={totals} week={week} settings={data.settings} />
+          <CounterRail
+            totals={totals}
+            projects={visible}
+            onFill={fillDevelopment}
+            onCapacity={() => setCapacityDetails(true)}
+          />
+          <div className="sheet">
+            <div className="sheet-toolbar">
+              <div>
+                <h2>Timesheet</h2>
+                <span>
+                  {matching.length} of {visible.length} projects
+                </span>
+              </div>
+              <label className="search">
+                <span className="sr-only">Search projects</span>
+                {icon(
+                  'M21 21l-4.35-4.35m2.35-5.15a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0z',
+                )}
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Find a project"
+                />
+              </label>
+              <select
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                aria-label="Filter projects"
+              >
+                <option value="all">All projects</option>
+                <option value="logged">Logged</option>
+                <option value="unlogged">Not logged</option>
+                <option value="under">Allowance left</option>
+                <option value="at">At allocation</option>
+                <option value="over">Over allocation</option>
+                <option value="unlimited">Unlimited</option>
+                <option value="billable">Billable</option>
+                <option value="nonbillable">Non-billable</option>
+              </select>
+              <label className="timesheet-grouping">
+                Group
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  aria-label="Categorise timesheet"
+                >
+                  <option value="none">No grouping</option>
+                  <option value="status">Status</option>
+                  <option value="client">Client</option>
+                  <option value="billability">Billable / non-billable</option>
+                  <option value="usage">Usage</option>
+                </select>
+              </label>
+              {(query || filter !== 'all') && (
+                <button
+                  onClick={() => {
+                    setQuery('');
+                    setFilter('all');
+                  }}
+                >
+                  Clear
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  downloadTimesheetCsv(data.projects);
+                  setNotice({
+                    type: 'success',
+                    text: 'Exported the complete timesheet as CSV.',
+                  });
+                }}
+              >
+                Export CSV
+              </button>
+              <button className="primary" onClick={() => setLineTarget(true)}>
+                Add line
+              </button>
+            </div>
+            {visible.length === 0 ? (
+              <Empty
+                projects={data.projects}
+                onNew={() => setPanel('project')}
+                onManage={() => setPanel('manage')}
+                onSample={addSample}
+              />
+            ) : (
+              <>
+                <TimesheetTable
+                  projects={matching}
+                  allProjects={visible}
+                  category={category}
+                  week={week}
+                  days={days}
+                  leave={leave}
+                  leaveWeeks={data.settings.leaveWeeks}
+                  totals={totals}
+                  onEntry={setEntry}
+                  onTaskEntry={setTaskEntry}
+                  onAddLine={(project) => setLineTarget(project.id)}
+                  onRemoveTaskLine={removeTaskLine}
+                  onLeave={toggleLeave}
+                  onEdit={(p) => {
+                    setEdit(p);
+                    setPanel('project');
+                  }}
+                  onFrontload={(project) =>
+                    setFrontloadTarget({ id: project.id })
+                  }
+                  onSuggestFrontload={(project, prompt) =>
+                    setFrontloadTarget({
+                      id: project.id,
+                      prompt: true,
+                      amount: prompt.amount,
+                      adjustment: prompt.adjustment,
+                    })
+                  }
+                  onRemove={setRemoveTarget}
+                  onMove={move}
+                />
+                {mobileView === 'projects' ? (
+                  <MobileCards
+                    projects={matching}
+                    category={category}
+                    week={week}
+                    days={days}
+                    leave={leave}
+                    leaveWeeks={data.settings.leaveWeeks}
+                    onEntry={setEntry}
+                    onTaskEntry={setTaskEntry}
+                    onAddLine={(project) => setLineTarget(project.id)}
+                    onRemoveTaskLine={removeTaskLine}
+                    onEdit={(p) => {
+                      setEdit(p);
+                      setPanel('project');
+                    }}
+                    onFrontload={(project) =>
+                      setFrontloadTarget({ id: project.id })
+                    }
+                  />
+                ) : (
+                  <MobileDays
+                    projects={matching}
+                    week={week}
+                    days={days}
+                    leave={leave}
+                    onEntry={setEntry}
+                    onTaskEntry={setTaskEntry}
+                  />
+                )}{' '}
+                {matching.length === 0 && (
+                  <div className="no-results">
+                    <h3>No projects match</h3>
+                    <p>
+                      Clear the current search or filter to see the whole week.
+                    </p>
+                    <button
+                      onClick={() => {
+                        setQuery('');
+                        setFilter('all');
+                      }}
+                    >
+                      Clear filters
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+          <Insights
+            projects={visible}
+            week={week}
+            leaveWeeks={data.settings.leaveWeeks}
+          />
+        </section>
+      </main>
+      {notice && (
+        <div className={`toast ${notice.type}`} role="status">
+          <span>
+            {String(
+              notice.text ||
+                'Something went wrong. Open File to export a backup.',
+            )}
+          </span>
+          <button
+            onClick={() => setNotice(null)}
+            aria-label="Dismiss notification"
+          >
+            ×
+          </button>
+        </div>
+      )}
+      <ProjectModal
+        isOpen={panel === 'project'}
+        onClose={() => {
+          setPanel(returnToManage ? 'manage' : null);
+          setEdit(null);
+          setReturnToManage(false);
+        }}
+        onSave={saveProject}
+        initial={edit}
+        projects={data.projects}
+        visibleProjects={visible}
+        weekKey={week}
+      />
+      <ImportModal
+        isOpen={panel === 'import'}
+        onClose={() => setPanel(null)}
+        existingProjects={data.projects}
+        onImport={importData}
+      />
+      <ManageProjectsModal
+        isOpen={panel === 'manage'}
+        onClose={() => setPanel(null)}
+        projects={data.projects}
+        updateProject={manageUpdate}
+        deleteProject={(id) => {
+          setPanel(null);
+          deletePermanent(id);
+        }}
+        onImport={() => setPanel('import')}
+        onSample={addSample}
+        onAdd={() => {
+          setEdit(null);
+          setReturnToManage(true);
+          setPanel('project');
+        }}
+        onEdit={(project) => {
+          setEdit(project);
+          setReturnToManage(true);
+          setPanel('project');
+        }}
+      />
+      <ConfirmDeleteModal
+        isOpen={!!removeTarget}
+        onClose={() => setRemoveTarget(null)}
+        project={removeTarget}
+        onDeleteThisWeek={() => hide(removeTarget.id, week, true)}
+        onDeleteThisWeekOnwards={() => hide(removeTarget.id, week)}
+        onDeleteNextWeekOnwards={() =>
+          hide(removeTarget.id, shiftWeek(week, 1))
+        }
+        onDeleteAllWeeks={() => deletePermanent(removeTarget.id)}
+      />
+      {panel === 'settings' && (
+        <Settings
+          settings={data.settings}
+          onClose={() => setPanel(null)}
+          onSave={(settings) => {
+            setData((d) => ({ ...d, settings }));
+            setPanel(null);
+          }}
+        />
+      )}
+      {confirm && (
+        <ConfirmAction
+          confirmation={confirm}
+          onClose={() => setConfirm(null)}
+        />
+      )}
+      {capacityDetails && (
+        <CapacityModal
+          projects={visible}
+          week={week}
+          leaveWeeks={data.settings.leaveWeeks}
+          totals={totals}
+          onClose={() => setCapacityDetails(false)}
+          onFillCapacity={fillCapacityWithDevelopment}
+        />
+      )}
+      {frontloadTarget &&
+        data.projects.find((project) => project.id === frontloadTarget.id) && (
+          <FrontloadModal
+            project={data.projects.find(
+              (project) => project.id === frontloadTarget.id,
+            )}
+            week={week}
+            leaveWeeks={data.settings.leaveWeeks}
+            title={
+              frontloadTarget.adjustment
+                ? 'Adjust frontloaded hours?'
+                : frontloadTarget.prompt
+                  ? 'Frontload additional hours?'
+                  : 'Frontload hours'
+            }
+            initialAmount={frontloadTarget.amount}
+            preferInitial={frontloadTarget.adjustment}
+            onClose={() => setFrontloadTarget(null)}
+            onSave={(amount) => saveFrontload(frontloadTarget.id, week, amount)}
+          />
+        )}
+      {lineTarget && (
+        <ProjectLineModal
+          projects={data.projects.map((project) => ({
+            ...project,
+            __visibleNow: visible.some((item) => item.id === project.id),
+          }))}
+          week={week}
+          initialProjectId={lineTarget === true ? null : lineTarget}
+          onClose={() => setLineTarget(null)}
+          onAddTask={(id, task, targetWeek) => {
+            showProjectForWeek(id, targetWeek);
+            pinTaskLine(id, task, targetWeek);
+          }}
+          onAddProject={showProjectForWeek}
+          onManage={() => {
+            setLineTarget(null);
+            setPanel('manage');
+          }}
+        />
+      )}
+      {panel === 'file' && (
+        <FilePanel
+          attached={!!file}
+          fileName={fileName}
+          status={saveStatusText}
+          dirty={dirty}
+          supported={supportsFileSystemAccess()}
+          onClose={() => setPanel(null)}
+          onOpen={openFile}
+          onCreate={saveAs}
+          onSaveNow={() => saveAttachedFile({ notify: true })}
+          onRefresh={refreshFile}
+          onExport={() => {
+            downloadBackup(backupPayload(data.projects, data.settings));
+            setNotice({ type: 'success', text: 'Exported a backup copy.' });
+          }}
+          onExportCsv={() => {
+            downloadTimesheetCsv(data.projects);
+            setNotice({
+              type: 'success',
+              text: 'Exported the complete timesheet as CSV.',
+            });
+          }}
+          onManage={() => setPanel('manage')}
+        />
+      )}
+    </div>
+  );
+}
+
+function Overview({ totals, week, settings }) {
+  const usedPct = totals.capacity ? (totals.logged / totals.capacity) * 100 : 0,
+    over = totals.remaining < -EPSILON,
+    capacityWarning = totals.resourcingCapacity > 3 + EPSILON;
+  return (
+    <article className="horizon" aria-label="Week horizon">
+      <div className="horizon-head">
+        <div>
+          <p className="eyebrow">Week horizon</p>
+          <strong>
+            {fmt(totals.logged)}h <span>logged</span>
+          </strong>
+        </div>
+        <div className="horizon-counters">
+          <span className={over ? 'over-text' : ''}>
+            {over
+              ? `${fmt(-totals.remaining)}h over`
+              : `${fmt(Math.max(0, totals.remaining))}h free`}
+          </span>
+          {totals.resourcingCapacity > EPSILON && (
+            <span className={capacityWarning ? 'capacity-warning' : ''}>
+              {fmt(totals.resourcingCapacity)}h capacity
+              {capacityWarning && ' !'}
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="horizon-track">
+        <span style={{ width: `${Math.min(100, usedPct)}%` }} />
+        <em className={usedPct > 100 + EPSILON ? 'show' : ''}>
+          {Math.round(usedPct)}%
+        </em>
+      </div>
+      <div className="horizon-days">
+        {(settings.visibleDays || DEFAULT_VISIBLE_DAYS).map((day) => (
+          <span key={day}>
+            {DAY_SHORT[day]}
+            <b>
+              {fmt(
+                (settings.leaveWeeks?.[week] || []).includes(day)
+                  ? 0
+                  : settings.capacityByDay?.[day] || 0,
+              )}
+              h
+            </b>
+          </span>
+        ))}
+      </div>
+    </article>
+  );
+}
+function CounterRail({ totals, projects, onFill, onCapacity }) {
+  const bill = Math.round(totals.billablePct),
+    capacityWarning = totals.resourcingCapacity > 3 + EPSILON;
+  return (
+    <aside className="counter-rail" aria-label="Workspace counters">
+      <article className="dial-card">
+        <div className="dial" style={{ '--dial': `${bill * 3.6}deg` }}>
+          <div>
+            <strong>{totals.logged ? `${bill}%` : '—'}</strong>
+            <span>Billable</span>
+          </div>
+        </div>
+        <p>
+          <b>{fmt(totals.billable)}h</b> billable
+          <br />
+          <span>{fmt(totals.logged - totals.billable)}h non-billable</span>
+          <span className="resourced-counter">
+            {fmt(totals.resourced)}h of {fmt(WEEKLY_RESOURCING_CAPACITY)}h
+            resourced
+          </span>
+        </p>
+      </article>
+      <button
+        className="overview-stat capacity-stat capacity-widget"
+        onClick={onCapacity}
+        aria-label="View capacity breakdown"
+      >
+        <p>Capacity</p>
+        <strong className={capacityWarning ? 'capacity-warning' : ''}>
+          {fmt(totals.resourcingCapacity)}h{capacityWarning && ' !'}
+        </strong>
+        <span>
+          Unresourced hours this week
+          {totals.frontloading > EPSILON &&
+            ` · includes ${fmt(totals.frontloading)}h frontloading adjustment`}
+        </span>
+      </button>
+      <article className="overview-stat">
+        <p>Projects</p>
+        <strong>{projects.length}</strong>
+        <span>
+          {fmt(totals.today)}h logged today ·{' '}
+          {totals.over
+            ? `${totals.over} over allocation`
+            : 'allocations in range'}
+        </span>
+        <button onClick={onFill} disabled={totals.remaining <= 0}>
+          Fill remaining
+        </button>
+      </article>
+    </aside>
+  );
+}
+function TimesheetTable({
+  projects,
+  allProjects,
+  category,
+  week,
+  days,
+  leave,
+  leaveWeeks,
+  totals,
+  onEntry,
+  onTaskEntry,
+  onAddLine,
+  onRemoveTaskLine,
+  onLeave,
+  onEdit,
+  onFrontload,
+  onSuggestFrontload,
+  onRemove,
+  onMove,
+}) {
+  const dayTotal = (day) =>
+      projects.reduce(
+        (sum, project) =>
+          sum +
+          (leave.includes(day)
+            ? 0
+            : Number(project.entries?.[week]?.[day] || 0) +
+              taskHoursForDay(project, week, day)),
+        0,
+      ),
+    dailyTarget =
+      totals.planned /
+      Math.max(1, days.filter((day) => !leave.includes(day)).length),
+    over = totals.remaining < -EPSILON,
+    groups = categoriseProjects(projects, category, week, leaveWeeks),
+    columnCount = days.length + 6;
+  return (
+    <div className="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Project / task</th>
+            {days.map((d) => {
+              const date = weekDates(week)[d],
+                off = leave.includes(d);
+              return (
+                <th key={d} className={off ? 'leave' : ''}>
+                  <button
+                    className="leave-day-toggle"
+                    onClick={() => onLeave(d)}
+                    aria-pressed={off}
+                    aria-label={`${off ? 'Remove' : 'Mark'} ${DAY_NAMES[d]} leave`}
+                  >
+                    {DAY_SHORT[d]}
+                  </button>
+                  <b>{date.getDate()}</b>
+                </th>
+              );
+            })}
+            <th>Logged</th>
+            <th>Plan</th>
+            <th>Allowance</th>
+            <th className="usage-cell">Usage</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {groups.map((group) => (
+            <Fragment key={group.key}>
+              {category !== 'none' && (
+                <tr className="timesheet-group-row">
+                  <th colSpan={columnCount}>
+                    {group.label}
+                    <small>
+                      {group.projects.length} project
+                      {group.projects.length === 1 ? '' : 's'}
+                    </small>
+                  </th>
+                </tr>
+              )}
+              {group.projects.map((p) => {
+                const suggestion =
+                    frontloadAdjustment(p, week, leaveWeeks) ||
+                    frontloadSuggestion(p, week, leaveWeeks),
+                  index = projects.indexOf(p);
+                return (
+                  <Fragment key={p.id}>
+                    <ProjectRow
+                      hideClient={category === 'client'}
+                      p={p}
+                      index={index}
+                      count={projects.length}
+                      week={week}
+                      days={days}
+                      leave={leave}
+                      leaveWeeks={leaveWeeks}
+                      suggestion={suggestion}
+                      onEntry={onEntry}
+                      onAddLine={() => onAddLine(p)}
+                      onEdit={() => onEdit(p)}
+                      onFrontload={() => onFrontload(p)}
+                      onSuggestFrontload={() =>
+                        onSuggestFrontload(p, suggestion)
+                      }
+                      onRemove={() => onRemove(p)}
+                      onMove={onMove}
+                    />
+                    {taskLinesFor(p, week).map((task) => (
+                      <TaskEntryRow
+                        key={task.id}
+                        project={p}
+                        task={task}
+                        week={week}
+                        days={days}
+                        leave={leave}
+                        suggestion={suggestion}
+                        onEntry={onTaskEntry}
+                        onSuggestFrontload={() =>
+                          onSuggestFrontload(p, suggestion)
+                        }
+                        onRemove={() => onRemoveTaskLine(p.id, task.id)}
+                      />
+                    ))}
+                  </Fragment>
+                );
+              })}
+            </Fragment>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr>
+            <th>
+              {projects.length === allProjects.length
+                ? 'Whole week'
+                : 'Filtered subtotal'}
+              <small>
+                {projects.length === allProjects.length
+                  ? 'All scheduled work'
+                  : `${projects.length} visible projects`}
+              </small>
+            </th>
+            {days.map((day) => {
+              const value = dayTotal(day),
+                pct = dailyTarget ? Math.round((value / dailyTarget) * 100) : 0;
+              return (
+                <td key={day} className={pct > 100 ? 'over' : ''}>
+                  {fmt(value)}h
+                  <small>
+                    {leave.includes(day)
+                      ? 'Leave'
+                      : dailyTarget
+                        ? `${pct}% plan`
+                        : '—'}
+                  </small>
+                </td>
+              );
+            })}
+            <td>
+              {fmt(
+                projects.reduce(
+                  (n, p) => n + projectMetrics(p, week, leaveWeeks).logged,
+                  0,
+                ),
+              )}
+              h
+            </td>
+            <td>—</td>
+            <td className={over ? 'over' : ''}>
+              {over
+                ? `${fmt(-totals.remaining)}h over`
+                : `${fmt(Math.max(0, totals.remaining))}h free`}
+            </td>
+            <td className="usage-cell"></td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+function AllocationMeter({
+  label,
+  fullLabel = label,
+  used,
+  allocation,
+  frontloaded = 0,
+  nativeAllocation = 0,
+  frontloadedUsage = 0,
+}) {
+  const unlimited = allocation == null,
+    debt = !unlimited && allocation < 0,
+    available = unlimited ? 0 : Math.max(0, allocation),
+    totalUsed = used + frontloadedUsage,
+    scale = Math.max(available, totalUsed, EPSILON),
+    sourceUsedWidth = Math.min(
+      100,
+      Math.max(0, (frontloadedUsage / scale) * 100),
+    ),
+    actualWidth = Math.min(
+      100 - sourceUsedWidth,
+      Math.max(0, (used / scale) * 100),
+    ),
+    native = Math.min(available, Math.max(0, nativeAllocation)),
+    frontloadedAvailable = Math.min(
+      frontloaded,
+      Math.max(0, available - native),
+    ),
+    frontloadedUsed = Math.max(
+      0,
+      Math.min(frontloadedAvailable, used - native),
+    ),
+    nativeLeft = (native / scale) * 100,
+    frontloadedWidth = (frontloadedAvailable / scale) * 100,
+    frontloadedUsedWidth = (frontloadedUsed / scale) * 100,
+    status = unlimited
+      ? 'unlimited'
+      : debt || totalUsed > available + EPSILON
+        ? 'over'
+        : Math.abs(totalUsed - available) <= EPSILON
+          ? 'at'
+          : 'under';
+  return (
+    <div
+      className={`allocation-meter ${status}${frontloadedAvailable > EPSILON ? ' has-frontload' : ''}${frontloadedUsage > EPSILON ? ' has-frontload-usage' : ''}`}
+    >
+      <div>
+        <span>{label}</span>
+        <b>
+          {unlimited
+            ? 'Unlimited'
+            : debt
+              ? `0h available · ${fmt(-allocation)}h debt`
+              : `${fmt(totalUsed)} / ${fmt(available)}h`}
+        </b>
+      </div>
+      <i
+        title={
+          unlimited
+            ? `${fullLabel}: unlimited`
+            : debt
+              ? `${fullLabel}: ${fmt(-allocation)}h over due to frontloading`
+              : `${fullLabel}: ${fmt(totalUsed)} / ${fmt(available)}h`
+        }
+        aria-label={
+          unlimited
+            ? `${label}: unlimited`
+            : debt
+              ? `${label}: ${fmt(-allocation)} hours over due to frontloading`
+              : `${label}: ${Math.round((totalUsed / scale) * 100)}% allocated`
+        }
+      >
+        <b
+          className="allocation-fill"
+          style={{ left: `${sourceUsedWidth}%`, width: `${actualWidth}%` }}
+        />
+        {frontloadedUsage > EPSILON && (
+          <span
+            className="frontload-source-used"
+            style={{ width: `${sourceUsedWidth}%` }}
+            title="frontloaded to previous week"
+            tabIndex="0"
+            aria-label="frontloaded to previous week"
+          />
+        )}
+        {frontloadedAvailable > EPSILON && (
+          <>
+            <span
+              className="frontload-cap"
+              style={{ left: `${nativeLeft}%`, width: `${frontloadedWidth}%` }}
+              title="frontloaded from next week"
+              tabIndex="0"
+              aria-label="frontloaded from next week"
+            />
+            <span
+              className="frontload-used"
+              style={{
+                left: `${nativeLeft}%`,
+                width: `${frontloadedUsedWidth}%`,
+              }}
+            />
+          </>
+        )}
+      </i>
+    </div>
+  );
+}
+function ProjectAllocationBars({ project, week, leaveWeeks, className = '' }) {
+  const metrics = projectMetrics(project, week, leaveWeeks),
+    month = monthKey(dayDate(week, 3)),
+    monthlyAllocation = monthlyPlan(project, week),
+    monthlyUsed =
+      monthlyAllocation == null ? 0 : monthlyLogged(project, month, leaveWeeks),
+    sourceWeek = metrics.frontloadedOut > EPSILON,
+    weeklyAllocation = sourceWeek ? metrics.plan : metrics.weeklyAllowance,
+    nativeWeekly = sourceWeek
+      ? Math.max(0, Number(metrics.plan || 0))
+      : Math.max(0, Number(metrics.plan || 0) - metrics.frontloadedOut),
+    frontloadedWeekly = sourceWeek
+      ? 0
+      : Math.max(0, (metrics.weeklyAvailable || 0) - nativeWeekly),
+    fullyUnlimited = weeklyAllocation == null && monthlyAllocation == null;
+  return (
+    <div className={`project-allocation-bars ${className}`}>
+      {fullyUnlimited ? (
+        <span className="allocation-unlimited">Unlimited</span>
+      ) : (
+        <>
+          <AllocationMeter
+            label="Weekly"
+            used={metrics.logged}
+            allocation={weeklyAllocation}
+            nativeAllocation={nativeWeekly}
+            frontloaded={frontloadedWeekly}
+            frontloadedUsage={metrics.frontloadedOut}
+          />
+          {monthlyAllocation != null && (
+            <AllocationMeter
+              label="Monthly"
+              used={monthlyUsed}
+              allocation={monthlyAllocation}
+            />
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+function ProjectRow({
+  p,
+  index,
+  count,
+  week,
+  days,
+  leave,
+  leaveWeeks,
+  hideClient,
+  suggestion,
+  onEntry,
+  onAddLine,
+  onEdit,
+  onFrontload,
+  onSuggestFrontload,
+  onRemove,
+  onMove,
+}) {
+  const m = projectMetrics(p, week, leaveWeeks),
+    hasTasks = (p.tasks || []).some(
+      (task) => task.id !== 'general' && task.name.toLowerCase() !== 'general',
+    ),
+    hasLines = taskLinesFor(p, week).length > 0,
+    sourceNote =
+      m.frontloadedOut > EPSILON
+        ? `−${fmt(m.frontloadedOut)}h frontloaded to previous week`
+        : null,
+    incomingNote =
+      m.frontloadedIn > EPSILON
+        ? `+${fmt(m.frontloadedIn)}h due to frontloading from next week`
+        : null,
+    over = m.remaining != null && m.remaining < -EPSILON,
+    status = projectStatus(p.status);
+  return (
+    <tr
+      className={`project-start${hasTasks ? ' project-header-row' : ''}`}
+      style={{ '--pc': p.color || 'var(--muted)' }}
+    >
+      {hasTasks ? (
+        <th colSpan={days.length + 2} className="project-header-cell">
+          <div className="header-line">
+            <span className="header-id">
+              {p.client && !hideClient && (
+                <span className="project-client">{p.client}</span>
+              )}
+              <span className="table-project-title">
+                <i style={{ background: p.color || 'var(--muted)' }} />
+                <button
+                  className="project-name"
+                  onClick={onEdit}
+                  title={p.code ? `${p.name} · ${p.code}` : p.name}
+                >
+                  {p.name}
+                </button>
+                <FrontloadWarning metrics={m} />
+                <FrontloadButton project={p} week={week} onOpen={onFrontload} />
+              </span>
+            </span>
+            <span className="row-chips">
+              {status !== 'active' && (
+                <span className={`project-status-badge status-${status}`}>
+                  {projectStatusLabel(status)}
+                </span>
+              )}
+              {p.isBillable === false && (
+                <span className="billability-badge">Non-billable</span>
+              )}
+              {hasTasks && !hasLines && (
+                <button className="inline-add-line" onClick={onAddLine}>
+                  add a task line
+                </button>
+              )}
+            </span>
+            <ProjectAllocationBars
+              project={p}
+              week={week}
+              leaveWeeks={leaveWeeks}
+              className="timesheet-allocation-bars is-inline hdr-inline"
+            />
+          </div>
+        </th>
+      ) : (
+        <th>
+          <div className="header-id">
+            {p.client && !hideClient && (
+              <span className="project-client">{p.client}</span>
+            )}
+            <span className="table-project-title">
+              <i style={{ background: p.color || 'var(--muted)' }} />
+              <button
+                className="project-name"
+                onClick={onEdit}
+                title={p.code ? `${p.name} · ${p.code}` : p.name}
+              >
+                {p.name}
+              </button>
+              <FrontloadWarning metrics={m} />
+              <FrontloadButton project={p} week={week} onOpen={onFrontload} />
+            </span>
+            <span className="row-chips">
+              {status !== 'active' && (
+                <span className={`project-status-badge status-${status}`}>
+                  {projectStatusLabel(status)}
+                </span>
+              )}
+              {p.isBillable === false && (
+                <span className="billability-badge">Non-billable</span>
+              )}
+            </span>
+          </div>
+          <ProjectAllocationBars
+            project={p}
+            week={week}
+            leaveWeeks={leaveWeeks}
+            className="timesheet-allocation-bars is-edge"
+          />
+        </th>
+      )}
+      {hasTasks
+        ? null
+        : days.map((d) => (
+            <td key={d} className={leave.includes(d) ? 'leave' : ''}>
+              {leave.includes(d) ? (
+                <span className="leave-label">Leave</span>
+              ) : (
+                <>
+                  {suggestion &&
+                    suggestion.taskId == null &&
+                    suggestion.day === d && (
+                      <EntryFrontloadButton
+                        project={p}
+                        onOpen={onSuggestFrontload}
+                        adjustment={suggestion.adjustment}
+                      />
+                    )}
+                  <input
+                    aria-label={`${p.name}, General, ${DAY_NAMES[d]}`}
+                    key={`${p.id}-${week}-${d}-${p.entries?.[week]?.[d] ?? ''}`}
+                    defaultValue={
+                      p.entries?.[week]?.[d] == null
+                        ? ''
+                        : fmt(p.entries[week][d])
+                    }
+                    onBlur={(e) => onEntry(p.id, week, d, e.target.value)}
+                    placeholder="—"
+                    inputMode="decimal"
+                  />
+                </>
+              )}
+            </td>
+          ))}
+      {!hasTasks && <td>{fmt(m.logged)}h</td>}
+      <td
+        className={sourceNote || incomingNote ? 'frontload-reduced-limit' : ''}
+      >
+        {m.plan == null ? 'Unlimited' : `${fmt(m.plan)}h`}
+        {sourceNote && (
+          <small
+            className="frontload-source-note"
+            title={`Weekly limit reduced by ${fmt(m.frontloadedOut)} hours due to frontloading in the previous week`}
+          >
+            {sourceNote}
+          </small>
+        )}
+        {incomingNote && (
+          <small
+            className="frontload-source-note"
+            title={`Weekly capacity includes ${fmt(m.frontloadedIn)} hours frontloaded from next week`}
+          >
+            {incomingNote}
+          </small>
+        )}
+      </td>
+      <td className={m.status}>
+        {m.remaining == null
+          ? 'Unlimited'
+          : over
+            ? `${fmt(-m.remaining)}h over`
+            : Math.abs(m.remaining) <= EPSILON
+              ? 'At plan'
+              : `${fmt(Math.max(0, m.remaining))}h left`}
+      </td>
+      <td className="usage-cell">
+        <ProjectAllocationBars
+          project={p}
+          week={week}
+          leaveWeeks={leaveWeeks}
+          className="timesheet-allocation-bars is-inline is-usage"
+        />
+      </td>
+      <td>
+        <div className="row-actions">
+          {hasTasks && (
+            <button
+              onClick={onAddLine}
+              aria-label={`Add task line for ${p.name}`}
+            >
+              ＋
+            </button>
+          )}
+          <button
+            onClick={() => onMove(p.id, -1)}
+            disabled={index === 0}
+            aria-label={`Move ${p.name} up`}
+          >
+            ↑
+          </button>
+          <button
+            onClick={() => onMove(p.id, 1)}
+            disabled={index === count - 1}
+            aria-label={`Move ${p.name} down`}
+          >
+            ↓
+          </button>
+          <button
+            className="row-options"
+            onClick={onEdit}
+            aria-label={`Options for ${p.name}`}
+            title="Project options"
+          >
+            ✎
+          </button>
+          <button
+            className="row-delete"
+            onClick={onRemove}
+            aria-label={`Delete ${p.name}`}
+            title="Delete project"
+          >
+            ✕
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+function TaskEntryRow({
+  project,
+  task,
+  week,
+  days,
+  leave,
+  suggestion,
+  onEntry,
+  onSuggestFrontload,
+  onRemove,
+}) {
+  const entries = project.taskEntries?.[task.id]?.[week] || {},
+    logged = days.reduce(
+      (sum, day) => sum + (leave.includes(day) ? 0 : Number(entries[day] || 0)),
+      0,
+    );
+  return (
+    <tr
+      className="task-entry-row"
+      style={{ '--pc': project.color || 'var(--muted)' }}
+    >
+      <th>
+        <span className="task-indent" title={project.name + ' · ' + task.name}>
+          {task.name}
+        </span>
+      </th>
+      {days.map((day) => (
+        <td key={day} className={leave.includes(day) ? 'leave' : ''}>
+          {leave.includes(day) ? (
+            <span className="leave-label">Leave</span>
+          ) : (
+            <>
+              {suggestion?.taskId === task.id && suggestion.day === day && (
+                <EntryFrontloadButton
+                  project={project}
+                  onOpen={onSuggestFrontload}
+                  adjustment={suggestion.adjustment}
+                />
+              )}
+              <input
+                aria-label={`${project.name}, ${task.name}, ${DAY_NAMES[day]}`}
+                key={`${project.id}-${task.id}-${week}-${day}-${entries[day] ?? ''}`}
+                defaultValue={entries[day] == null ? '' : fmt(entries[day])}
+                onBlur={(event) =>
+                  onEntry(project.id, task.id, week, day, event.target.value)
+                }
+                placeholder="—"
+                inputMode="decimal"
+              />
+            </>
+          )}
+        </td>
+      ))}
+      <td>{fmt(logged)}h</td>
+      <td>—</td>
+      <td>—</td>
+      <td className="usage-cell"></td>
+      <td>
+        <button
+          className="task-line-remove"
+          onClick={onRemove}
+          aria-label={`Remove ${task.name} line`}
+        >
+          ×
+        </button>
+      </td>
+    </tr>
+  );
+}
+function MobileCards({
+  projects,
+  category,
+  week,
+  days,
+  leave,
+  leaveWeeks,
+  onEntry,
+  onTaskEntry,
+  onAddLine,
+  onRemoveTaskLine,
+  onEdit,
+  onFrontload,
+}) {
+  const groups = categoriseProjects(projects, category, week, leaveWeeks);
+  return (
+    <div className="mobile-cards">
+      {groups.map((group) => (
+        <section className="mobile-category" key={group.key}>
+          {category !== 'none' && (
+            <h3>
+              {group.label}
+              <span>{group.projects.length}</span>
+            </h3>
+          )}
+          {group.projects.map((p) => {
+            const m = projectMetrics(p, week, leaveWeeks),
+              taskLines = taskLinesFor(p, week),
+              hasTasks = (p.tasks || []).some(
+                (task) =>
+                  task.id !== 'general' &&
+                  task.name.toLowerCase() !== 'general',
+              ),
+              sourceNote =
+                m.frontloadedOut > EPSILON
+                  ? ` · −${fmt(m.frontloadedOut)}h frontloaded to previous week`
+                  : '',
+              over = m.remaining != null && m.remaining < -EPSILON,
+              status = projectStatus(p.status);
+            return (
+              <article key={p.id}>
+                {p.client && category !== 'client' && (
+                  <div className="project-client">{p.client}</div>
+                )}
+                <header>
+                  <div className="mobile-project-title">
+                    <button onClick={() => onEdit(p)}>{p.name}</button>
+                    <FrontloadWarning metrics={m} />
+                    <FrontloadButton
+                      project={p}
+                      week={week}
+                      onOpen={() => onFrontload(p)}
+                    />
+                  </div>
+                  <span className={m.status}>
+                    {m.remaining == null
+                      ? 'Unlimited'
+                      : over
+                        ? `${fmt(-m.remaining)}h over`
+                        : Math.abs(m.remaining) <= EPSILON
+                          ? 'At plan'
+                          : `${fmt(Math.max(0, m.remaining))}h left`}
+                  </span>
+                </header>
+                {(status !== 'active' || p.isBillable === false) && (
+                  <div className="mobile-project-meta">
+                    {status !== 'active' && (
+                      <span className={`project-status-badge status-${status}`}>
+                        {projectStatusLabel(status)}
+                      </span>
+                    )}
+                    {p.isBillable === false && (
+                      <span className="billability-badge">Non-billable</span>
+                    )}
+                  </div>
+                )}
+                <ProjectAllocationBars
+                  project={p}
+                  week={week}
+                  leaveWeeks={leaveWeeks}
+                  className="mobile-allocation-bars"
+                />
+                {!hasTasks && (
+                  <div>
+                    {days.map((d) => (
+                      <label key={d}>
+                        {DAY_SHORT[d]}
+                        <input
+                          aria-label={`${p.name}, General, ${DAY_NAMES[d]}`}
+                          disabled={leave.includes(d)}
+                          key={`${p.id}-mobile-${week}-${d}-${p.entries?.[week]?.[d] ?? ''}`}
+                          defaultValue={
+                            p.entries?.[week]?.[d] == null
+                              ? ''
+                              : fmt(p.entries[week][d])
+                          }
+                          onBlur={(e) => onEntry(p.id, week, d, e.target.value)}
+                          placeholder={leave.includes(d) ? 'Leave' : '—'}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                )}
+                {taskLines.map((task) => (
+                  <section className="mobile-task-block" key={task.id}>
+                    <strong>
+                      {task.name}
+                      <button
+                        onClick={() => onRemoveTaskLine(p.id, task.id)}
+                        aria-label={`Remove ${task.name} line`}
+                      >
+                        ×
+                      </button>
+                    </strong>
+                    <div>
+                      {days.map((day) => {
+                        const value = p.taskEntries?.[task.id]?.[week]?.[day];
+                        return (
+                          <label key={day}>
+                            {DAY_SHORT[day]}
+                            <input
+                              aria-label={`${p.name}, ${task.name}, ${DAY_NAMES[day]}`}
+                              disabled={leave.includes(day)}
+                              key={`${p.id}-${task.id}-mobile-${week}-${day}-${value ?? ''}`}
+                              defaultValue={value == null ? '' : fmt(value)}
+                              onBlur={(event) =>
+                                onTaskEntry(
+                                  p.id,
+                                  task.id,
+                                  week,
+                                  day,
+                                  event.target.value,
+                                )
+                              }
+                              placeholder={leave.includes(day) ? 'Leave' : '—'}
+                            />
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
+                <footer>
+                  {fmt(m.logged)}h logged ·{' '}
+                  {m.plan == null
+                    ? 'Unlimited plan'
+                    : `${fmt(m.plan)}h planned`}
+                  {sourceNote && (
+                    <span
+                      className="frontload-source-note"
+                      title={`Weekly limit reduced by ${fmt(m.frontloadedOut)} hours due to frontloading in the previous week`}
+                    >
+                      {sourceNote}
+                    </span>
+                  )}
+                  {hasTasks && (
+                    <button
+                      className="mobile-add-line"
+                      onClick={() => onAddLine(p)}
+                    >
+                      Add task line
+                    </button>
+                  )}
+                </footer>
+              </article>
+            );
+          })}
+        </section>
+      ))}
+    </div>
+  );
+}
+function MobileDays({ projects, week, days, leave, onEntry, onTaskEntry }) {
+  const dates = weekDates(week);
+  return (
+    <div className="mobile-days">
+      {days.map((day) => {
+        const isLeave = leave.includes(day),
+          total = projects.reduce(
+            (sum, project) =>
+              sum +
+              (isLeave
+                ? 0
+                : Number(project.entries?.[week]?.[day] || 0) +
+                  taskHoursForDay(project, week, day)),
+            0,
+          );
+        return (
+          <article key={day}>
+            <header>
+              <div>
+                <strong>{DAY_NAMES[day]}</strong>
+                <span>
+                  {dates[day].toLocaleDateString('en-AU', {
+                    day: 'numeric',
+                    month: 'short',
+                  })}
+                </span>
+              </div>
+              <b className={isLeave ? 'leave-day-total' : ''}>
+                {isLeave ? 'Leave' : `${fmt(total)}h logged`}
+              </b>
+            </header>
+            <div className="mobile-day-projects">
+              {projects.map((project) => (
+                <Fragment key={project.id}>
+                  {projectHasPhases(project) && (
+                    <strong className="mobile-line-label">
+                      {project.name}
+                    </strong>
+                  )}
+                  {!projectHasPhases(project) && (
+                    <label>
+                      <span>{project.name}</span>
+                      <input
+                        aria-label={`${DAY_NAMES[day]}, ${project.name}, General`}
+                        disabled={isLeave}
+                        key={`${project.id}-day-${week}-${day}-${project.entries?.[week]?.[day] ?? ''}`}
+                        defaultValue={
+                          project.entries?.[week]?.[day] == null
+                            ? ''
+                            : fmt(project.entries[week][day])
+                        }
+                        onBlur={(event) =>
+                          onEntry(project.id, week, day, event.target.value)
+                        }
+                        placeholder={isLeave ? 'Leave' : '—'}
+                      />
+                    </label>
+                  )}
+                  {taskLinesFor(project, week).map((task) => {
+                    const value = project.taskEntries?.[task.id]?.[week]?.[day];
+                    return (
+                      <label className="mobile-task-line" key={task.id}>
+                        <span>
+                          {project.name} · {task.name}
+                        </span>
+                        <input
+                          aria-label={`${DAY_NAMES[day]}, ${project.name}, ${task.name}`}
+                          disabled={isLeave}
+                          key={`${project.id}-${task.id}-day-${week}-${day}-${value ?? ''}`}
+                          defaultValue={value == null ? '' : fmt(value)}
+                          onBlur={(event) =>
+                            onTaskEntry(
+                              project.id,
+                              task.id,
+                              week,
+                              day,
+                              event.target.value,
+                            )
+                          }
+                          placeholder={isLeave ? 'Leave' : '—'}
+                        />
+                      </label>
+                    );
+                  })}
+                </Fragment>
+              ))}
+            </div>
+            {projects.length === 0 && (
+              <p className="quiet">No projects match the current filters.</p>
+            )}
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+function Insights({ projects, week, leaveWeeks }) {
+  const groups = { over: [], at: [], under: [], unlimited: [] };
+  projects.forEach((p) =>
+    groups[projectMetrics(p, week, leaveWeeks).status].push(p),
+  );
+  return (
+    <aside className="insights">
+      <div>
+        <h2>Project usage</h2>
+      </div>
+      {[
+        ['over', 'Over plan'],
+        ['at', 'At plan'],
+        ['under', 'Allowance left'],
+        ['unlimited', 'Unlimited'],
+      ].map(
+        ([key, label]) =>
+          groups[key].length > 0 && (
+            <section className="insight-group" key={key}>
+              <h3>
+                {label}
+                <span>{groups[key].length}</span>
+              </h3>
+              {groups[key].slice(0, 6).map((p) => {
+                const m = projectMetrics(p, week, leaveWeeks),
+                  over = m.remaining != null && m.remaining < -EPSILON;
+                return (
+                  <div className={`insight-item ${key}`} key={p.id}>
+                    <div>
+                      <strong>
+                        {p.name}
+                        <FrontloadWarning metrics={m} />
+                      </strong>
+                      <span>
+                        {m.remaining == null
+                          ? `${fmt(m.logged)}h logged`
+                          : over
+                            ? `${fmt(-m.remaining)}h over`
+                            : Math.abs(m.remaining) <= EPSILON
+                              ? 'At plan'
+                              : `${fmt(m.logged)} / ${fmt(m.effective)}h`}
+                      </span>
+                    </div>
+                    <ProjectAllocationBars
+                      project={p}
+                      week={week}
+                      leaveWeeks={leaveWeeks}
+                    />
+                  </div>
+                );
+              })}
+            </section>
+          ),
+      )}
+      {projects.length === 0 && (
+        <p className="quiet">No projects are scheduled for this week.</p>
+      )}
+    </aside>
+  );
+}
+function Empty({ projects, onNew, onManage, onSample }) {
+  let title = 'No projects yet',
+    copy = 'Create your first project to start planning the week.';
+  if (projects.length) {
+    title = 'Nothing scheduled this week';
+    copy =
+      'Projects exist, but they are hidden, archived, or scheduled for another week.';
+  }
+  return (
+    <div className="empty">
+      <h2>{title}</h2>
+      <p>{copy}</p>
+      <div>
+        <button className="primary" onClick={onNew}>
+          Create project
+        </button>
+        {projects.length === 0 && (
+          <button onClick={onSample}>Add sample workspace</button>
+        )}
+        {projects.length > 0 && (
+          <button onClick={onManage}>Review projects</button>
+        )}
+      </div>
+    </div>
+  );
+}
+function Settings({ settings, onClose, onSave }) {
+  const [draft, setDraft] = useState({
+    ...settings,
+    capacityByDay: [...(settings.capacityByDay || DEFAULT_CAPACITY)],
+    visibleDays: [...(settings.visibleDays || DEFAULT_VISIBLE_DAYS)],
+  });
+  return (
+    <Modal title="Workspace settings" onClose={onClose}>
+      <label>
+        Theme
+        <select
+          value={draft.theme}
+          onChange={(e) => setDraft({ ...draft, theme: e.target.value })}
+        >
+          <option value="system">Use device theme</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </label>
+      <fieldset>
+        <legend>Visible days</legend>
+        <div className="checks">
+          {DAY_NAMES.map((name, i) => (
+            <label className="check" key={name}>
+              <input
+                type="checkbox"
+                checked={draft.visibleDays.includes(i)}
+                onChange={() => {
+                  const next = draft.visibleDays.includes(i)
+                    ? draft.visibleDays.filter((d) => d !== i)
+                    : [...draft.visibleDays, i].sort();
+                  if (next.length) setDraft({ ...draft, visibleDays: next });
+                }}
+              />
+              {name}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Working capacity</legend>
+        <div className="capacity-inputs">
+          {DAY_SHORT.map((day, i) => (
+            <label key={day}>
+              {day}
+              <input
+                type="number"
+                min="0"
+                max="24"
+                step="0.1"
+                value={draft.capacityByDay[i]}
+                onChange={(e) => {
+                  const next = [...draft.capacityByDay];
+                  next[i] = Math.max(0, Math.min(24, Number(e.target.value)));
+                  setDraft({ ...draft, capacityByDay: next });
+                }}
+              />
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <div className="modal-actions">
+        <button onClick={onClose}>Cancel</button>
+        <button className="primary" onClick={() => onSave(draft)}>
+          Save settings
+        </button>
+      </div>
+    </Modal>
+  );
+}
+function FilePanel({
+  attached,
+  fileName,
+  status,
+  dirty,
+  supported,
+  onClose,
+  onOpen,
+  onCreate,
+  onSaveNow,
+  onRefresh,
+  onExport,
+  onExportCsv,
+  onManage,
+}) {
+  return (
+    <Modal title="TimeMaster file" onClose={onClose}>
+      <section
+        className={`active-file-card ${attached ? 'attached' : 'local'}`}
+      >
+        <span>Active file</span>
+        <strong>{fileName || 'No JSON file attached'}</strong>
+        <small>{status}</small>
+      </section>
+      {!supported && (
+        <p className="file-warning" role="status">
+          Direct read/write access requires a recent Chrome or Edge browser and
+          this HTTPS site. You can still import and download JSON copies in
+          other browsers.
+        </p>
+      )}
+      <div className="file-actions file-primary-actions">
+        <button className="primary" onClick={onOpen}>
+          Choose existing JSON
+        </button>
+        <button onClick={onCreate}>Create new TimeMaster.json</button>
+        <button onClick={onSaveNow} disabled={!attached || !dirty}>
+          Save now
+        </button>
+        <button onClick={onRefresh} disabled={!attached}>
+          Refresh from file
+        </button>
+      </div>
+      <div className="file-actions file-secondary-actions">
+        <button onClick={onExport}>Download backup copy</button>
+        <button onClick={onExportCsv}>Export timesheet CSV</button>
+        <button onClick={onManage}>Projects and archive</button>
+      </div>
+    </Modal>
+  );
+}

@@ -16,12 +16,21 @@ function getDB() {
   });
 }
 
-export async function saveSessionToIdb(fileHandle, weekKey, data, fileRevision = null, savedSignature = null) {
+export async function saveSessionToIdb(
+  fileHandle,
+  weekKey,
+  data,
+  fileRevision = null,
+  savedSignature = null,
+) {
   const db = await getDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
-    store.put({ fileHandle, weekKey, data, fileRevision, savedSignature }, 'currentSession');
+    store.put(
+      { fileHandle, weekKey, data, fileRevision, savedSignature },
+      'currentSession',
+    );
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });

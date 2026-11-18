@@ -12,6 +12,7 @@
     "desktop:dist": "npm run build && electron-builder --win",
     "test": "node tests/run-tests.mjs",
     "lint": "eslint .",
+    "format": "prettier --write src/",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -29,6 +30,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
+    "prettier": "^3.10.1",
     "vite": "^8.0.12",
     "vite-plugin-singlefile": "^2.3.3"
   },
