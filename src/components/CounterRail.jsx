@@ -7,12 +7,20 @@ export default function CounterRail({ totals, projects, onFill, onCapacity }) {
   return (
     <aside className="counter-rail" aria-label="Workspace counters">
       <article className="dial-card">
-        <p>Billable</p>
-        <strong>{totals.logged ? `${bill}%` : '—'}</strong>
+        <p className="readout-label">Billable</p>
+        <strong className="readout-value">
+          {totals.logged ? bill : '—'}
+          {totals.logged > 0 && <small>%</small>}
+        </strong>
+        <div className="readout-meter" aria-hidden="true">
+          <i style={{ width: bill + '%' }} />
+        </div>
         <p>
-          <b>{fmt(totals.billable)}h</b> billable
-          <br />
+          <b>{fmt(totals.billable)}h</b> billable ·{' '}
           <span>{fmt(totals.logged - totals.billable)}h non-billable</span>
+          <br />
+          {fmt(totals.resourced)}h of {fmt(WEEKLY_RESOURCING_CAPACITY)}h
+          resourced
         </p>
       </article>
       <button
@@ -20,9 +28,7 @@ export default function CounterRail({ totals, projects, onFill, onCapacity }) {
         onClick={onCapacity}
         aria-label="View capacity breakdown"
       >
-        <p>
-          {overCapacity > EPSILON ? 'Over capacity' : 'Available capacity'} ↗
-        </p>
+        <p className="readout-label">Capacity</p>
         <strong
           className={
             overCapacity > EPSILON
@@ -32,22 +38,26 @@ export default function CounterRail({ totals, projects, onFill, onCapacity }) {
                 : ''
           }
         >
-          {fmt(overCapacity || totals.resourcingCapacity)}h
+          {fmt(overCapacity || totals.resourcingCapacity)}
+          <small>h</small>
         </strong>
         <span>
-          {fmt(totals.resourced)} / {fmt(WEEKLY_RESOURCING_CAPACITY)}h resourced
+          {overCapacity > EPSILON
+            ? 'Over the weekly allocation'
+            : 'Unresourced hours this week'}
           {totals.frontloading > EPSILON &&
             ` · ${fmt(totals.frontloading)}h frontloaded`}
         </span>
+        <u>Breakdown →</u>
       </button>
       <article className="overview-stat">
-        <p>Projects</p>
+        <p className="readout-label">Projects</p>
         <strong>{projects.length}</strong>
         <span>
-          {fmt(totals.today)}h logged today ·{' '}
-          {totals.over
-            ? `${totals.over} over allocation`
-            : 'allocations in range'}
+          {fmt(totals.today)}h logged today
+          {totals.over > 0 && (
+            <b className="over-text"> · {totals.over} over allocation</b>
+          )}
         </span>
         <button onClick={onFill} disabled={totals.remaining <= 0}>
           Fill remaining

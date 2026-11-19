@@ -21,6 +21,7 @@ import { taskHoursForDay, taskLinesFor } from '../lib/taskLines.js';
 export default function TimesheetTable({
   projects,
   allProjects,
+  capacityByDay,
   category,
   week,
   days,
@@ -54,14 +55,15 @@ export default function TimesheetTable({
     over = totals.remaining < -EPSILON,
     groups = categoriseProjects(projects, category, week, leaveWeeks),
     columnCount = days.length + 5;
+  const today = new Date().toDateString();
   const sizing = useColumnWidths();
   const columns = [
-    ['project', 'Project / task', 246, 155],
+    ['project', 'Project / task', 205, 155],
     ...days.map((day) => ['day-' + day, DAY_NAMES[day], 66, 58]),
     ['logged', 'Logged', 72, 64],
     ['plan', 'Plan', 76, 70],
     ['allowance', 'Allowance', 102, 86],
-    ['actions', 'Actions', 124, 76],
+    ['actions', 'Actions', 76, 76],
   ];
   const widths = columns.map(([id, , initial]) => sizing.widths[id] || initial);
   return (
@@ -71,7 +73,16 @@ export default function TimesheetTable({
       >
         <colgroup>
           {columns.map(([id], i) => (
-            <col key={id} style={{ width: widths[i] }} />
+            <col
+              key={id}
+              className={
+                id.startsWith('day-') &&
+                weekDates(week)[Number(id.slice(4))].toDateString() === today
+                  ? 'current-day'
+                  : ''
+              }
+              style={{ width: widths[i] }}
+            />
           ))}
         </colgroup>
         <thead>
@@ -87,7 +98,13 @@ export default function TimesheetTable({
                   column={columns[i + 1]}
                   sizing={sizing}
                   key={d}
-                  className={off ? 'leave' : ''}
+                  className={
+                    off
+                      ? 'leave'
+                      : date.toDateString() === today
+                        ? 'current-day'
+                        : ''
+                  }
                 >
                   <button
                     className="leave-day-toggle"
@@ -95,9 +112,22 @@ export default function TimesheetTable({
                     aria-pressed={off}
                     aria-label={`${off ? 'Remove' : 'Mark'} ${DAY_NAMES[d]} leave`}
                   >
-                    {DAY_SHORT[d]}
+                    {DAY_SHORT[d]} <b>{date.getDate()}</b>
                   </button>
-                  <b>{date.getDate()}</b>
+                  <span className="day-load">
+                    <i
+                      style={{
+                        width:
+                          Math.min(
+                            100,
+                            (100 * dayTotal(d)) / (capacityByDay?.[d] || 1),
+                          ) + '%',
+                      }}
+                    />
+                  </span>
+                  <small>
+                    {off ? 'Leave' : fmt(capacityByDay?.[d] || 0) + 'h'}
+                  </small>
                 </ColumnHeader>
               );
             })}

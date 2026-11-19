@@ -35,7 +35,9 @@ export default function Commands({ actions }) {
   return (
     <>
       <button className="command-trigger" onClick={open}>
-        Commands <kbd>Ctrl K</kbd>
+        <span aria-hidden="true">⌕</span>{' '}
+        <span className="jump-label">Jump to anything</span>
+        <span className="phone-jump">Commands</span> <kbd>Ctrl K</kbd>
       </button>
       <dialog
         ref={dialog}

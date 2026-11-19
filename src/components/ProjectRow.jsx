@@ -47,8 +47,12 @@ export default function ProjectRow({
         <th colSpan={days.length + 1} className="project-header-cell">
           <div className="header-line">
             <span className="header-id">
-              {p.client && !hideClient && (
-                <span className="project-client">{p.client}</span>
+              {((p.client && !hideClient) || p.code) && (
+                <span className="project-client">
+                  {[!hideClient && p.client, p.code]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </span>
               )}
               <span className="table-project-title">
                 <i style={{ background: p.color || 'var(--muted)' }} />
@@ -63,6 +67,18 @@ export default function ProjectRow({
                 <FrontloadButton project={p} week={week} onOpen={onFrontload} />
               </span>
             </span>
+            {m.effective > 0 && (
+              <span
+                className="phase-budget"
+                title={fmt(m.logged) + ' / ' + fmt(m.effective) + 'h'}
+              >
+                <i
+                  style={{
+                    width: Math.min(100, (100 * m.logged) / m.effective) + '%',
+                  }}
+                />
+              </span>
+            )}
             <span className="row-chips">
               {status !== 'active' && (
                 <span className={`project-status-badge status-${status}`}>
@@ -83,8 +99,10 @@ export default function ProjectRow({
       ) : (
         <th>
           <div className="header-id">
-            {p.client && !hideClient && (
-              <span className="project-client">{p.client}</span>
+            {((p.client && !hideClient) || p.code) && (
+              <span className="project-client">
+                {[!hideClient && p.client, p.code].filter(Boolean).join(' · ')}
+              </span>
             )}
             <span className="table-project-title">
               <i style={{ background: p.color || 'var(--muted)' }} />

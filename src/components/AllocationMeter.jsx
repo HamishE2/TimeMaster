@@ -75,6 +75,12 @@ export default function AllocationMeter({
           className="allocation-fill"
           style={{ left: `${sourceUsedWidth}%`, width: `${actualWidth}%` }}
         />
+        {totalUsed > available + EPSILON && !unlimited && (
+          <span
+            className="overrun-segment"
+            style={{ left: (100 * available) / scale + '%' }}
+          />
+        )}
         {frontloadedUsage > EPSILON && (
           <span
             className="frontload-source-used"

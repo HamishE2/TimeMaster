@@ -20,7 +20,7 @@ export default function Insights({ projects, week, leaveWeeks }) {
       ].map(
         ([key, label]) =>
           groups[key].length > 0 && (
-            <section className="insight-group" key={key}>
+            <section className={`insight-group group-${key}`} key={key}>
               <h3>
                 {label}
                 <span>{groups[key].length}</span>
@@ -32,6 +32,10 @@ export default function Insights({ projects, week, leaveWeeks }) {
                   <div className={`insight-item ${key}`} key={p.id}>
                     <div>
                       <strong>
+                        <i
+                          className="project-ring"
+                          style={{ color: p.color }}
+                        />
                         {p.name}
                         <FrontloadWarning metrics={m} />
                       </strong>

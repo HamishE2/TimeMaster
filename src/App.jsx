@@ -76,7 +76,7 @@ const empty = {
     visibleDays: DEFAULT_VISIBLE_DAYS,
     leaveWeeks: {},
     capacityByDay: DEFAULT_CAPACITY,
-    theme: 'system',
+    theme: 'light',
   },
 };
 
@@ -85,13 +85,6 @@ const icon = (d) => (
     <path d={d} />
   </svg>
 );
-
-function isoWeek(week) {
-  const thursday = new Date(week + 'T00:00:00Z');
-  thursday.setUTCDate(thursday.getUTCDate() + 3);
-  const yearStart = Date.UTC(thursday.getUTCFullYear(), 0, 1);
-  return Math.ceil(((thursday - yearStart) / 86400000 + 1) / 7);
-}
 
 export default function App() {
   const [data, setData] = useState(empty),
@@ -493,41 +486,83 @@ export default function App() {
     return true;
   };
   const addSample = () => {
-    const sample = [
+    const specs = [
       {
         name: 'Contoso M365 Adoption',
-        hours: 15,
-        isBillable: true,
-        monthly: null,
-        historical: 0,
-        client: 'Contoso Pty Ltd',
+        client: 'Contoso',
         code: 'PRJ-1042',
-        status: 'active',
-        color: '#0f9e8e',
+        color: '#078579',
+        hours: 12,
+        entries: { 0: 4, 1: 3, 3: 3 },
       },
       {
         name: 'Northwind Teams Governance',
-        hours: 8,
-        isBillable: true,
-        monthly: null,
-        historical: 0,
         client: 'Northwind',
         code: 'PRJ-1088',
-        status: 'active',
-        color: '#8b5cf6',
+        color: '#2177a8',
+        hours: 5,
+        entries: { 0: 2, 1: 2, 3: 2 },
+      },
+      {
+        name: 'Contoso Intranet Refresh',
+        client: 'Contoso',
+        code: 'PRJ-1120',
+        color: '#7957bc',
+        hours: 10,
+        monthly: 40,
+        historical: 18,
+        tasks: [
+          { id: 'general', name: 'General' },
+          { id: 'discovery', name: 'Discovery' },
+          { id: 'build', name: 'Build' },
+        ],
+        phases: { discovery: { 0: 1.5, 1: 1 }, build: { 3: 1.5 } },
+      },
+      {
+        name: 'Fabrikam Copilot Pilot',
+        client: 'Fabrikam',
+        code: 'PRJ-1104',
+        isBillable: false,
+        color: '#b64e82',
+        hours: 3,
+        entries: { 1: 1.5, 3: 1.5 },
+      },
+      {
+        name: 'Presales',
+        client: 'Internal',
+        code: 'PS-01',
+        color: '#a4780f',
+        hours: 4,
+        isBillable: false,
+      },
+      {
+        name: 'Professional Development',
+        client: 'Internal',
+        code: 'PD',
+        color: '#60707e',
+        hours: null,
+        isBillable: false,
       },
     ];
-    setData((d) => ({
-      ...d,
-      projects: [
-        ...d.projects,
-        ...sample.map((fields) => createProjectRecord(fields, 'onwards', week)),
-      ],
-    }));
-    setNotice({
-      type: 'success',
-      text: 'Added two sample projects. Edit or remove them whenever you are ready.',
+    const sample = specs.map(({ entries, phases, ...fields }) => {
+      const project = createProjectRecord(
+        {
+          monthly: null,
+          historical: 0,
+          isBillable: true,
+          status: 'active',
+          ...fields,
+        },
+        'onwards',
+        week,
+      );
+      if (entries) project.entries[week] = entries;
+      for (const [task, hours] of Object.entries(phases || {}))
+        project.taskEntries[task] = { [week]: hours };
+      return project;
     });
+    setData((d) => ({ ...d, projects: [...d.projects, ...sample] }));
+    setNotice({ type: 'success', text: 'Sample workspace added.' });
   };
   const attachLoadedFile = useCallback((result) => {
     const signature = workspaceSignature(result.data);
@@ -748,14 +783,30 @@ export default function App() {
     <div className="app" data-theme={data.settings.theme}>
       <header className="topbar">
         <a className="brand" href="#workspace">
-          Time<span>Master</span>
+          <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+            <circle
+              cx="12"
+              cy="12"
+              r="10"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.3"
+            />
+            <path
+              d="M12 3v9h9"
+              fill="#ffd23f"
+              stroke="currentColor"
+              strokeWidth="2"
+            />
+          </svg>
+          Time <span>Master</span>
         </a>
         <button
           className={`file-status file-status-${fileStatus}`}
           onClick={() => setPanel('file')}
           title="Open file controls"
         >
-          <strong>{fileName || 'No JSON attached'}</strong>
+          <strong>{fileName || 'Local workspace'}</strong>
           <span>{saveStatusText}</span>
         </button>
         <nav className="top-actions">
@@ -777,6 +828,13 @@ export default function App() {
               ['Previous week', () => setWeek(shiftWeek(week, -1))],
               ['Next week', () => setWeek(shiftWeek(week, 1))],
               ['Today', () => setWeek(weekKeyFor(new Date()))],
+              ...visible.map((p) => [
+                p.name + (p.client ? ' · ' + p.client : ''),
+                () => {
+                  setEdit(p);
+                  setPanel('project');
+                },
+              ]),
             ]}
           />
           <button onClick={() => setPanel('file')}>File</button>
@@ -797,9 +855,6 @@ export default function App() {
       <main id="workspace">
         <section className="week-head">
           <div>
-            <span className="week-stamp">
-              Wk <b>{isoWeek(week)}</b>
-            </span>
             <h1>{weekLabel(week, days)}</h1>
           </div>
           <div className="week-nav">
@@ -810,7 +865,11 @@ export default function App() {
               {icon('M15 18l-6-6 6-6')}
             </button>
             <button onClick={() => setWeek(weekKeyFor(new Date()))}>
-              Today
+              Today ·{' '}
+              {new Date().toLocaleDateString('en-AU', {
+                weekday: 'short',
+                day: 'numeric',
+              })}
             </button>
             <button
               onClick={() => setWeek(shiftWeek(week, 1))}
@@ -892,7 +951,7 @@ export default function App() {
                 <option value="nonbillable">Non-billable</option>
               </select>
               <label className="timesheet-grouping">
-                Group
+                <span className="sr-only">Group</span>
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
@@ -940,6 +999,7 @@ export default function App() {
             ) : (
               <>
                 <TimesheetTable
+                  capacityByDay={data.settings.capacityByDay}
                   projects={matching}
                   allProjects={visible}
                   category={category}
