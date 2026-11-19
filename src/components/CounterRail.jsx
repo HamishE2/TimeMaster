@@ -2,24 +2,17 @@ import { EPSILON, WEEKLY_RESOURCING_CAPACITY, fmt } from '../lib/utils.js';
 
 export default function CounterRail({ totals, projects, onFill, onCapacity }) {
   const bill = Math.round(totals.billablePct),
+    overCapacity = Math.max(0, totals.resourced - WEEKLY_RESOURCING_CAPACITY),
     capacityWarning = totals.resourcingCapacity > 3 + EPSILON;
   return (
     <aside className="counter-rail" aria-label="Workspace counters">
       <article className="dial-card">
-        <div className="dial" style={{ '--dial': `${bill * 3.6}deg` }}>
-          <div>
-            <strong>{totals.logged ? `${bill}%` : '—'}</strong>
-            <span>Billable</span>
-          </div>
-        </div>
+        <p>Billable</p>
+        <strong>{totals.logged ? `${bill}%` : '—'}</strong>
         <p>
           <b>{fmt(totals.billable)}h</b> billable
           <br />
           <span>{fmt(totals.logged - totals.billable)}h non-billable</span>
-          <span className="resourced-counter">
-            {fmt(totals.resourced)}h of {fmt(WEEKLY_RESOURCING_CAPACITY)}h
-            resourced
-          </span>
         </p>
       </article>
       <button
@@ -27,14 +20,24 @@ export default function CounterRail({ totals, projects, onFill, onCapacity }) {
         onClick={onCapacity}
         aria-label="View capacity breakdown"
       >
-        <p>Capacity</p>
-        <strong className={capacityWarning ? 'capacity-warning' : ''}>
-          {fmt(totals.resourcingCapacity)}h{capacityWarning && ' !'}
+        <p>
+          {overCapacity > EPSILON ? 'Over capacity' : 'Available capacity'} ↗
+        </p>
+        <strong
+          className={
+            overCapacity > EPSILON
+              ? 'over-text'
+              : capacityWarning
+                ? 'capacity-warning'
+                : ''
+          }
+        >
+          {fmt(overCapacity || totals.resourcingCapacity)}h
         </strong>
         <span>
-          Unresourced hours this week
+          {fmt(totals.resourced)} / {fmt(WEEKLY_RESOURCING_CAPACITY)}h resourced
           {totals.frontloading > EPSILON &&
-            ` · includes ${fmt(totals.frontloading)}h frontloading adjustment`}
+            ` · ${fmt(totals.frontloading)}h frontloaded`}
         </span>
       </button>
       <article className="overview-stat">

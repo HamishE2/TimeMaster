@@ -23,9 +23,7 @@ export default function CapacityModal({
   return (
     <Modal title="Capacity breakdown" onClose={onClose} wide>
       <p className="help">
-        Net weekly resourcing is measured against{' '}
-        {fmt(WEEKLY_RESOURCING_CAPACITY)}h. Frontloaded hours adjust the week
-        they are moved from and to.
+        Weekly resourcing target · {fmt(WEEKLY_RESOURCING_CAPACITY)}h
       </p>
       <div className="capacity-breakdown">
         <div className="capacity-breakdown-head">

@@ -7,7 +7,7 @@ import {
 } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 import App from '../src/App.jsx';
-import { loadSessionFromIdb } from '../src/lib/idb.js';
+import { loadSessionFromIdb, saveSessionToIdb } from '../src/lib/idb.js';
 
 vi.mock('../src/lib/idb.js', () => ({
   loadSessionFromIdb: vi.fn(),
@@ -122,4 +122,40 @@ test('renders General time and two phase lines on desktop and mobile', async () 
     ).toBe(columnCount);
   }
   expect(consoleError).not.toHaveBeenCalled();
+});
+
+test('remembers ledger column widths and queues local edits immediately', async () => {
+  const week = '2026-11-16';
+  loadSessionFromIdb.mockResolvedValue({
+    weekKey: week,
+    data: {
+      schemaVersion: 3,
+      projects: [{ id: 'audit', name: 'Audit', resourcedHours: 8 }],
+      settings: {},
+    },
+  });
+  const view = render(<App />);
+  const table = await screen.findByRole('table');
+  const handle = within(table).getByRole('separator', {
+    name: 'Resize Project / task column',
+  });
+  const before = Number(handle.getAttribute('aria-valuenow'));
+  fireEvent.keyDown(handle, { key: 'ArrowRight' });
+  expect(Number(handle.getAttribute('aria-valuenow'))).toBe(before + 12);
+  const input = within(table).getByRole('textbox', {
+    name: 'Audit, General, Monday',
+  });
+  fireEvent.blur(input, { target: { value: '2.5' } });
+  expect(saveSessionToIdb.mock.lastCall[2].projects[0].entries[week][0]).toBe(
+    2.5,
+  );
+  view.unmount();
+  render(<App />);
+  const restored = within(await screen.findByRole('table')).getByRole(
+    'separator',
+    { name: 'Resize Project / task column' },
+  );
+  expect(Number(restored.getAttribute('aria-valuenow'))).toBe(before + 12);
+  fireEvent.keyDown(restored, { key: 'Home' });
+  expect(Number(restored.getAttribute('aria-valuenow'))).toBe(before);
 });

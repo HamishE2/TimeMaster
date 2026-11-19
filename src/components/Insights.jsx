@@ -25,7 +25,7 @@ export default function Insights({ projects, week, leaveWeeks }) {
                 {label}
                 <span>{groups[key].length}</span>
               </h3>
-              {groups[key].slice(0, 6).map((p) => {
+              {groups[key].map((p) => {
                 const m = projectMetrics(p, week, leaveWeeks),
                   over = m.remaining != null && m.remaining < -EPSILON;
                 return (

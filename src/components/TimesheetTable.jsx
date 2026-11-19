@@ -1,3 +1,5 @@
+import { ColumnHeader } from './ColumnHeader.jsx';
+import { useColumnWidths } from './useColumnWidths.js';
 import { Fragment } from 'react';
 import {
   DAY_NAMES,
@@ -52,17 +54,41 @@ export default function TimesheetTable({
     over = totals.remaining < -EPSILON,
     groups = categoriseProjects(projects, category, week, leaveWeeks),
     columnCount = days.length + 5;
+  const sizing = useColumnWidths();
+  const columns = [
+    ['project', 'Project / task', 246, 155],
+    ...days.map((day) => ['day-' + day, DAY_NAMES[day], 66, 58]),
+    ['logged', 'Logged', 72, 64],
+    ['plan', 'Plan', 76, 70],
+    ['allowance', 'Allowance', 102, 86],
+    ['actions', 'Actions', 124, 76],
+  ];
+  const widths = columns.map(([id, , initial]) => sizing.widths[id] || initial);
   return (
     <div className="table-scroll">
-      <table>
+      <table
+        style={{ width: widths.reduce((a, b) => a + b, 0), minWidth: '100%' }}
+      >
+        <colgroup>
+          {columns.map(([id], i) => (
+            <col key={id} style={{ width: widths[i] }} />
+          ))}
+        </colgroup>
         <thead>
           <tr>
-            <th>Project / task</th>
-            {days.map((d) => {
+            <ColumnHeader column={columns[0]} sizing={sizing}>
+              Project / task
+            </ColumnHeader>
+            {days.map((d, i) => {
               const date = weekDates(week)[d],
                 off = leave.includes(d);
               return (
-                <th key={d} className={off ? 'leave' : ''}>
+                <ColumnHeader
+                  column={columns[i + 1]}
+                  sizing={sizing}
+                  key={d}
+                  className={off ? 'leave' : ''}
+                >
                   <button
                     className="leave-day-toggle"
                     onClick={() => onLeave(d)}
@@ -72,13 +98,18 @@ export default function TimesheetTable({
                     {DAY_SHORT[d]}
                   </button>
                   <b>{date.getDate()}</b>
-                </th>
+                </ColumnHeader>
               );
             })}
-            <th>Logged</th>
-            <th>Plan</th>
-            <th>Allowance</th>
-            <th></th>
+            {columns.slice(-4).map((column) => (
+              <ColumnHeader key={column[0]} column={column} sizing={sizing}>
+                {column[0] === 'actions' ? (
+                  <span className="sr-only">Actions</span>
+                ) : (
+                  column[1]
+                )}
+              </ColumnHeader>
+            ))}
           </tr>
         </thead>
         <tbody>

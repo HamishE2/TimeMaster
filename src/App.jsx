@@ -1,3 +1,4 @@
+import Commands from './components/Commands.jsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DAY_NAMES,
@@ -85,6 +86,13 @@ const icon = (d) => (
   </svg>
 );
 
+function isoWeek(week) {
+  const thursday = new Date(week + 'T00:00:00Z');
+  thursday.setUTCDate(thursday.getUTCDate() + 3);
+  const yearStart = Date.UTC(thursday.getUTCFullYear(), 0, 1);
+  return Math.ceil(((thursday - yearStart) / 86400000 + 1) / 7);
+}
+
 export default function App() {
   const [data, setData] = useState(empty),
     [ready, setReady] = useState(false),
@@ -98,6 +106,7 @@ export default function App() {
     [frontloadTarget, setFrontloadTarget] = useState(null),
     [capacityDetails, setCapacityDetails] = useState(false),
     [query, setQuery] = useState(''),
+    [showSheetTools, setShowSheetTools] = useState(false),
     [filter, setFilter] = useState('all'),
     [category, setCategory] = useState('none'),
     [notice, setNotice] = useState(null),
@@ -108,8 +117,7 @@ export default function App() {
     [fileStatus, setFileStatus] = useState('local'),
     [lastSavedAt, setLastSavedAt] = useState(null),
     [savedFileSignature, setSavedFileSignature] = useState('');
-  const cacheTimer = useRef(),
-    autoSaveTimer = useRef(),
+  const autoSaveTimer = useRef(),
     saveInFlight = useRef(false),
     saveBlocked = useRef(false),
     latestSignature = useRef(workspaceSignature(empty));
@@ -679,22 +687,17 @@ export default function App() {
     if (!ready) return;
     const payload = backupPayload(data.projects, data.settings),
       signature = workspaceSignature(payload);
-    clearTimeout(cacheTimer.current);
-    cacheTimer.current = setTimeout(
-      () =>
-        saveSessionToIdb(
-          file,
-          week,
-          payload,
-          fileRevision,
-          savedFileSignature,
-        ).catch(() =>
-          setNotice({
-            type: 'error',
-            text: 'The browser copy could not be saved. Export a backup copy from File.',
-          }),
-        ),
-      200,
+    saveSessionToIdb(
+      file,
+      week,
+      payload,
+      fileRevision,
+      savedFileSignature,
+    ).catch(() =>
+      setNotice({
+        type: 'error',
+        text: 'The browser copy could not be saved. Export a backup copy from File.',
+      }),
     );
     clearTimeout(autoSaveTimer.current);
     if (file && signature !== savedFileSignature && !saveBlocked.current) {
@@ -702,7 +705,6 @@ export default function App() {
       autoSaveTimer.current = setTimeout(() => saveAttachedFile(), 800);
     }
     return () => {
-      clearTimeout(cacheTimer.current);
       clearTimeout(autoSaveTimer.current);
     };
   }, [
@@ -757,6 +759,26 @@ export default function App() {
           <span>{saveStatusText}</span>
         </button>
         <nav className="top-actions">
+          <Commands
+            actions={[
+              ['File', () => setPanel('file')],
+              ['Import', () => setPanel('import')],
+              ['Projects', () => setPanel('manage')],
+              ['Settings', () => setPanel('settings')],
+              [
+                'New project',
+                () => {
+                  setEdit(null);
+                  setPanel('project');
+                },
+              ],
+              ['Capacity breakdown', () => setCapacityDetails(true)],
+              ['Add line', () => setLineTarget(true)],
+              ['Previous week', () => setWeek(shiftWeek(week, -1))],
+              ['Next week', () => setWeek(shiftWeek(week, 1))],
+              ['Today', () => setWeek(weekKeyFor(new Date()))],
+            ]}
+          />
           <button onClick={() => setPanel('file')}>File</button>
           <button onClick={() => setPanel('import')}>Import</button>
           <button onClick={() => setPanel('manage')}>Projects</button>
@@ -775,7 +797,9 @@ export default function App() {
       <main id="workspace">
         <section className="week-head">
           <div>
-            <p className="eyebrow">Weekly plan</p>
+            <span className="week-stamp">
+              Wk <b>{isoWeek(week)}</b>
+            </span>
             <h1>{weekLabel(week, days)}</h1>
           </div>
           <div className="week-nav">
@@ -792,42 +816,55 @@ export default function App() {
               onClick={() => setWeek(shiftWeek(week, 1))}
               aria-label="Next week"
             >
-              {icon('M9 18l6-6 6-6')}
+              {icon('M9 18l6-6-6-6')}
             </button>
           </div>
         </section>
-        <div className="mobile-switch">
-          <button
-            className={mobileView === 'projects' ? 'selected' : ''}
-            onClick={() => setMobileView('projects')}
-          >
-            By project
-          </button>
-          <button
-            className={mobileView === 'days' ? 'selected' : ''}
-            onClick={() => setMobileView('days')}
-          >
-            By day
-          </button>
-        </div>
         <section
           className={`workspace ${mobileView === 'days' ? 'day-mode' : ''}`}
         >
-          <Overview totals={totals} week={week} settings={data.settings} />
-          <CounterRail
-            totals={totals}
-            projects={visible}
-            onFill={fillDevelopment}
-            onCapacity={() => setCapacityDetails(true)}
-          />
+          <div className="week-readouts">
+            <Overview totals={totals} week={week} settings={data.settings} />
+            <CounterRail
+              totals={totals}
+              projects={visible}
+              onFill={fillDevelopment}
+              onCapacity={() => setCapacityDetails(true)}
+            />
+          </div>
           <div className="sheet">
-            <div className="sheet-toolbar">
+            <div className="mobile-switch">
+              <button
+                className={mobileView === 'projects' ? 'selected' : ''}
+                onClick={() => setMobileView('projects')}
+              >
+                By project
+              </button>
+              <button
+                className={mobileView === 'days' ? 'selected' : ''}
+                onClick={() => setMobileView('days')}
+              >
+                By day
+              </button>
+            </div>
+
+            <div
+              className={`sheet-toolbar ${showSheetTools ? 'tools-open' : ''}`}
+            >
               <div>
                 <h2>Timesheet</h2>
                 <span>
                   {matching.length} of {visible.length} projects
                 </span>
               </div>
+              <button
+                className="sheet-tools-toggle"
+                aria-expanded={showSheetTools}
+                onClick={() => setShowSheetTools(!showSheetTools)}
+              >
+                Filters
+                {(query || filter !== 'all' || category !== 'none') && ' •'}
+              </button>
               <label className="search">
                 <span className="sr-only">Search projects</span>
                 {icon(

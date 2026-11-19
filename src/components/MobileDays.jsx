@@ -51,7 +51,12 @@ export default function MobileDays({
                   )}
                   {!hasPhases(project) && (
                     <label>
-                      <span>{project.name}</span>
+                      <span>
+                        {project.client && (
+                          <small className="day-client">{project.client}</small>
+                        )}
+                        {project.name}
+                      </span>
                       <input
                         aria-label={`${DAY_NAMES[day]}, ${project.name}, General`}
                         disabled={isLeave}
@@ -72,9 +77,7 @@ export default function MobileDays({
                     const value = project.taskEntries?.[task.id]?.[week]?.[day];
                     return (
                       <label className="mobile-task-line" key={task.id}>
-                        <span>
-                          {project.name} · {task.name}
-                        </span>
+                        <span>{task.name}</span>
                         <input
                           aria-label={`${DAY_NAMES[day]}, ${project.name}, ${task.name}`}
                           disabled={isLeave}

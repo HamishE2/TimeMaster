@@ -1,0 +1,656 @@
+.app {
+  font-variant-numeric: tabular-nums;
+}
+.topbar {
+  background: var(--surface);
+  border-bottom: 2px solid var(--ink);
+  gap: 18px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  font-size: 23px;
+  letter-spacing: -0.06em;
+  font-weight: 700;
+}
+.brand span {
+  color: inherit;
+}
+.brand::before {
+  content: '';
+  width: 27px;
+  height: 27px;
+  margin-right: 8px;
+  border: 1px solid #302a17;
+  border-radius: 6px;
+  background:
+    linear-gradient(
+        90deg,
+        transparent 24%,
+        #252115 24% 32%,
+        transparent 32% 46%,
+        #252115 46% 54%,
+        transparent 54% 68%,
+        #252115 68% 76%,
+        transparent 76%
+      )
+      center / 100% 55% no-repeat,
+    #ffd23f;
+}
+.top-actions button,
+.week-nav button {
+  border-radius: 5px;
+}
+main#workspace {
+  max-width: 1800px;
+}
+.week-head {
+  max-width: none;
+  align-items: center;
+  padding: 24px clamp(14px, 2.5vw, 46px) 18px;
+}
+.week-head > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.week-stamp {
+  display: grid;
+  border-right: 1px solid var(--border);
+  padding-right: 16px;
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.week-stamp b {
+  font-size: 34px;
+  letter-spacing: -0.055em;
+  line-height: 1;
+  color: var(--ink);
+}
+.week-head h1 {
+  font-size: clamp(22px, 2.1vw, 34px);
+  line-height: 1.15;
+  letter-spacing: -0.045em;
+}
+.workspace {
+  display: grid;
+  padding: 0 clamp(14px, 2.5vw, 46px) 42px;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(225px, 20%);
+  grid-template-areas: 'readouts readouts' 'sheet insights';
+}
+.week-readouts {
+  grid-area: readouts;
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr 1fr;
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--ink);
+  border-radius: 6px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.week-readouts .counter-rail {
+  display: contents;
+}
+.week-readouts .horizon,
+.week-readouts .counter-rail > * {
+  display: block;
+  grid-area: auto;
+  min-width: 0;
+  text-align: left;
+  margin: 0;
+  padding: 16px 18px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  align-self: stretch;
+}
+.week-readouts .counter-rail > * {
+  border-left: 1px solid var(--border);
+}
+.week-readouts p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.week-readouts .horizon-head p,
+.week-readouts .counter-rail > * > p:first-child {
+  font-weight: 650;
+  color: var(--ink);
+}
+.week-readouts .horizon:after {
+  content: none;
+}
+.week-readouts .horizon-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0 8px;
+}
+.week-readouts .horizon-head strong,
+.week-readouts .counter-rail > * > strong {
+  display: block;
+  font-size: 32px;
+  line-height: 1.1;
+  letter-spacing: -0.045em;
+  margin: 5px 0;
+}
+.week-readouts .horizon-head strong span {
+  font-size: 0.65em;
+  margin-left: 2px;
+}
+.week-readouts .horizon-track {
+  margin: 8px 0;
+  height: 5px;
+}
+.week-readouts .horizon-track em {
+  display: none;
+}
+.week-readouts .horizon-track:has(.show) > span {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--danger) 0 2px,
+    var(--surface) 2px 4px
+  );
+}
+.week-readouts .horizon-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.week-readouts .horizon-days span {
+  min-width: 24px;
+}
+.week-readouts .horizon-days b {
+  font-size: 12px;
+}
+.week-readouts .overview-stat > span {
+  min-height: 0;
+  line-height: 1.4;
+}
+.week-readouts .overview-stat button {
+  width: auto;
+  min-height: 28px;
+  margin-top: 5px;
+  padding: 3px 9px;
+}
+.week-readouts .capacity-widget:hover {
+  background: var(--surface-2);
+}
+.week-readouts .resourced-counter {
+  display: block;
+}
+.sheet,
+.insights {
+  min-width: 0;
+}
+.sheet-toolbar {
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  gap: 8px;
+}
+.table-scroll table {
+  table-layout: fixed;
+}
+.table-scroll table th,
+.table-scroll table td {
+  min-width: 0;
+  max-width: none;
+  width: auto;
+}
+.table-scroll thead th {
+  position: relative;
+  vertical-align: middle;
+}
+.table-scroll .column-handle {
+  position: absolute;
+  display: block;
+  z-index: 2;
+  width: 10px;
+  inset: 0 -1px 0 auto;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+.column-handle::after {
+  content: '';
+  display: block;
+  width: 1px;
+  margin: auto;
+  height: 65%;
+  margin-top: 8px;
+  background: var(--border);
+}
+.column-handle:is(:hover, :focus-visible, :active)::after {
+  width: 3px;
+  background: var(--focus);
+}
+.table-scroll .header-id .project-client,
+.table-scroll .table-project-title .project-name,
+.project-header-row .project-name,
+.insight-item strong,
+.manage-project-meta,
+.manage-project-client,
+.mobile-cards .mobile-project-title > button,
+.mobile-day-projects label span,
+.capacity-breakdown-row strong,
+.task-indent {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+  max-width: none;
+}
+.table-scroll .header-id .row-chips:not(:empty) {
+  grid-column: 1/-1;
+  flex-wrap: wrap;
+}
+.table-scroll .header-id .row-chips:empty {
+  display: none;
+}
+.table-scroll .row-actions {
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.table-scroll td input {
+  width: 100%;
+  max-width: 72px;
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.table-scroll .header-id .project-client,
+.mobile-cards .project-client {
+  text-transform: none;
+  color: var(--muted);
+  font-weight: 550;
+  letter-spacing: 0;
+}
+.table-scroll tbody td small {
+  display: block;
+  line-height: 1.35;
+}
+.insight-item > div:first-child {
+  flex-wrap: wrap;
+  row-gap: 3px;
+}
+.insight-item strong {
+  display: block;
+}
+.field-error,
+.import-error {
+  margin-block: 5px 9px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.modal,
+.modal-content,
+.scrim > section {
+  border-radius: 7px;
+}
+@media (max-width: 1199px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'readouts' 'sheet' 'insights';
+  }
+  .workspace > .insights {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  }
+  .insights > div:first-child {
+    grid-column: 1/-1;
+  }
+}
+@media (max-width: 760px) {
+  .week-readouts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .week-readouts .counter-rail > :nth-child(2) {
+    border-left: 0;
+  }
+  .week-readouts .counter-rail > :nth-child(n + 2) {
+    border-top: 1px solid var(--border);
+  }
+  .week-readouts .horizon,
+  .week-readouts .counter-rail > * {
+    padding: 12px;
+  }
+  .week-head {
+    flex-wrap: wrap;
+    padding-top: 16px;
+  }
+  .week-head > div:first-child {
+    gap: 10px;
+  }
+  .week-readouts .horizon-days {
+    gap: 3px;
+  }
+  .week-readouts .horizon-days span {
+    min-width: 20px;
+  }
+  .topbar {
+    position: static;
+  }
+  .top-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .top-actions button {
+    flex: 1 0 auto;
+  }
+  .sheet-toolbar {
+    padding: 12px;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  button,
+  input,
+  select {
+    transition:
+      background-color 0.14s,
+      border-color 0.14s,
+      color 0.14s,
+      box-shadow 0.14s,
+      transform 0.12s;
+  }
+  button:not(:disabled):active {
+    transform: translateY(1px);
+  }
+  .horizon-track > span,
+  .allocation-fill {
+    transition: width 0.24s ease-out;
+  }
+  .modal,
+  .modal-content,
+  .toast {
+    animation: chronograph-enter 0.18s ease-out;
+  }
+  @keyframes chronograph-enter {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+.commands {
+  width: min(430px, 90vw);
+  max-height: 80dvh;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--accent);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+.commands::backdrop {
+  background: rgb(16 14 10 / 44%);
+}
+.commands header {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.commands input {
+  min-width: 0;
+  flex: 1;
+  background: var(--surface-2);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 8px 12px;
+}
+.command-list {
+  display: grid;
+}
+.command-list button {
+  border: 0;
+  border-radius: 4px;
+  text-align: left;
+}
+.command-trigger kbd {
+  font: inherit;
+  font-size: 10px;
+  color: var(--muted);
+  margin-left: 5px;
+}
+.week-readouts .counter-rail .dial-card {
+  text-align: left;
+}
+.week-readouts .capacity-widget {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  justify-content: start;
+}
+.table-scroll thead th:not(:first-child) {
+  text-align: center;
+  padding-inline: 7px;
+}
+.table-scroll th:last-child .column-handle {
+  right: 0;
+}
+.table-scroll .header-id .table-project-title {
+  grid-column: 1/-1;
+}
+.table-scroll .header-id .project-client {
+  line-height: 1.35;
+}
+.table-scroll .header-id .row-chips {
+  justify-self: start;
+}
+.table-scroll tbody tr.project-start:not(:first-child) > * {
+  border-top: 3px solid var(--surface-2);
+}
+.insight-item strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+.insights .allocation-meter {
+  color: var(--muted);
+}
+.insights .allocation-meter.over .allocation-fill {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--danger) 0 3px,
+    color-mix(in srgb, var(--danger) 40%, var(--surface)) 3px 5px
+  );
+}
+@media (max-width: 700px) {
+  .app .topbar {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    padding: 10px 14px;
+    gap: 8px;
+    align-items: center;
+  }
+  .topbar .command-trigger kbd,
+  .top-actions > button:not(.command-trigger):not(.primary) {
+    display: none;
+  }
+  .topbar .top-actions {
+    grid-column: 2;
+    grid-row: 1;
+    width: auto;
+    display: flex;
+  }
+  .topbar .file-status {
+    grid-column: 1/-1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 0;
+    min-height: 24px;
+    border: 0;
+    background: transparent;
+  }
+  .app .week-head {
+    gap: 8px;
+  }
+  .week-stamp {
+    padding-right: 8px;
+  }
+  .sheet .mobile-switch {
+    margin: 10px 12px 0;
+  }
+  .week-readouts .counter-rail > *,
+  .week-readouts .horizon {
+    padding: 10px 12px;
+  }
+  .week-readouts .horizon-days {
+    row-gap: 5px;
+  }
+  .week-readouts .horizon-days span {
+    flex: 1 0 28%;
+    font-size: 11px;
+  }
+  .week-readouts .horizon-days b {
+    display: inline;
+    margin-left: 3px;
+  }
+  .sheet-toolbar .search input {
+    width: 100%;
+    min-width: 0;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .commands[open] {
+    animation: chronograph-enter 0.16s ease-out;
+  }
+}
+
+:root {
+  --radius-sm: 5px;
+}
+.manage-input-name {
+  field-sizing: content;
+  resize: none;
+  font: inherit;
+  color: var(--ink);
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.project-select-btn {
+  height: auto;
+  min-height: 42px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.field input.input-error {
+  border-color: var(--danger) !important;
+}
+@media (min-width: 701px) {
+  .modal-backdrop:has(.modal-body),
+  .scrim:has(.capacity-breakdown, .file-actions, fieldset) {
+    place-items: stretch end;
+    padding: 10px;
+  }
+  .modal-backdrop > .modal:has(.modal-body),
+  .scrim > .modal:has(.capacity-breakdown, .file-actions, fieldset) {
+    max-height: calc(100dvh - 20px);
+    min-height: 0;
+    height: 100%;
+    border-top: 3px solid var(--accent);
+  }
+  .modal-backdrop > .modal:has(.modal-body) {
+    display: flex;
+    flex-direction: column;
+  }
+  .modal-backdrop .modal-body {
+    overflow: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  .modal-backdrop .modal-footer,
+  .modal-backdrop .modal-header {
+    flex-shrink: 0;
+  }
+}
+@media (prefers-reduced-motion: no-preference) and (min-width: 701px) {
+  .modal-backdrop > .modal:has(.modal-body),
+  .scrim > .modal:has(.capacity-breakdown, .file-actions, fieldset) {
+    animation: sheet-enter 0.2s ease-out;
+  }
+  @keyframes sheet-enter {
+    from {
+      opacity: 0;
+      transform: translateX(18px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+}
+
+.sheet-tools-toggle,
+.daily-toggle {
+  display: none;
+}
+.leave-day-toggle {
+  text-align: center;
+}
+.week-readouts .counter-rail > .dial-card {
+  display: block;
+  text-align: left;
+}
+.week-readouts .counter-rail > .dial-card p {
+  text-align: left;
+}
+@media (max-width: 700px) {
+  .sheet-tools-toggle,
+  .daily-toggle {
+    display: inline-block;
+  }
+  .daily-toggle {
+    min-height: 26px;
+    padding: 2px 0;
+    color: var(--muted);
+    border: 0;
+    background: transparent;
+    font-size: 12px;
+  }
+  .week-readouts .horizon-days:not(.expanded) {
+    display: none;
+  }
+  .week-readouts .horizon-days.expanded {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .sheet-toolbar:not(.tools-open)
+    > :is(
+      .search,
+      select,
+      .timesheet-grouping,
+      button:not(.sheet-tools-toggle):not(.primary)
+    ) {
+    display: none;
+  }
+  .sheet-toolbar .sheet-tools-toggle {
+    margin-left: auto;
+  }
+}
+@media (max-width: 700px) {
+  .sheet-toolbar:not(.tools-open) > div {
+    width: auto;
+  }
+}
+
+.day-client {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+  margin-bottom: 2px;
+}

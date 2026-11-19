@@ -1,27 +1,27 @@
 @font-face {
-  font-family: 'Inter';
-  src: url('./assets/Inter-VariableFont_opsz,wght.ttf') format('truetype');
+  font-family: 'Instrument Sans';
+  src: url('./assets/InstrumentSans.ttf') format('truetype');
   font-style: normal;
-  font-weight: 100 900;
+  font-weight: 400 700;
   font-display: swap;
 }
 :root {
-  --canvas: #f3f2ed;
-  --surface: #fffef9;
-  --surface-2: #efeee8;
-  --surface-3: #e7e5de;
+  --canvas: #f2efe6;
+  --surface: #fbf9f3;
+  --surface-2: #efeade;
+  --surface-3: #e7e2d5;
   --ink: #151614;
-  --muted: #62645d;
-  --border: #d7d7cf;
-  --accent: #b8ed36;
-  --accent-hover: #a6da27;
+  --muted: #5c574c;
+  --border: #d3ccbb;
+  --accent: #ffd23f;
+  --accent-hover: #f2bd23;
   --accent-ink: #172000;
   --danger: #b92b22;
   --warning: #986400;
-  --healthy: #537b13;
+  --healthy: #2e6a3b;
   --info: #316c86;
   --focus: #375ed8;
-  --radius: 12px;
+  --radius: 6px;
   --font-xs: 11px;
   --font-sm: 12px;
   --font-md: 14px;
@@ -36,76 +36,76 @@
   --text-dim: var(--muted);
   --border-light: var(--border);
   --brand: var(--accent);
-  --brand-light: #648d00;
-  --brand-glow: rgba(146, 196, 23, 0.16);
+  --brand-light: #795400;
+  --brand-glow: rgba(225, 171, 25, 0.16);
   --green: var(--healthy);
   --orange: var(--warning);
   --purple: var(--info);
   --light-red: var(--danger);
   --dark-red: var(--danger);
   --shadow: 0 18px 45px rgba(26, 25, 20, 0.08);
-  font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+  font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif;
   font-synthesis: none;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --canvas: #151515;
-    --surface: #1e1e1e;
-    --surface-2: #272727;
-    --surface-3: #303030;
-    --ink: #f3f2ed;
+    --canvas: #141310;
+    --surface: #201e19;
+    --surface-2: #29261f;
+    --surface-3: #363229;
+    --ink: #f2efe6;
     --muted: #aaa9a2;
     --border: #3b3b3b;
-    --accent: #c0ef43;
-    --accent-hover: #cefa58;
+    --accent: #ffd23f;
+    --accent-hover: #ffdf72;
     --accent-ink: #111700;
     --danger: #ff8e84;
     --warning: #f1bd62;
-    --healthy: #b4dd65;
+    --healthy: #86cc8f;
     --info: #8fcbe2;
     --focus: #91a9ff;
-    --brand-light: #c0ef43;
+    --brand-light: #ffd23f;
     --shadow: 0 20px 55px rgba(0, 0, 0, 0.28);
     color-scheme: dark;
   }
 }
 [data-theme='light'] {
-  --canvas: #f3f2ed;
-  --surface: #fffef9;
-  --surface-2: #efeee8;
-  --surface-3: #e7e5de;
+  --canvas: #f2efe6;
+  --surface: #fbf9f3;
+  --surface-2: #efeade;
+  --surface-3: #e7e2d5;
   --ink: #151614;
-  --muted: #62645d;
-  --border: #d7d7cf;
-  --accent: #b8ed36;
-  --accent-hover: #a6da27;
+  --muted: #5c574c;
+  --border: #d3ccbb;
+  --accent: #ffd23f;
+  --accent-hover: #f2bd23;
   --accent-ink: #172000;
   --danger: #b92b22;
   --warning: #986400;
-  --healthy: #537b13;
+  --healthy: #2e6a3b;
   --info: #316c86;
   --focus: #375ed8;
-  --brand-light: #648d00;
+  --brand-light: #795400;
   color-scheme: light;
 }
 [data-theme='dark'] {
-  --canvas: #151515;
-  --surface: #1e1e1e;
-  --surface-2: #272727;
-  --surface-3: #303030;
-  --ink: #f3f2ed;
+  --canvas: #141310;
+  --surface: #201e19;
+  --surface-2: #29261f;
+  --surface-3: #363229;
+  --ink: #f2efe6;
   --muted: #aaa9a2;
   --border: #3b3b3b;
-  --accent: #c0ef43;
-  --accent-hover: #cefa58;
+  --accent: #ffd23f;
+  --accent-hover: #ffdf72;
   --accent-ink: #111700;
   --danger: #ff8e84;
   --warning: #f1bd62;
-  --healthy: #b4dd65;
+  --healthy: #86cc8f;
   --info: #8fcbe2;
   --focus: #91a9ff;
-  --brand-light: #c0ef43;
+  --brand-light: #ffd23f;
   color-scheme: dark;
 }
 * {
@@ -119,7 +119,7 @@ body,
   background: var(--canvas);
 }
 body {
-  font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+  font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif;
   color: var(--ink);
 }
 button,
@@ -854,7 +854,7 @@ tfoot th small {
   overflow: auto;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: 7px;
   padding: 24px;
   box-shadow: var(--shadow);
 }
@@ -1015,7 +1015,7 @@ tfoot th small {
 }
 .drop-zone {
   border: 1px dashed var(--border);
-  border-radius: 12px;
+  border-radius: 6px;
   padding: 32px;
   text-align: center;
   cursor: pointer;

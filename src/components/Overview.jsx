@@ -1,16 +1,18 @@
+import { useState } from 'react';
 import { DAY_SHORT, DEFAULT_VISIBLE_DAYS, EPSILON, fmt } from '../lib/utils.js';
 
 export default function Overview({ totals, week, settings }) {
+  const [expanded, setExpanded] = useState(false);
   const usedPct = totals.capacity ? (totals.logged / totals.capacity) * 100 : 0,
-    over = totals.remaining < -EPSILON,
-    capacityWarning = totals.resourcingCapacity > 3 + EPSILON;
+    over = totals.remaining < -EPSILON;
   return (
     <article className="horizon" aria-label="Week horizon">
       <div className="horizon-head">
         <div>
-          <p className="eyebrow">Week horizon</p>
+          <p>Time logged</p>
           <strong>
-            {fmt(totals.logged)}h <span>logged</span>
+            {fmt(totals.logged)}
+            <span>h</span>
           </strong>
         </div>
         <div className="horizon-counters">
@@ -19,12 +21,6 @@ export default function Overview({ totals, week, settings }) {
               ? `${fmt(-totals.remaining)}h over`
               : `${fmt(Math.max(0, totals.remaining))}h free`}
           </span>
-          {totals.resourcingCapacity > EPSILON && (
-            <span className={capacityWarning ? 'capacity-warning' : ''}>
-              {fmt(totals.resourcingCapacity)}h capacity
-              {capacityWarning && ' !'}
-            </span>
-          )}
         </div>
       </div>
       <div className="horizon-track">
@@ -33,7 +29,14 @@ export default function Overview({ totals, week, settings }) {
           {Math.round(usedPct)}%
         </em>
       </div>
-      <div className="horizon-days">
+      <button
+        className="daily-toggle"
+        aria-expanded={expanded}
+        onClick={() => setExpanded(!expanded)}
+      >
+        Daily capacity {expanded ? '−' : '+'}
+      </button>
+      <div className={`horizon-days ${expanded ? 'expanded' : ''}`}>
         {(settings.visibleDays || DEFAULT_VISIBLE_DAYS).map((day) => (
           <span key={day}>
             {DAY_SHORT[day]}

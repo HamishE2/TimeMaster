@@ -44,7 +44,7 @@ export default function ProjectRow({
       style={{ '--pc': p.color || 'var(--muted)' }}
     >
       {hasTasks ? (
-        <th colSpan={days.length + 2} className="project-header-cell">
+        <th colSpan={days.length + 1} className="project-header-cell">
           <div className="header-line">
             <span className="header-id">
               {p.client && !hideClient && (
@@ -144,7 +144,7 @@ export default function ProjectRow({
               )}
             </td>
           ))}
-      {!hasTasks && <td>{fmt(m.logged)}h</td>}
+      <td>{fmt(m.logged)}h</td>
       <td
         className={sourceNote || incomingNote ? 'frontload-reduced-limit' : ''}
       >
@@ -163,7 +163,12 @@ export default function ProjectRow({
           </small>
         )}
       </td>
-      <td className={m.status}>{remainingLabel}</td>
+      <td className={m.status}>
+        {remainingLabel}
+        {m.effective > 0 && m.remaining > 0 && (
+          <small>{Math.round((m.remaining / m.effective) * 100)}% left</small>
+        )}
+      </td>
       <td>
         <div className="row-actions">
           {hasTasks && (

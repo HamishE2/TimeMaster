@@ -37,7 +37,6 @@ export default function ManageProjectsModal({
       >
         <div className="modal-header">
           <div>
-            <p className="eyebrow">Workspace library</p>
             <h2 id="manage-projects-title">Manage projects</h2>
           </div>
           <div className="manage-header-actions">
