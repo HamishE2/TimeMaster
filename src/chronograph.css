@@ -1246,6 +1246,44 @@ main#workspace {
   border-radius: 5px;
   background: var(--canvas);
 }
-.commands .command-list section:last-child { margin-bottom: 0; }
-.commands .command-list button { background: transparent; }
-.commands .command-list button:is(:hover, :focus-visible) { background: var(--surface-3); }
+.commands .command-list section:last-child {
+  margin-bottom: 0;
+}
+.commands .command-list button {
+  background: transparent;
+}
+.commands .command-list button:is(:hover, :focus-visible) {
+  background: var(--surface-3);
+}
+.week-picker {
+  display: grid;
+  place-items: center;
+  position: relative;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  margin-left: -1px;
+  background: var(--surface);
+  cursor: pointer;
+}
+.week-picker input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.week-picker:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.sheet-toolbar button,
+.sheet-toolbar select,
+.sheet-toolbar .search {
+  box-sizing: border-box;
+  height: 40px;
+  min-height: 40px;
+}
+.sheet-toolbar .search input {
+  height: 100%;
+}

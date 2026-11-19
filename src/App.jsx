@@ -878,13 +878,29 @@ export default function App() {
             >
               {icon('M15 18l-6-6 6-6')}
             </button>
-            <button onClick={() => setWeek(weekKeyFor(new Date()))}>
-              Today ·{' '}
-              {new Date().toLocaleDateString('en-AU', {
-                weekday: 'short',
-                day: 'numeric',
-              })}
-            </button>
+            <label className="week-picker">
+              <span aria-hidden="true">
+                {week === weekKeyFor(new Date())
+                  ? 'Today · ' +
+                    new Date().toLocaleDateString('en-AU', {
+                      weekday: 'short',
+                      day: 'numeric',
+                    })
+                  : 'Choose date'}
+              </span>
+              <input
+                type="date"
+                aria-label="Choose a date to view its week"
+                value={week}
+                onClick={(event) => event.currentTarget.showPicker?.()}
+                onChange={(event) => {
+                  if (event.target.value)
+                    setWeek(
+                      weekKeyFor(new Date(event.target.value + 'T12:00:00')),
+                    );
+                }}
+              />
+            </label>
             <button
               onClick={() => setWeek(shiftWeek(week, 1))}
               aria-label="Next week"
