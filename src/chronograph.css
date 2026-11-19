@@ -387,7 +387,6 @@ main#workspace {
   max-height: 80dvh;
   padding: 12px;
   border: 1px solid var(--border);
-  border-top: 3px solid var(--accent);
   border-radius: 7px;
   background: var(--surface);
   color: var(--ink);
@@ -561,7 +560,6 @@ main#workspace {
     max-height: calc(100dvh - 20px);
     min-height: 0;
     height: 100%;
-    border-top: 3px solid var(--accent);
   }
   .modal-backdrop > .modal:has(.modal-body) {
     display: flex;
@@ -1184,4 +1182,59 @@ main#workspace {
   .topbar .file-status {
     grid-row: 3;
   }
+}
+
+.commands[open] {
+  display: flex;
+  flex-direction: column;
+  width: min(500px, 94vw);
+}
+.commands header {
+  flex: none;
+}
+.commands input:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+.command-list {
+  display: block;
+  overflow: auto;
+  min-height: 0;
+}
+.command-list section {
+  padding: 7px 2px;
+}
+.command-list section + section {
+  border-top: 1px solid var(--border);
+}
+.command-list h3 {
+  margin: 3px 9px 5px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--muted);
+}
+.command-list button {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 9px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 9px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.command-list small,
+.command-list p {
+  color: var(--muted);
+  font-size: 12px;
+}
+.command-list section p {
+  margin: 5px 9px;
+}
+.command-list .phase-command {
+  padding-left: 28px;
+}
+.command-list button:focus-visible {
+  outline-offset: -2px;
 }

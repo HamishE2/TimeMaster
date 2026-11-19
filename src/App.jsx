@@ -92,6 +92,7 @@ export default function App() {
     [week, setWeek] = useState(weekKeyFor(new Date())),
     [panel, setPanel] = useState(null),
     [edit, setEdit] = useState(null),
+    [focusPhase, setFocusPhase] = useState(null),
     [returnToManage, setReturnToManage] = useState(false),
     [removeTarget, setRemoveTarget] = useState(null),
     [confirm, setConfirm] = useState(null),
@@ -377,6 +378,7 @@ export default function App() {
         ),
       };
     });
+    setFocusPhase(null);
     setEdit(null);
     setPanel(returnToManage ? 'manage' : null);
     setReturnToManage(false);
@@ -811,30 +813,42 @@ export default function App() {
         </button>
         <nav className="top-actions">
           <Commands
-            actions={[
-              ['File', () => setPanel('file')],
-              ['Import', () => setPanel('import')],
-              ['Projects', () => setPanel('manage')],
-              ['Settings', () => setPanel('settings')],
+            projects={data.projects}
+            onProject={(project, phaseId = null) => {
+              setFocusPhase(phaseId);
+              setEdit(project);
+              setPanel('project');
+            }}
+            sections={[
               [
-                'New project',
-                () => {
-                  setEdit(null);
-                  setPanel('project');
-                },
+                'Timesheet actions',
+                [
+                  ['Add line', () => setLineTarget(true)],
+                  ['Capacity breakdown', () => setCapacityDetails(true)],
+                  ['Previous week', () => setWeek(shiftWeek(week, -1))],
+                  ['Next week', () => setWeek(shiftWeek(week, 1))],
+                  ['Today', () => setWeek(weekKeyFor(new Date()))],
+                ],
               ],
-              ['Capacity breakdown', () => setCapacityDetails(true)],
-              ['Add line', () => setLineTarget(true)],
-              ['Previous week', () => setWeek(shiftWeek(week, -1))],
-              ['Next week', () => setWeek(shiftWeek(week, 1))],
-              ['Today', () => setWeek(weekKeyFor(new Date()))],
-              ...visible.map((p) => [
-                p.name + (p.client ? ' · ' + p.client : ''),
-                () => {
-                  setEdit(p);
-                  setPanel('project');
-                },
-              ]),
+              [
+                'Other actions',
+                [
+                  [
+                    'New project',
+                    () => {
+                      setEdit(null);
+                      setPanel('project');
+                    },
+                  ],
+                  ['Manage projects', () => setPanel('manage')],
+                  ['Import', () => setPanel('import')],
+                  ['File', () => setPanel('file')],
+                ],
+              ],
+              [
+                'Application settings',
+                [['Workspace settings', () => setPanel('settings')]],
+              ],
             ]}
           />
           <button onClick={() => setPanel('file')}>File</button>
@@ -1104,9 +1118,11 @@ export default function App() {
         </div>
       )}
       <ProjectModal
+        focusPhase={focusPhase}
         isOpen={panel === 'project'}
         onClose={() => {
           setPanel(returnToManage ? 'manage' : null);
+          setFocusPhase(null);
           setEdit(null);
           setReturnToManage(false);
         }}

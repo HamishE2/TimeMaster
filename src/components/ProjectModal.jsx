@@ -6,6 +6,7 @@ import ModalBackdrop from './ModalBackdrop.jsx';
 
 export default function ProjectModal({
   isOpen,
+  focusPhase,
   onClose,
   onSave,
   initial,
@@ -35,6 +36,7 @@ export default function ProjectModal({
   const [tasks, setTasks] = useState([{ id: 'general', name: 'General' }]);
   const [newTask, setNewTask] = useState('');
   const [pendingTaskRemoval, setPendingTaskRemoval] = useState(null);
+  const phaseRef = useRef(null);
   const nameRef = useRef(null);
   const dropdownRef = useRef(null);
 
@@ -107,9 +109,13 @@ export default function ProjectModal({
       );
       setNewTask('');
       setPendingTaskRemoval(null);
-      setTimeout(() => nameRef.current?.focus(), 50);
+      const timer = setTimeout(
+        () => (phaseRef.current || nameRef.current)?.focus(),
+        50,
+      );
+      return () => clearTimeout(timer);
     }
-  }, [isOpen, initial, weekKey]);
+  }, [isOpen, initial, weekKey, focusPhase]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -982,6 +988,7 @@ export default function ProjectModal({
               {tasks.map((task) => (
                 <div className="project-task-item" key={task.id}>
                   <input
+                    ref={task.id === focusPhase ? phaseRef : undefined}
                     aria-label={`Task name: ${task.name}`}
                     value={task.name}
                     onChange={(event) =>
