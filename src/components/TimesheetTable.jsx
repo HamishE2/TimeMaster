@@ -51,7 +51,7 @@ export default function TimesheetTable({
       Math.max(1, days.filter((day) => !leave.includes(day)).length),
     over = totals.remaining < -EPSILON,
     groups = categoriseProjects(projects, category, week, leaveWeeks),
-    columnCount = days.length + 6;
+    columnCount = days.length + 5;
   return (
     <div className="table-scroll">
       <table>
@@ -78,7 +78,6 @@ export default function TimesheetTable({
             <th>Logged</th>
             <th>Plan</th>
             <th>Allowance</th>
-            <th className="usage-cell">Usage</th>
             <th></th>
           </tr>
         </thead>
@@ -188,7 +187,6 @@ export default function TimesheetTable({
                 ? `${fmt(-totals.remaining)}h over`
                 : `${fmt(Math.max(0, totals.remaining))}h free`}
             </td>
-            <td className="usage-cell"></td>
             <td></td>
           </tr>
         </tfoot>

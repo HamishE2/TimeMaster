@@ -1585,19 +1585,10 @@ body {
   width: 24% !important;
   opacity: 0.55;
 }
-.insight-item > .project-allocation-bars,
-.timesheet-allocation-bars {
+.insight-item > .project-allocation-bars {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   width: 100%;
-}
-.timesheet-allocation-bars {
-  margin-top: 9px;
-  gap: 6px;
-  max-width: none;
-}
-.timesheet-allocation-bars .allocation-meter > div {
-  font-size: 10px;
 }
 .table-scroll thead th {
   padding-top: 8px;
@@ -2587,9 +2578,6 @@ main,
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.mobile-allocation-bars {
-  margin: 11px 0;
-}
 .insight-item strong {
   display: flex;
   align-items: center;
@@ -2788,9 +2776,6 @@ main,
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.mobile-allocation-bars {
-  margin: 11px 0;
-}
 .insight-item strong {
   display: flex;
   align-items: center;
@@ -2825,9 +2810,6 @@ main,
 .project-header-row .project-meta {
   margin-top: 2px;
 }
-.project-header-row .timesheet-allocation-bars {
-  margin-top: 0;
-}
 .project-header-row .table-project-title {
   min-width: 0;
   max-width: 100%;
@@ -2855,12 +2837,6 @@ main,
 .project-header-row > th,
 .project-header-row > td.project-header-cell {
   background: var(--surface-2);
-}
-.project-header-cell .timesheet-allocation-bars {
-  width: 100%;
-  max-width: 520px;
-  margin: 0 0 0 12px;
-  align-self: center;
 }
 .project-header-cell {
   vertical-align: middle;
@@ -2991,32 +2967,6 @@ table {
   width: 15px;
   height: 15px;
 }
-/* Weekly and monthly progress sit on the bottom edge of an unphased row */
-.is-edge {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  margin: 0 !important;
-  gap: 1px !important;
-  display: grid;
-  pointer-events: auto;
-}
-.is-edge .allocation-meter > div {
-  display: none;
-}
-.is-edge .allocation-meter > i {
-  height: 3px;
-  margin: 0;
-  border-radius: 0;
-  background: color-mix(in srgb, var(--surface-3) 70%, transparent);
-}
-.is-edge .allocation-meter:not(:first-child) > i {
-  height: 2px;
-}
-.is-edge .allocation-unlimited {
-  display: none;
-}
 /* Phased project header: a slim group heading that uses the row width */
 .project-header-row > th.project-header-cell {
   padding: 4px 8px;
@@ -3068,39 +3018,6 @@ table {
 }
 .header-line .row-chips {
   margin-left: 0;
-}
-.header-line .timesheet-allocation-bars.is-inline {
-  display: flex;
-  flex: 1 1 0;
-  min-width: 0;
-  align-items: center;
-  gap: 16px;
-  margin: 0 0 0 auto;
-  max-width: none;
-  width: auto;
-  justify-content: flex-end;
-}
-.is-inline .allocation-meter {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  flex: 1 1 0;
-  max-width: 230px;
-  min-width: 0;
-}
-.is-inline .allocation-meter > div {
-  flex: none;
-  gap: 6px;
-  font-size: 11px;
-}
-.is-inline .allocation-meter > i {
-  flex: 1;
-  min-width: 30px;
-  margin: 0;
-}
-.is-inline .allocation-unlimited {
-  font-size: 11px;
-  color: var(--muted);
 }
 /* Phase lines: single-line, same height as other entry rows */
 .task-entry-row th {
@@ -3178,22 +3095,6 @@ table {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.header-line .timesheet-allocation-bars.is-inline {
-  flex: 0 0 auto;
-  gap: 14px;
-}
-.is-inline .allocation-meter {
-  flex: none;
-  width: auto;
-  max-width: none;
-}
-.is-inline .allocation-meter > i {
-  flex: none;
-  width: 44px;
-}
-.is-inline .allocation-meter > div {
-  white-space: nowrap;
-}
 .header-id .project-client {
   max-width: 170px;
 }
@@ -3257,20 +3158,11 @@ table {
   .mobile-cards .mobile-project-meta {
     margin: 6px 0 0;
   }
-  .mobile-cards .mobile-allocation-bars {
-    display: flex;
-    gap: 12px;
-    margin-top: 8px;
-  }
-  .mobile-cards .mobile-allocation-bars .allocation-meter {
-    flex: 1;
-    min-width: 0;
-  }
   .mobile-cards
     article
     > div:not(.mobile-project-title):not(.mobile-project-meta):not(
       .project-client
-    ):not(.mobile-allocation-bars),
+    ),
   .mobile-task-block > div {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(48px, 1fr));
@@ -3307,63 +3199,14 @@ table {
     min-height: 28px;
   }
 }
-/* Header usage bars stretch to fill the free row width */
 .header-id {
   flex: 0 1 auto;
   min-width: 150px;
-}
-.header-line .timesheet-allocation-bars.is-inline {
-  flex: 1 1 0;
-  min-width: 190px;
-  gap: 22px;
-  justify-content: stretch;
-}
-.is-inline .allocation-meter {
-  flex: 1 1 0;
-  min-width: 0;
-}
-.is-inline .allocation-meter > i {
-  flex: 1 1 auto;
-  width: auto;
-  min-width: 40px;
 }
 /* Project heading rows use a brand tint so they read apart from the grey column header */
 .project-header-row > th.project-header-cell,
 .project-header-row > td {
   background: color-mix(in srgb, var(--brand) 9%, var(--surface));
-}
-/* Usage column: readable weekly and monthly bars for every unphased project */
-.usage-cell {
-  display: none;
-  text-align: left !important;
-  min-width: 190px;
-}
-.is-usage {
-  display: grid !important;
-  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
-  gap: 14px !important;
-  margin: 0 !important;
-  width: 100%;
-}
-.is-usage .allocation-meter > div {
-  font-size: 11px;
-  gap: 6px;
-}
-.is-usage .allocation-meter > i {
-  height: 6px;
-  margin-top: 4px;
-}
-.is-usage .allocation-unlimited {
-  font-size: 11px;
-  color: var(--muted);
-}
-@media (min-width: 1340px) {
-  .usage-cell {
-    display: table-cell;
-  }
-  .is-edge {
-    display: none;
-  }
 }
 /* Grouping: a project colour rail down every row of a project and a clear gap between projects */
 .table-scroll tbody tr[style*='--pc'] > th:first-child {
@@ -3393,44 +3236,8 @@ table {
 .table-scroll tbody tr.project-start:not(.project-header-row) > th {
   padding-left: 14px;
 }
-.header-line .timesheet-allocation-bars.is-inline {
-  flex: 1 1 auto;
-  min-width: 270px;
-}
-.is-inline .allocation-meter {
-  flex: 1 1 auto;
-  min-width: max-content;
-}
-.usage-cell {
-  min-width: 170px;
-}
 .header-id .project-client {
   max-width: 120px;
-}
-.is-usage {
-  display: grid !important;
-  grid-template-columns: minmax(0, 1fr) !important;
-  gap: 5px !important;
-}
-.is-usage .allocation-meter {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-.is-usage .allocation-meter > div {
-  flex: none;
-  gap: 5px;
-  white-space: nowrap;
-}
-.is-usage .allocation-meter > i {
-  flex: 1 1 auto;
-  min-width: 24px;
-  margin: 0;
-  height: 5px;
-}
-.usage-cell {
-  min-width: 160px;
 }
 @media (min-width: 1181px) and (max-width: 1599px) {
   .workspace {
@@ -3442,25 +3249,10 @@ table {
   padding-left: 3px;
   padding-right: 3px;
 }
-.table-scroll thead th.usage-cell {
-  width: 24%;
-}
 @media (min-width: 1340px) {
-  .hdr-inline {
-    display: none !important;
-  }
   .header-id {
     flex: 1 1 auto;
   }
-}
-.hdr-inline {
-  min-width: 0 !important;
-  gap: 12px !important;
-}
-.hdr-inline .allocation-meter > i {
-  flex: 0 1 30px !important;
-  min-width: 16px !important;
-  width: auto !important;
 }
 /* Unphased rows share the heading layout: client / dot name, chips at the end */
 .table-scroll
@@ -3489,9 +3281,6 @@ table {
   margin-top: 0;
 }
 @media (min-width: 1340px) {
-  .table-scroll thead th.usage-cell {
-    width: 21%;
-  }
   .table-scroll tbody th {
     max-width: 300px;
   }
@@ -3509,9 +3298,6 @@ table {
 @media (min-width: 1340px) {
   .table-scroll thead th:first-child {
     width: 280px;
-  }
-  .table-scroll thead th.usage-cell {
-    width: 19%;
   }
 }
 /* Same two-line identity for headings and project rows: client above, dot and name below */

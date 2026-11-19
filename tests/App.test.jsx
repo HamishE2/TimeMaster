@@ -1,4 +1,10 @@
-import { cleanup, render, screen, within } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 import App from '../src/App.jsx';
 import { loadSessionFromIdb } from '../src/lib/idb.js';
@@ -48,8 +54,10 @@ test('renders General time and two phase lines on desktop and mobile', async () 
 
   const { container } = render(<App />);
 
-  const desktop = within(await screen.findByRole('table'));
-  const mobile = within(container.querySelector('.mobile-cards'));
+  const table = await screen.findByRole('table');
+  const cards = container.querySelector('.mobile-cards');
+  const desktop = within(table);
+  const mobile = within(cards);
   for (const view of [desktop, mobile]) {
     expect(view.getByRole('button', { name: 'Client Support' })).toBeTruthy();
     expect(view.getByRole('button', { name: 'Website Launch' })).toBeTruthy();
@@ -68,6 +76,21 @@ test('renders General time and two phase lines on desktop and mobile', async () 
     expect(
       view.queryByRole('textbox', { name: 'Website Launch, General, Monday' }),
     ).toBeNull();
+  }
+  expect(desktop.queryByRole('columnheader', { name: 'Usage' })).toBeNull();
+  expect(table.querySelector('.allocation-meter')).toBeNull();
+  expect(cards.querySelector('.allocation-meter')).toBeNull();
+  expect(container.querySelector('.insights .allocation-meter')).toBeTruthy();
+
+  fireEvent.change(screen.getByLabelText('Categorise timesheet'), {
+    target: { value: 'status' },
+  });
+  expect(table.querySelector('.timesheet-group-row')).toBeTruthy();
+  const columnCount = table.tHead.rows[0].cells.length;
+  for (const row of table.rows) {
+    expect(
+      [...row.cells].reduce((count, cell) => count + cell.colSpan, 0),
+    ).toBe(columnCount);
   }
   expect(consoleError).not.toHaveBeenCalled();
 });
