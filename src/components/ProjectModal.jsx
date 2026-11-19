@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { getCategorizedProjects, monthlyPlan, uuid } from '../lib/utils.js';
 import { validateProjectDraft } from '../lib/projectOperations.js';
+import ModalBackdrop from './ModalBackdrop.jsx';
 
 export default function ProjectModal({
   isOpen,
@@ -222,8 +223,8 @@ export default function ProjectModal({
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    <ModalBackdrop onClose={onClose}>
+      <div className="modal">
         <div className="modal-header">
           <h2>{initial ? 'Edit project' : 'Add project'}</h2>
           <button className="modal-close" onClick={onClose} aria-label="Close">
@@ -1137,6 +1138,6 @@ export default function ProjectModal({
           </button>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

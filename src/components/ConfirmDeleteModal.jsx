@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import ModalBackdrop from './ModalBackdrop.jsx';
 
 export default function ConfirmDeleteModal({
   isOpen,
@@ -21,12 +22,8 @@ export default function ConfirmDeleteModal({
   if (!isOpen || !project) return null;
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div
-        className="modal"
-        onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: '500px' }}
-      >
+    <ModalBackdrop onClose={onClose}>
+      <div className="modal" style={{ maxWidth: '500px' }}>
         <div className="modal-header">
           <h2>Remove project</h2>
           <button className="modal-close" onClick={onClose} aria-label="Close">
@@ -152,6 +149,6 @@ export default function ConfirmDeleteModal({
           </button>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

@@ -19,6 +19,35 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+test('keeps Add project open when a drag ends on the backdrop', async () => {
+  loadSessionFromIdb.mockResolvedValue(null);
+  render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: 'New project' }));
+
+  const input = screen.getByRole('textbox', { name: 'Project name' });
+  const backdrop = input.closest('.modal-backdrop');
+  fireEvent.change(input, { target: { value: 'Client Dashboard' } });
+
+  // A click from different press and release targets lands on their common ancestor.
+  fireEvent.pointerDown(input, { button: 0 });
+  fireEvent.pointerUp(backdrop, { button: 0 });
+  fireEvent.click(backdrop);
+
+  expect(screen.getByRole('textbox', { name: 'Project name' }).value).toBe(
+    'Client Dashboard',
+  );
+
+  fireEvent.pointerDown(backdrop, { button: 0 });
+  fireEvent.pointerUp(input, { button: 0 });
+  fireEvent.click(backdrop);
+  expect(screen.getByRole('heading', { name: 'Add project' })).toBeTruthy();
+
+  fireEvent.pointerDown(backdrop, { button: 0 });
+  fireEvent.pointerUp(backdrop, { button: 0 });
+  fireEvent.click(backdrop);
+  expect(screen.queryByRole('heading', { name: 'Add project' })).toBeNull();
+});
+
 test('renders General time and two phase lines on desktop and mobile', async () => {
   const week = '2026-07-13';
   const general = { id: 'general', name: 'General' };
