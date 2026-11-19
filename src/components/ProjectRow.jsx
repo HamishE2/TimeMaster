@@ -4,7 +4,6 @@ import { projectSummary } from '../lib/projectSummary.js';
 import EntryFrontloadButton from './EntryFrontloadButton.jsx';
 import FrontloadButton from './FrontloadButton.jsx';
 import FrontloadWarning from './FrontloadWarning.jsx';
-import ProjectAllocationBars from './ProjectAllocationBars.jsx';
 import { taskLinesFor } from '../lib/taskLines.js';
 
 export default function ProjectRow({
@@ -79,13 +78,6 @@ export default function ProjectRow({
                 </button>
               )}
             </span>
-            <ProjectAllocationBars
-              project={p}
-              week={week}
-              leaveWeeks={leaveWeeks}
-              metrics={m}
-              className="timesheet-allocation-bars is-inline hdr-inline"
-            />
           </div>
         </th>
       ) : (
@@ -117,13 +109,6 @@ export default function ProjectRow({
               )}
             </span>
           </div>
-          <ProjectAllocationBars
-            project={p}
-            week={week}
-            leaveWeeks={leaveWeeks}
-            metrics={m}
-            className="timesheet-allocation-bars is-edge"
-          />
         </th>
       )}
       {hasTasks
@@ -179,15 +164,6 @@ export default function ProjectRow({
         )}
       </td>
       <td className={m.status}>{remainingLabel}</td>
-      <td className="usage-cell">
-        <ProjectAllocationBars
-          project={p}
-          week={week}
-          leaveWeeks={leaveWeeks}
-          metrics={m}
-          className="timesheet-allocation-bars is-inline is-usage"
-        />
-      </td>
       <td>
         <div className="row-actions">
           {hasTasks && (

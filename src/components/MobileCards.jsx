@@ -4,7 +4,6 @@ import { hasPhases } from '../lib/tasks.js';
 import { projectSummary } from '../lib/projectSummary.js';
 import FrontloadButton from './FrontloadButton.jsx';
 import FrontloadWarning from './FrontloadWarning.jsx';
-import ProjectAllocationBars from './ProjectAllocationBars.jsx';
 import { taskLinesFor } from '../lib/taskLines.js';
 
 export default function MobileCards({
@@ -72,13 +71,6 @@ export default function MobileCards({
                     )}
                   </div>
                 )}
-                <ProjectAllocationBars
-                  project={p}
-                  week={week}
-                  leaveWeeks={leaveWeeks}
-                  metrics={m}
-                  className="mobile-allocation-bars"
-                />
                 {!hasTasks && (
                   <div>
                     {days.map((d) => (

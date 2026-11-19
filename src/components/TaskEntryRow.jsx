@@ -57,7 +57,6 @@ export default function TaskEntryRow({
       <td>{fmt(logged)}h</td>
       <td>—</td>
       <td>—</td>
-      <td className="usage-cell"></td>
       <td>
         <button
           className="task-line-remove"
