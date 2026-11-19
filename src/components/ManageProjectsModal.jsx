@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import ManageProjectRow from './ManageProjectRow.jsx';
 import ManageProjectCard from './ManageProjectCard.jsx';
+import ModalBackdrop from './ModalBackdrop.jsx';
 
 export default function ManageProjectsModal({
   isOpen,
@@ -27,13 +28,12 @@ export default function ManageProjectsModal({
   if (!isOpen) return null;
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <ModalBackdrop onClose={onClose}>
       <section
         className="modal manage-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="manage-projects-title"
-        onClick={(event) => event.stopPropagation()}
       >
         <div className="modal-header">
           <div>
@@ -152,6 +152,6 @@ export default function ManageProjectsModal({
           </button>
         </div>
       </section>
-    </div>
+    </ModalBackdrop>
   );
 }

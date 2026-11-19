@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { parseCSV } from '../lib/csvParser.js';
 import { fmtHours } from '../lib/utils.js';
 import { classifyProject } from '../lib/projectImport.js';
+import ModalBackdrop from './ModalBackdrop.jsx';
 
 export default function ImportModal({
   isOpen,
@@ -122,8 +123,8 @@ export default function ImportModal({
   const skipCount = classified.filter((c) => c.status === 'skip').length;
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal import-modal" onClick={(e) => e.stopPropagation()}>
+    <ModalBackdrop onClose={onClose}>
+      <div className="modal import-modal">
         <div className="modal-header">
           <h2>Import CSV</h2>
           <button className="modal-close" onClick={onClose} aria-label="Close">
@@ -357,6 +358,6 @@ export default function ImportModal({
           )}
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }
