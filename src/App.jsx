@@ -1216,6 +1216,7 @@ export default function App() {
       {frontloadTarget &&
         data.projects.find((project) => project.id === frontloadTarget.id) && (
           <FrontloadModal
+            totals={totals}
             project={data.projects.find(
               (project) => project.id === frontloadTarget.id,
             )}
