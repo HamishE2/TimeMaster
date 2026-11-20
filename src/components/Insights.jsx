@@ -20,18 +20,22 @@ export default function Insights({ projects, week, leaveWeeks }) {
       ].map(
         ([key, label]) =>
           groups[key].length > 0 && (
-            <section className="insight-group" key={key}>
+            <section className={`insight-group group-${key}`} key={key}>
               <h3>
                 {label}
                 <span>{groups[key].length}</span>
               </h3>
-              {groups[key].slice(0, 6).map((p) => {
+              {groups[key].map((p) => {
                 const m = projectMetrics(p, week, leaveWeeks),
                   over = m.remaining != null && m.remaining < -EPSILON;
                 return (
                   <div className={`insight-item ${key}`} key={p.id}>
                     <div>
                       <strong>
+                        <i
+                          className="project-ring"
+                          style={{ color: p.color }}
+                        />
                         {p.name}
                         <FrontloadWarning metrics={m} />
                       </strong>
@@ -45,7 +49,7 @@ export default function Insights({ projects, week, leaveWeeks }) {
                               : `${fmt(m.logged)} / ${fmt(m.effective)}h`}
                       </span>
                     </div>
-                    <ProjectAllocationBars
+                    <ProjectAllocationBars className={key === "under" && m.effective === m.weeklyAllowance && !m.frontloadedOut ? "summary-has-weekly" : ""}
                       project={p}
                       week={week}
                       leaveWeeks={leaveWeeks}

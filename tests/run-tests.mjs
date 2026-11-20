@@ -73,7 +73,7 @@ test('General is recognized by reserved ID or case-insensitive name', () => {
   assert.deepEqual(phasesOf({}), []);
 });
 
-test('phase lines combine pinned and logged tasks in name order for the selected week', () => {
+test('phase lines combine pinned and logged tasks in phase order for the selected week', () => {
   const week = '2026-07-13';
   const project = {
     tasks: [
@@ -91,7 +91,7 @@ test('phase lines combine pinned and logged tasks in name order for the selected
       missing: { [week]: { 0: 4 } },
     },
   };
-  assert.deepEqual(taskLinesFor(project, week).map(({ id }) => id), ['build', 'design']);
+  assert.deepEqual(taskLinesFor(project, week).map(({ id }) => id), ['design', 'build']);
   assert.deepEqual(taskLinesFor(project, '2026-07-20').map(({ id }) => id), ['review']);
   assert.deepEqual(taskLinesFor({}, week), []);
 });

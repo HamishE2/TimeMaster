@@ -12,8 +12,15 @@ export default function ProjectLineModal({
   onAddProject,
   onManage,
 }) {
+  // Only offer projects with something left to add this week: an unadded
+  // phase, or (for General-only projects) a line not yet on the timesheet.
   const eligible = projects.filter(
-      (project) => !project.archived && project.status !== 'closed',
+      (project) =>
+        !project.archived &&
+        project.status !== 'closed' &&
+        (hasPhases(project)
+          ? addablePhasesFor(project, week).length > 0
+          : !project.__visibleNow),
     ),
     [projectId, setProjectId] = useState(
       initialProjectId &&
@@ -80,8 +87,7 @@ export default function ProjectLineModal({
         </>
       ) : (
         <p className="help">
-          No active projects are available. Add or restore a project in Projects
-          first.
+          Every active project is already on this week's timesheet.
         </p>
       )}
       <div className="modal-actions">

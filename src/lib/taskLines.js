@@ -24,16 +24,15 @@ export const taskHoursForDay = (project, week, day) =>
     0,
   );
 
+// Task lines on the week, in the project's phase order (user-arrangeable).
 export const taskLinesFor = (project, week) =>
-  phasesOf(project)
-    .filter(
-      (task) =>
-        (project.taskRows?.[week] || []).includes(task.id) ||
-        Object.values(project.taskEntries?.[task.id]?.[week] || {}).some(
-          (value) => Number(value) > 0,
-        ),
-    )
-    .sort((a, b) => a.name.localeCompare(b.name));
+  phasesOf(project).filter(
+    (task) =>
+      (project.taskRows?.[week] || []).includes(task.id) ||
+      Object.values(project.taskEntries?.[task.id]?.[week] || {}).some(
+        (value) => Number(value) > 0,
+      ),
+  );
 
 export const addablePhasesFor = (project, week) => {
   const onSheet = new Set(taskLinesFor(project, week).map((task) => task.id));

@@ -10,7 +10,10 @@ export default function TaskEntryRow({
   suggestion,
   onEntry,
   onSuggestFrontload,
-  onRemove,
+  dragging,
+  overDays,
+  grip,
+  onMenu,
 }) {
   const entries = project.taskEntries?.[task.id]?.[week] || {},
     logged = days.reduce(
@@ -19,22 +22,36 @@ export default function TaskEntryRow({
     );
   return (
     <tr
-      className="task-entry-row"
+      data-project={project.id}
+      data-row={`t:${project.id}:${task.id}`}
+      className={`task-entry-row${dragging ? ' is-dragging' : ''}`}
       style={{ '--pc': project.color || 'var(--muted)' }}
+      onContextMenu={onMenu}
     >
       <th>
+        {grip}
         <span className="task-indent" title={project.name + ' · ' + task.name}>
           {task.name}
         </span>
       </th>
       {days.map((day) => (
-        <td key={day} className={leave.includes(day) ? 'leave' : ''}>
+        <td
+          key={day}
+          className={
+            leave.includes(day)
+              ? 'leave'
+              : overDays?.has(day) && entries[day] > 0
+                ? 'entry-over'
+                : ''
+          }
+        >
           {leave.includes(day) ? (
             <span className="leave-label">Leave</span>
           ) : (
             <>
               {suggestion?.taskId === task.id && suggestion.day === day && (
                 <EntryFrontloadButton
+                  amount={suggestion.amount}
                   project={project}
                   onOpen={onSuggestFrontload}
                   adjustment={suggestion.adjustment}
@@ -57,13 +74,19 @@ export default function TaskEntryRow({
       <td>{fmt(logged)}h</td>
       <td>—</td>
       <td>—</td>
-      <td>
+      <td className="row-menu-cell">
         <button
-          className="task-line-remove"
-          onClick={onRemove}
-          aria-label={`Remove ${task.name} line`}
+          type="button"
+          className="row-menu-button"
+          onClick={onMenu}
+          aria-haspopup="menu"
+          aria-label={`Options for ${task.name} line`}
         >
-          ×
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <circle cx="3" cy="8" r="1.4" />
+            <circle cx="8" cy="8" r="1.4" />
+            <circle cx="13" cy="8" r="1.4" />
+          </svg>
         </button>
       </td>
     </tr>

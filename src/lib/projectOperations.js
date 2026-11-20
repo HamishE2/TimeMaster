@@ -451,6 +451,44 @@ export function moveProjectRecord(workspace, id, direction) {
   return { ...workspace, projects: list };
 }
 
+// Moves a project to sit directly before or after another project. Used by
+// drag reordering and the row menu, which work against the visible rows: the
+// full list can contain hidden or archived projects between two visible ones.
+export function placeProjectRecord(workspace, id, targetId, after = false) {
+  if (id === targetId) return workspace;
+  const list = workspace.projects.filter((p) => p.id !== id),
+    moving = workspace.projects.find((p) => p.id === id),
+    at = list.findIndex((p) => p.id === targetId);
+  if (!moving || at < 0) return workspace;
+  list.splice(after ? at + 1 : at, 0, moving);
+  return { ...workspace, projects: list };
+}
+
+// Moves a phase within its project so it sits directly before or after
+// another phase. Phase order drives the order of task lines on the timesheet.
+export function placeTaskRecord(
+  workspace,
+  projectId,
+  taskId,
+  targetId,
+  after = false,
+) {
+  if (taskId === targetId) return workspace;
+  return {
+    ...workspace,
+    projects: workspace.projects.map((project) => {
+      if (project.id !== projectId) return project;
+      const tasks = project.tasks || [];
+      const moving = tasks.find((task) => task.id === taskId);
+      const rest = tasks.filter((task) => task.id !== taskId);
+      const at = rest.findIndex((task) => task.id === targetId);
+      if (!moving || at < 0) return project;
+      rest.splice(after ? at + 1 : at, 0, moving);
+      return { ...project, tasks: rest };
+    }),
+  };
+}
+
 export function showProjectRecord(project, targetWeek) {
   return {
     ...project,

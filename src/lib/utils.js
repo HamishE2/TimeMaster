@@ -57,8 +57,11 @@ export function weekLabel(key, days = DEFAULT_VISIBLE_DAYS) {
   const all = weekDates(key),
     first = all[days[0]],
     last = all[days.at(-1)];
-  const o = { day: 'numeric', month: 'short' };
-  return `${first.toLocaleDateString('en-AU', o)} – ${last.toLocaleDateString('en-AU', { ...o, year: 'numeric' })}`;
+  return new Intl.DateTimeFormat('en-AU', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).formatRange(first, last);
 }
 export function fmt(value) {
   return Number(value || 0)

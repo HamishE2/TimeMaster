@@ -37,15 +37,28 @@ export default function ManageProjectsModal({
       >
         <div className="modal-header">
           <div>
-            <p className="eyebrow">Workspace library</p>
             <h2 id="manage-projects-title">Manage projects</h2>
           </div>
           <div className="manage-header-actions">
-            <button
-              className="btn btn-ghost"
-              onClick={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')}
-            >
-              {viewMode === 'list' ? 'Grid view' : 'List view'}
+            <div className="segmented compact" role="radiogroup" aria-label="Library view">
+              {[
+                ['list', 'List'],
+                ['grid', 'Grid'],
+              ].map(([mode, label]) => (
+                <button
+                  type="button"
+                  role="radio"
+                  key={mode}
+                  aria-checked={viewMode === mode}
+                  onClick={() => setViewMode(mode)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <button onClick={onImport}>Import CSV</button>
+            <button className="primary" onClick={onAdd}>
+              + Add project
             </button>
             <button
               className="modal-close"
@@ -120,33 +133,9 @@ export default function ManageProjectsModal({
         </div>
 
         <div className="modal-footer manage-footer">
-          <button
-            className="btn btn-ghost btn-import-manage"
-            onClick={onImport}
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 16 16"
-              fill="none"
-              aria-hidden="true"
-            >
-              <path
-                d="M8 2v8M4 6l4 4 4-4M2 11v2a1 1 0 001 1h10a1 1 0 001-1v-2"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            Import CSV
-          </button>
           <span className="manage-count">
             {projects.length} project{projects.length === 1 ? '' : 's'}
           </span>
-          <button className="btn btn-primary" onClick={onAdd}>
-            Add project
-          </button>
           <button className="btn btn-ghost" onClick={onClose}>
             Done
           </button>

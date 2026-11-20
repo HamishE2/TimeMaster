@@ -5,11 +5,10 @@ import EntryFrontloadButton from './EntryFrontloadButton.jsx';
 import FrontloadButton from './FrontloadButton.jsx';
 import FrontloadWarning from './FrontloadWarning.jsx';
 import { taskLinesFor } from '../lib/taskLines.js';
+import UsageBar from './UsageBar.jsx';
 
 export default function ProjectRow({
   p,
-  index,
-  count,
   week,
   days,
   leave,
@@ -21,8 +20,10 @@ export default function ProjectRow({
   onEdit,
   onFrontload,
   onSuggestFrontload,
-  onRemove,
-  onMove,
+  grip,
+  dragging,
+  overDays,
+  onMenu,
 }) {
   const {
     metrics: m,
@@ -40,15 +41,23 @@ export default function ProjectRow({
         : null;
   return (
     <tr
-      className={`project-start${hasTasks ? ' project-header-row' : ''}`}
+      data-project={p.id}
+      data-row={`p:${p.id}`}
+      className={`project-start${hasTasks ? ' project-header-row' : ''}${dragging ? ' is-dragging' : ''}`}
       style={{ '--pc': p.color || 'var(--muted)' }}
+      onContextMenu={onMenu}
     >
       {hasTasks ? (
-        <th colSpan={days.length + 2} className="project-header-cell">
+        <th colSpan={days.length + 1} className="project-header-cell">
           <div className="header-line">
+            {grip}
             <span className="header-id">
-              {p.client && !hideClient && (
-                <span className="project-client">{p.client}</span>
+              {((p.client && !hideClient) || p.code) && (
+                <span className="project-client">
+                  {[!hideClient && p.client, p.code]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </span>
               )}
               <span className="table-project-title">
                 <i style={{ background: p.color || 'var(--muted)' }} />
@@ -63,6 +72,7 @@ export default function ProjectRow({
                 <FrontloadButton project={p} week={week} onOpen={onFrontload} />
               </span>
             </span>
+            <UsageBar metrics={m} />
             <span className="row-chips">
               {status !== 'active' && (
                 <span className={`project-status-badge status-${status}`}>
@@ -82,9 +92,12 @@ export default function ProjectRow({
         </th>
       ) : (
         <th>
+          {grip}
           <div className="header-id">
-            {p.client && !hideClient && (
-              <span className="project-client">{p.client}</span>
+            {((p.client && !hideClient) || p.code) && (
+              <span className="project-client">
+                {[!hideClient && p.client, p.code].filter(Boolean).join(' · ')}
+              </span>
             )}
             <span className="table-project-title">
               <i style={{ background: p.color || 'var(--muted)' }} />
@@ -114,7 +127,16 @@ export default function ProjectRow({
       {hasTasks
         ? null
         : days.map((d) => (
-            <td key={d} className={leave.includes(d) ? 'leave' : ''}>
+            <td
+              key={d}
+              className={
+                leave.includes(d)
+                  ? 'leave'
+                  : overDays?.has(d) && p.entries?.[week]?.[d] > 0
+                    ? 'entry-over'
+                    : ''
+              }
+            >
               {leave.includes(d) ? (
                 <span className="leave-label">Leave</span>
               ) : (
@@ -123,6 +145,7 @@ export default function ProjectRow({
                     suggestion.taskId == null &&
                     suggestion.day === d && (
                       <EntryFrontloadButton
+                        amount={suggestion.amount}
                         project={p}
                         onOpen={onSuggestFrontload}
                         adjustment={suggestion.adjustment}
@@ -144,7 +167,7 @@ export default function ProjectRow({
               )}
             </td>
           ))}
-      {!hasTasks && <td>{fmt(m.logged)}h</td>}
+      <td>{fmt(m.logged)}h</td>
       <td
         className={sourceNote || incomingNote ? 'frontload-reduced-limit' : ''}
       >
@@ -163,48 +186,26 @@ export default function ProjectRow({
           </small>
         )}
       </td>
-      <td className={m.status}>{remainingLabel}</td>
-      <td>
-        <div className="row-actions">
-          {hasTasks && (
-            <button
-              onClick={onAddLine}
-              aria-label={`Add task line for ${p.name}`}
-            >
-              ＋
-            </button>
-          )}
-          <button
-            onClick={() => onMove(p.id, -1)}
-            disabled={index === 0}
-            aria-label={`Move ${p.name} up`}
-          >
-            ↑
-          </button>
-          <button
-            onClick={() => onMove(p.id, 1)}
-            disabled={index === count - 1}
-            aria-label={`Move ${p.name} down`}
-          >
-            ↓
-          </button>
-          <button
-            className="row-options"
-            onClick={onEdit}
-            aria-label={`Options for ${p.name}`}
-            title="Project options"
-          >
-            ✎
-          </button>
-          <button
-            className="row-delete"
-            onClick={onRemove}
-            aria-label={`Delete ${p.name}`}
-            title="Delete project"
-          >
-            ✕
-          </button>
-        </div>
+      <td className={m.status}>
+        {remainingLabel}
+        {m.effective > 0 && m.remaining > 0 && (
+          <small>{Math.round((m.remaining / m.effective) * 100)}% left</small>
+        )}
+      </td>
+      <td className="row-menu-cell">
+        <button
+          type="button"
+          className="row-menu-button"
+          onClick={onMenu}
+          aria-haspopup="menu"
+          aria-label={`Options for ${p.name}`}
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <circle cx="3" cy="8" r="1.4" />
+            <circle cx="8" cy="8" r="1.4" />
+            <circle cx="13" cy="8" r="1.4" />
+          </svg>
+        </button>
       </td>
     </tr>
   );

@@ -59,16 +59,19 @@ export default function ManageProjectRow({
           <label className="sr-only" htmlFor={`manage-name-${project.id}`}>
             Project name
           </label>
-          <input
+          <textarea
             id={`manage-name-${project.id}`}
-            type="text"
+            rows={1}
             className="manage-input-name"
             value={name}
             onChange={(event) => setName(event.target.value)}
             onBlur={() => save()}
-            onKeyDown={(event) =>
-              event.key === 'Enter' && event.currentTarget.blur()
-            }
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                event.currentTarget.blur();
+              }
+            }}
             placeholder="Project name"
           />
           <span className="manage-project-meta">

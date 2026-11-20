@@ -1,11 +1,31 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-import { useState, useEffect, useRef } from 'react';
-import { getCategorizedProjects, monthlyPlan, uuid } from '../lib/utils.js';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import {
+  fmt,
+  getCategorizedProjects,
+  monthlyPlan,
+  uuid,
+} from '../lib/utils.js';
 import { validateProjectDraft } from '../lib/projectOperations.js';
+import { isGeneralTask, phaseHours } from '../lib/tasks.js';
+import ScopePicker from './ScopePicker.jsx';
 import ModalBackdrop from './ModalBackdrop.jsx';
+
+// Chronograph project palette (matches the --proj-* tokens in the mockups).
+const PROJECT_COLOURS = [
+  '#0e8c7e',
+  '#6b4fd8',
+  '#e0533a',
+  '#b5870f',
+  '#3e7d3a',
+  '#2e86c1',
+  '#c2457a',
+  '#5b6472',
+];
 
 export default function ProjectModal({
   isOpen,
+  focusPhase,
   onClose,
   onSave,
   initial,
@@ -33,8 +53,104 @@ export default function ProjectModal({
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [selectedExistingId, setSelectedExistingId] = useState(null);
   const [tasks, setTasks] = useState([{ id: 'general', name: 'General' }]);
+  // Phase reordering: drag the grip (live reorder as it crosses neighbours)
+  // or use arrow keys on it. Items slide to their new spots (FLIP).
+  const taskListRef = useRef(null);
+  const taskFlip = useRef(null);
+  const taskDrag = useRef(null);
+  const taskRefocus = useRef(null);
+  const taskItems = () => [
+    ...(taskListRef.current?.querySelectorAll('.project-task-item') || []),
+  ];
+  const moveTask = (id, toIndex) => {
+    setTasks((current) => {
+      const from = current.findIndex((task) => task.id === id);
+      if (
+        from < 0 ||
+        toIndex < 0 ||
+        toIndex >= current.length ||
+        toIndex === from
+      )
+        return current;
+      taskFlip.current = new Map(
+        taskItems().map((el) => [
+          el.dataset.task,
+          el.getBoundingClientRect().top,
+        ]),
+      );
+      const next = [...current];
+      next.splice(toIndex, 0, ...next.splice(from, 1));
+      return next;
+    });
+  };
+  useLayoutEffect(() => {
+    const before = taskFlip.current;
+    if (before) {
+      taskFlip.current = null;
+      const reduce = window.matchMedia?.(
+        '(prefers-reduced-motion: reduce)',
+      ).matches;
+      for (const el of taskItems()) {
+        const delta =
+          (before.get(el.dataset.task) ?? 0) - el.getBoundingClientRect().top;
+        if (!delta || reduce) continue;
+        el.style.transition = 'none';
+        el.style.transform = `translateY(${delta}px)`;
+        el.getBoundingClientRect();
+        el.style.transition = 'transform 180ms cubic-bezier(.2,.8,.2,1)';
+        el.style.transform = '';
+      }
+    }
+    if (taskRefocus.current) {
+      taskListRef.current
+        ?.querySelector(`[data-task="${taskRefocus.current}"] .grip`)
+        ?.focus();
+      taskRefocus.current = null;
+    }
+  });
+  const onTaskGripMove = (event) => {
+    const id = taskDrag.current;
+    if (!id) return;
+    const items = taskItems();
+    const from = items.findIndex((el) => el.dataset.task === id);
+    let to = 0;
+    items.forEach((el, i) => {
+      if (i === from) return;
+      const r = el.getBoundingClientRect();
+      if (r.top + r.height / 2 < event.clientY) to += 1;
+    });
+    if (to !== from) moveTask(id, to);
+  };
   const [newTask, setNewTask] = useState('');
   const [pendingTaskRemoval, setPendingTaskRemoval] = useState(null);
+  const [activeSection, setActiveSection] = useState('Identity');
+  const bodyRef = useRef(null);
+  const jumpingRef = useRef(false);
+  // On narrow screens the dialog itself scrolls rather than the body, so track
+  // the active section from the dialog too.
+  useEffect(() => {
+    const sheet = bodyRef.current?.closest('.modal');
+    if (!sheet) return undefined;
+    const onScroll = () => {
+      if (jumpingRef.current) return;
+      const nav = sheet.querySelector('.edit-sections');
+      const top =
+        (nav
+          ? nav.getBoundingClientRect().bottom
+          : sheet.getBoundingClientRect().top) + 24;
+      const current = ['Identity', 'Allocation', 'Phases', 'Schedule']
+        .filter((label) => {
+          const el = document.getElementById(`edit-${label.toLowerCase()}`);
+          return el && el.getBoundingClientRect().top <= top;
+        })
+        .at(-1);
+      if (current) setActiveSection(current);
+    };
+    sheet.addEventListener('scroll', onScroll, { passive: true });
+    return () => sheet.removeEventListener('scroll', onScroll);
+  }, []);
+  const jumpTimer = useRef(null);
+  const phaseRef = useRef(null);
   const nameRef = useRef(null);
   const dropdownRef = useRef(null);
 
@@ -107,9 +223,14 @@ export default function ProjectModal({
       );
       setNewTask('');
       setPendingTaskRemoval(null);
-      setTimeout(() => nameRef.current?.focus(), 50);
+      setActiveSection('Identity');
+      const timer = setTimeout(
+        () => (phaseRef.current || nameRef.current)?.focus(),
+        50,
+      );
+      return () => clearTimeout(timer);
     }
-  }, [isOpen, initial, weekKey]);
+  }, [isOpen, initial, weekKey, focusPhase]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -222,11 +343,123 @@ export default function ProjectModal({
     if (e.key === 'Enter') handleSave();
   };
 
+  const addTask = () => {
+    const value = newTask.trim();
+    if (!value) return;
+    setTasks((current) => [...current, { id: uuid(), name: value }]);
+    setNewTask('');
+  };
+
+  const showSchedule =
+    projectType !== 'one-time' && ((initial && !unlimited) || !initial);
+  const sections = [
+    'Identity',
+    'Allocation',
+    'Phases',
+    ...(showSchedule ? ['Schedule'] : []),
+  ];
+  const scopeOptions = initial
+    ? [
+        ['retro', 'Past weeks'],
+        ['onwards', 'This week onwards'],
+        ['week', 'This week only'],
+        ['project', 'Entire project'],
+      ]
+    : [
+        ['week', 'This week only'],
+        ['onwards', 'This week onwards'],
+        ['next-onwards', 'Next week onwards'],
+      ];
+  const swatches = PROJECT_COLOURS.includes(color)
+    ? PROJECT_COLOURS
+    : [...PROJECT_COLOURS, color];
+
+  // Tabs scroll the sheet body only. While a jump is animating, scroll tracking
+  // is paused so the clicked tab stays selected even if its section can't
+  // reach the top (e.g. the last section).
+  // The sheet body scrolls on wide screens; on narrow ones the whole dialog does.
+  const scroller = () => {
+    const body = bodyRef.current;
+    if (!body) return null;
+    return body.scrollHeight > body.clientHeight + 1
+      ? body
+      : body.closest('.modal') || body;
+  };
+  const jumpTo = (label) => {
+    const body = scroller();
+    const section = document.getElementById(`edit-${label.toLowerCase()}`);
+    if (!body || !section) return;
+    setActiveSection(label);
+    // Briefly highlight the section that was jumped to.
+    section.classList.remove('jump-flash');
+    void section.offsetWidth; // restart the animation on repeat clicks
+    section.classList.add('jump-flash');
+    jumpingRef.current = true;
+    clearTimeout(jumpTimer.current);
+    jumpTimer.current = setTimeout(() => (jumpingRef.current = false), 700);
+    body.scrollTo({
+      top:
+        body.scrollTop +
+        section.getBoundingClientRect().top -
+        body.getBoundingClientRect().top -
+        // When the dialog scrolls, the pinned tab bar covers its top edge.
+        (body === bodyRef.current
+          ? 16
+          : (body.querySelector('.edit-sections')?.offsetHeight || 0) + 16),
+      behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+        ? 'auto'
+        : 'smooth',
+    });
+  };
+  const trackSection = (event) => {
+    if (jumpingRef.current) return;
+    const body = event.currentTarget;
+    if (body !== scroller()) return;
+    const top = body.getBoundingClientRect().top + 48;
+    const current = sections
+      .filter(
+        (label) =>
+          document
+            .getElementById(`edit-${label.toLowerCase()}`)
+            ?.getBoundingClientRect().top <= top,
+      )
+      .at(-1);
+    if (current && current !== activeSection) setActiveSection(current);
+  };
+  const heading = (label) => (
+    <h3 className="edit-section-title">
+      <span aria-hidden="true">
+        {String(sections.indexOf(label) + 1).padStart(2, '0')}
+      </span>
+      {label}
+      {label === 'Schedule' && ' · apply changes to'}
+    </h3>
+  );
+  const listProjects = (list, title) =>
+    list.length > 0 && (
+      <div className="project-select-section">
+        <div className="project-select-section-title">{title}</div>
+        {list.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            className="project-select-item"
+            onClick={() => handleSelectProject(p)}
+          >
+            <span>{p.name}</span>
+            <small>
+              {p.resourcedHours == null ? '∞' : `${p.resourcedHours}h/wk`}
+            </small>
+          </button>
+        ))}
+      </div>
+    );
+
   return (
     <ModalBackdrop onClose={onClose}>
-      <div className="modal">
+      <div className="modal project-sheet">
         <div className="modal-header">
-          <h2>{initial ? 'Edit project' : 'Add project'}</h2>
+          <h2>{initial ? initial.name || 'Edit project' : 'Add project'}</h2>
           <button className="modal-close" onClick={onClose} aria-label="Close">
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
               <path
@@ -239,547 +472,314 @@ export default function ProjectModal({
           </button>
         </div>
 
-        <div className="modal-body">
-          <div className="field" style={{ marginBottom: '16px' }}>
-            <label>Project type</label>
+        <nav className="edit-sections" aria-label="Project sections">
+          {sections.map((label, index) => (
+            <button
+              type="button"
+              key={label}
+              aria-current={activeSection === label ? 'true' : undefined}
+              onClick={() => jumpTo(label)}
+            >
+              <span aria-hidden="true">
+                {String(index + 1).padStart(2, '0')}
+              </span>
+              {label}
+            </button>
+          ))}
+        </nav>
+
+        <div
+          className="modal-body project-editor"
+          ref={bodyRef}
+          onScroll={trackSection}
+        >
+          <section id="edit-identity">
+            {heading('Identity')}
+            {!initial && (
+              <div className="field">
+                <label>Start from an existing project</label>
+                <div className="project-select-container" ref={dropdownRef}>
+                  <button
+                    type="button"
+                    className="project-select-btn"
+                    aria-expanded={dropdownOpen}
+                    onClick={() => setDropdownOpen(!dropdownOpen)}
+                  >
+                    <span>Select an existing project…</span>
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </button>
+                  {dropdownOpen && (
+                    <div className="project-select-dropdown">
+                      {listProjects(active, 'Active')}
+                      {listProjects(inactive, 'Inactive')}
+                      {active.length === 0 && inactive.length === 0 && (
+                        <div className="project-select-empty">
+                          No previous projects available
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="field">
+              <label htmlFor="project-name">Project name</label>
+              <input
+                ref={nameRef}
+                id="project-name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="e.g. Client Dashboard Redesign"
+                className={errors.name ? 'input-error' : ''}
+              />
+              {errors.name && (
+                <span className="field-error">{errors.name}</span>
+              )}
+            </div>
+
+            <div className="field-pair">
+              <div className="field">
+                <label htmlFor="project-client">Client</label>
+                <input
+                  id="project-client"
+                  type="text"
+                  value={client}
+                  onChange={(e) => setClient(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="e.g. Contoso Pty Ltd"
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="project-code">Project code</label>
+                <input
+                  id="project-code"
+                  type="text"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="e.g. PRJ-1042"
+                />
+              </div>
+            </div>
+
+            <div className="field">
+              <label id="project-status-label">Status</label>
+              <div
+                className="segmented"
+                role="radiogroup"
+                aria-labelledby="project-status-label"
+              >
+                {[
+                  ['active', 'Active'],
+                  ['on-hold', 'On hold'],
+                  ['closed', 'Closed'],
+                ].map(([value, label]) => (
+                  <button
+                    type="button"
+                    role="radio"
+                    key={value}
+                    aria-checked={status === value}
+                    onClick={() => setStatus(value)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="field">
+              <label>Colour</label>
+              <div className="swatches">
+                {swatches.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    className="color-swatch"
+                    aria-pressed={color === c}
+                    onClick={() => setColor(c)}
+                    style={{ '--swatch': c }}
+                    title={`Use ${c}`}
+                    aria-label={`Use colour ${c}`}
+                  />
+                ))}
+                <label className="color-swatch custom" title="Custom colour">
+                  +
+                  <input
+                    type="color"
+                    value={color}
+                    onChange={(e) => setColor(e.target.value)}
+                    aria-label="Custom colour"
+                  />
+                </label>
+              </div>
+            </div>
+
+            <label className="switch-row">
+              <input
+                type="checkbox"
+                checked={isBillable}
+                onChange={(e) => setIsBillable(e.target.checked)}
+              />
+              <span>Billable project</span>
+            </label>
+          </section>
+
+          <section id="edit-allocation">
+            {heading('Allocation')}
             <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '8px',
-              }}
+              className="type-choice"
+              role="radiogroup"
+              aria-label="Project type"
             >
               <button
                 type="button"
+                role="radio"
+                aria-checked={projectType === 'standard'}
                 onClick={() => {
                   setProjectType('standard');
                   if (initial?.projectType === 'one-time')
                     setApplyScope('onwards');
                 }}
-                style={{
-                  padding: '10px 12px',
-                  fontSize: '13px',
-                  border: `1px solid ${projectType === 'standard' ? 'var(--brand)' : 'var(--border)'}`,
-                  borderRadius: 'var(--radius-sm)',
-                  backgroundColor:
-                    projectType === 'standard'
-                      ? 'var(--brand-glow)'
-                      : 'var(--bg-elevated)',
-                  color:
-                    projectType === 'standard'
-                      ? 'var(--brand-light)'
-                      : 'var(--text-muted)',
-                  cursor: 'pointer',
-                  fontWeight: projectType === 'standard' ? 600 : 500,
-                  transition: 'all 0.2s ease',
-                }}
               >
-                Standard
+                <strong>Standard</strong>
               </button>
               <button
                 type="button"
+                role="radio"
+                aria-checked={projectType === 'one-time'}
                 onClick={() => setProjectType('one-time')}
-                style={{
-                  padding: '10px 12px',
-                  fontSize: '13px',
-                  border: `1px solid ${projectType === 'one-time' ? 'var(--brand)' : 'var(--border)'}`,
-                  borderRadius: 'var(--radius-sm)',
-                  backgroundColor:
-                    projectType === 'one-time'
-                      ? 'var(--brand-glow)'
-                      : 'var(--bg-elevated)',
-                  color:
-                    projectType === 'one-time'
-                      ? 'var(--brand-light)'
-                      : 'var(--text-muted)',
-                  cursor: 'pointer',
-                  fontWeight: projectType === 'one-time' ? 600 : 500,
-                  transition: 'all 0.2s ease',
-                }}
               >
-                One-Time
+                <strong>One-time</strong>
               </button>
             </div>
-          </div>
 
-          {projectType === 'one-time' && (
-            <div className="field" style={{ marginBottom: '16px' }}>
-              <label>Duration</label>
-              <div
-                style={{ display: 'flex', gap: '16px', marginBottom: '8px' }}
-              >
-                {['1 day', '1 week', 'custom'].map((preset) => (
-                  <label
-                    key={preset}
-                    style={{
-                      fontSize: '13px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      cursor: 'pointer',
-                      color: 'var(--text)',
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      checked={durationPreset === preset}
-                      onChange={() => {
-                        setDurationPreset(preset);
-                        if (preset === '1 day') {
-                          setDurationWeeks(0);
-                          setDurationDays(1);
-                        } else if (preset === '1 week') {
-                          setDurationWeeks(1);
-                          setDurationDays(0);
-                        }
-                      }}
-                    />
-                    {preset.charAt(0).toUpperCase() + preset.slice(1)}
-                  </label>
-                ))}
-              </div>
-              {durationPreset === 'custom' && (
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <div style={{ flex: 1 }}>
-                    <label
-                      style={{ fontSize: '11px', color: 'var(--text-muted)' }}
-                    >
-                      Weeks
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={durationWeeks}
-                      onChange={(e) =>
-                        setDurationWeeks(Number(e.target.value) || 0)
-                      }
-                      style={{
-                        width: '100%',
-                        padding: '6px',
-                        fontSize: '13px',
-                        borderRadius: '4px',
-                        border: '1px solid var(--border)',
-                      }}
-                    />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <label
-                      style={{ fontSize: '11px', color: 'var(--text-muted)' }}
-                    >
-                      Days
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="6"
-                      value={durationDays}
-                      onChange={(e) =>
-                        setDurationDays(Number(e.target.value) || 0)
-                      }
-                      style={{
-                        width: '100%',
-                        padding: '6px',
-                        fontSize: '13px',
-                        borderRadius: '4px',
-                        border: '1px solid var(--border)',
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
-              {errors.duration && (
-                <span
-                  className="field-error"
-                  style={{ marginTop: '4px', display: 'block' }}
-                >
-                  {errors.duration}
-                </span>
-              )}
-            </div>
-          )}
-
-          {!initial && (
-            <div className="field" style={{ marginBottom: '16px' }}>
-              <label>Select project</label>
-              <div
-                className="project-select-container"
-                ref={dropdownRef}
-                style={{ position: 'relative' }}
-              >
-                <button
-                  type="button"
-                  className="project-select-btn"
-                  onClick={() => setDropdownOpen(!dropdownOpen)}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    width: '100%',
-                    padding: '10px 14px',
-                    backgroundColor: 'var(--bg-elevated)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius-sm)',
-                    color: 'var(--text-muted)',
-                    fontSize: '14px',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    transition: 'all var(--transition)',
-                  }}
-                  onMouseOver={(e) => {
-                    e.currentTarget.style.borderColor = 'var(--border-light)';
-                    e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                  }}
-                  onMouseOut={(e) => {
-                    e.currentTarget.style.borderColor = 'var(--border)';
-                    e.currentTarget.style.backgroundColor =
-                      'var(--bg-elevated)';
-                  }}
-                >
-                  <span>Select an existing project...</span>
-                  <svg
-                    style={{
-                      transform: dropdownOpen ? 'rotate(180deg)' : 'rotate(0)',
-                      transition: 'transform var(--transition)',
-                      color: 'var(--text-muted)',
-                    }}
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                  </svg>
-                </button>
-                {dropdownOpen && (
-                  <div
-                    className="project-select-dropdown"
-                    style={{
-                      position: 'absolute',
-                      top: '100%',
-                      left: 0,
-                      right: 0,
-                      marginTop: '6px',
-                      backgroundColor: 'var(--bg-elevated)',
-                      border: '1px solid var(--border)',
-                      borderRadius: 'var(--radius-sm)',
-                      boxShadow: 'var(--shadow)',
-                      zIndex: 1000,
-                      maxHeight: '260px',
-                      overflowY: 'auto',
-                      padding: '6px 0',
-                    }}
-                  >
-                    {active.length > 0 && (
-                      <div className="project-select-section">
-                        <div
-                          className="project-select-section-title"
-                          style={{
-                            fontSize: '11px',
-                            fontWeight: '700',
-                            textTransform: 'uppercase',
-                            color: 'var(--brand-light)',
-                            padding: '8px 14px 4px',
-                            letterSpacing: '0.05em',
-                          }}
-                        >
-                          Active
-                        </div>
-                        {active.map((p) => (
-                          <button
-                            key={p.id}
-                            type="button"
-                            className="project-select-item"
-                            onClick={() => handleSelectProject(p)}
-                            style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              width: '100%',
-                              padding: '8px 14px',
-                              backgroundColor: 'transparent',
-                              border: 'none',
-                              color: 'var(--text)',
-                              fontSize: '13.5px',
-                              textAlign: 'left',
-                              cursor: 'pointer',
-                              transition: 'all var(--transition)',
-                            }}
-                            onMouseOver={(e) => {
-                              e.currentTarget.style.backgroundColor =
-                                'var(--bg-hover)';
-                            }}
-                            onMouseOut={(e) => {
-                              e.currentTarget.style.backgroundColor =
-                                'transparent';
-                            }}
-                          >
-                            <span>{p.name}</span>
-                            <span
-                              style={{
-                                fontSize: '12px',
-                                color: 'var(--text-muted)',
-                              }}
-                            >
-                              {p.resourcedHours === null ||
-                              p.resourcedHours === undefined
-                                ? '∞'
-                                : `${p.resourcedHours}h/wk`}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {inactive.length > 0 && (
-                      <div className="project-select-section">
-                        <div
-                          className="project-select-section-title"
-                          style={{
-                            fontSize: '11px',
-                            fontWeight: '700',
-                            textTransform: 'uppercase',
-                            color: 'var(--text-dim)',
-                            padding: '8px 14px 4px',
-                            letterSpacing: '0.05em',
-                            borderTop:
-                              active.length > 0
-                                ? '1px solid var(--border)'
-                                : 'none',
-                            marginTop: active.length > 0 ? '4px' : '0',
-                          }}
-                        >
-                          Inactive
-                        </div>
-                        {inactive.map((p) => (
-                          <button
-                            key={p.id}
-                            type="button"
-                            className="project-select-item"
-                            onClick={() => handleSelectProject(p)}
-                            style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              width: '100%',
-                              padding: '8px 14px',
-                              backgroundColor: 'transparent',
-                              border: 'none',
-                              color: 'var(--text-muted)',
-                              fontSize: '13.5px',
-                              textAlign: 'left',
-                              cursor: 'pointer',
-                              transition: 'all var(--transition)',
-                            }}
-                            onMouseOver={(e) => {
-                              e.currentTarget.style.backgroundColor =
-                                'var(--bg-hover)';
-                              e.currentTarget.style.color = 'var(--text)';
-                            }}
-                            onMouseOut={(e) => {
-                              e.currentTarget.style.backgroundColor =
-                                'transparent';
-                              e.currentTarget.style.color = 'var(--text-muted)';
-                            }}
-                          >
-                            <span>{p.name}</span>
-                            <span
-                              style={{
-                                fontSize: '12px',
-                                color: 'var(--text-dim)',
-                              }}
-                            >
-                              {p.resourcedHours === null ||
-                              p.resourcedHours === undefined
-                                ? '∞'
-                                : `${p.resourcedHours}h/wk`}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {active.length === 0 && inactive.length === 0 && (
-                      <div
-                        style={{
-                          padding: '12px 14px',
-                          fontSize: '13.5px',
-                          color: 'var(--text-dim)',
-                          textAlign: 'center',
+            {projectType === 'one-time' && (
+              <div className="field">
+                <label>Duration</label>
+                <div className="radio-row">
+                  {['1 day', '1 week', 'custom'].map((preset) => (
+                    <label key={preset}>
+                      <input
+                        type="radio"
+                        checked={durationPreset === preset}
+                        onChange={() => {
+                          setDurationPreset(preset);
+                          if (preset === '1 day') {
+                            setDurationWeeks(0);
+                            setDurationDays(1);
+                          } else if (preset === '1 week') {
+                            setDurationWeeks(1);
+                            setDurationDays(0);
+                          }
                         }}
-                      >
-                        No previous projects available
-                      </div>
-                    )}
+                      />
+                      {preset.charAt(0).toUpperCase() + preset.slice(1)}
+                    </label>
+                  ))}
+                </div>
+                {durationPreset === 'custom' && (
+                  <div className="field-pair">
+                    <label className="unit-input">
+                      <input
+                        type="number"
+                        min="0"
+                        aria-label="Duration weeks"
+                        value={durationWeeks}
+                        onChange={(e) =>
+                          setDurationWeeks(Number(e.target.value) || 0)
+                        }
+                      />
+                      <span>weeks</span>
+                    </label>
+                    <label className="unit-input">
+                      <input
+                        type="number"
+                        min="0"
+                        max="6"
+                        aria-label="Duration days"
+                        value={durationDays}
+                        onChange={(e) =>
+                          setDurationDays(Number(e.target.value) || 0)
+                        }
+                      />
+                      <span>days</span>
+                    </label>
                   </div>
                 )}
+                {errors.duration && (
+                  <span className="field-error">{errors.duration}</span>
+                )}
               </div>
-            </div>
-          )}
+            )}
 
-          <div className="field">
-            <label htmlFor="project-name">Project name</label>
-            <input
-              ref={nameRef}
-              id="project-name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="e.g. Client Dashboard Redesign"
-              className={errors.name ? 'input-error' : ''}
-            />
-            {errors.name && <span className="field-error">{errors.name}</span>}
-          </div>
-
-          <div className="field" style={{ marginTop: '16px' }}>
-            <label htmlFor="project-client">Client</label>
-            <input
-              id="project-client"
-              type="text"
-              value={client}
-              onChange={(e) => setClient(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="e.g. Contoso Pty Ltd"
-            />
-          </div>
-
-          <div className="field" style={{ marginTop: '16px' }}>
-            <label htmlFor="project-code">Project code</label>
-            <input
-              id="project-code"
-              type="text"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="e.g. PRJ-1042"
-            />
-          </div>
-
-          <div className="field" style={{ marginTop: '16px' }}>
-            <label htmlFor="project-status">Status</label>
-            <select
-              id="project-status"
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '10px 14px',
-                backgroundColor: 'var(--bg-elevated)',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-sm)',
-                color: 'var(--text)',
-                fontSize: '14px',
-              }}
-            >
-              <option value="active">Active</option>
-              <option value="on-hold">On hold</option>
-              <option value="closed">Closed</option>
-            </select>
-          </div>
-
-          <div
-            className="field"
-            style={{ marginTop: '16px', marginBottom: '16px' }}
-          >
-            <label>Colour</label>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              {[
-                '#6b7280',
-                '#334155',
-                '#0f9e8e',
-                '#2563eb',
-                '#7c3aed',
-                '#db2777',
-                '#f59e0b',
-                '#16a34a',
-                '#dc2626',
-                '#4f46e5',
-                '#06b6d4',
-                '#ea580c',
-                '#92400e',
-                '#65a30d',
-              ].map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  className="color-swatch"
-                  onClick={() => setColor(c)}
-                  style={{
-                    width: '34px',
-                    height: '34px',
-                    borderRadius: '50%',
-                    backgroundColor: c,
-                    border:
-                      color === c
-                        ? '2px solid var(--text)'
-                        : '2px solid transparent',
-                    cursor: 'pointer',
-                  }}
-                  title={`Use ${c}`}
-                  aria-label={`Use colour ${c}`}
-                />
-              ))}
-            </div>
-          </div>
-
-          <div className="field">
-            <label htmlFor="project-hours">
-              {projectType === 'one-time'
-                ? durationWeeks === 0 && durationDays > 0
-                  ? `Usage limit for ${durationDays} day(s)`
-                  : 'Weekly usage limit'
-                : 'Weekly resourced hours'}
-            </label>
-            <div className="hours-field-row">
-              <input
-                id="project-hours"
-                type="number"
-                min="0"
-                step="0.25"
-                value={unlimited ? '' : hours}
-                onChange={(e) => setHours(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={unlimited ? '∞ Unlimited' : 'e.g. 12'}
-                className={errors.hours ? 'input-error' : ''}
-                disabled={unlimited}
-              />
-              <label
-                className="unlimited-toggle"
-                title="Set to unlimited (no budget cap)"
-              >
+            <div className="field-pair">
+              <div className="field">
+                <label htmlFor="project-hours">
+                  {projectType === 'one-time'
+                    ? durationWeeks === 0 && durationDays > 0
+                      ? `Usage limit for ${durationDays} day(s)`
+                      : 'Weekly usage limit'
+                    : 'Weekly resourced hours'}
+                </label>
+                <div
+                  className={`unit-input ${errors.hours ? 'input-error' : ''}`}
+                >
+                  <input
+                    id="project-hours"
+                    type="number"
+                    min="0"
+                    step="0.25"
+                    value={unlimited ? '' : hours}
+                    onChange={(e) => setHours(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder={unlimited ? '∞' : 'e.g. 12'}
+                    disabled={unlimited}
+                  />
+                  <span>h / week</span>
+                </div>
+                {errors.hours && (
+                  <span className="field-error">{errors.hours}</span>
+                )}
+              </div>
+              <label className="switch-row field-end" title="No budget cap">
                 <input
                   type="checkbox"
                   checked={unlimited}
                   onChange={(e) => {
                     setUnlimited(e.target.checked);
                     if (e.target.checked)
-                      setApplyScope(initial ? 'project' : 'onwards'); // overrides usually aren't unlimited
+                      setApplyScope(initial ? 'project' : 'onwards');
                   }}
                 />
-                <span className="unlimited-label">∞</span>
+                <span>Unlimited</span>
               </label>
             </div>
-            {errors.hours && (
-              <span className="field-error">{errors.hours}</span>
-            )}
 
             {projectType === 'one-time' &&
               durationWeeks > 0 &&
               durationDays > 0 && (
-                <div style={{ marginTop: '16px' }}>
-                  <label
-                    htmlFor="project-remainder-hours"
-                    style={{
-                      fontSize: '13px',
-                      display: 'block',
-                      marginBottom: '8px',
-                    }}
-                  >
+                <div className="field">
+                  <label htmlFor="project-remainder-hours">
                     Usage limit for remaining {durationDays} day(s)
                   </label>
-                  <div className="hours-field-row">
+                  <div
+                    className={`unit-input ${errors.remainderLimit ? 'input-error' : ''}`}
+                  >
                     <input
                       id="project-remainder-hours"
                       type="number"
@@ -789,8 +789,8 @@ export default function ProjectModal({
                       onChange={(e) => setRemainderLimit(e.target.value)}
                       onKeyDown={handleKeyDown}
                       placeholder="e.g. 5"
-                      className={errors.remainderLimit ? 'input-error' : ''}
                     />
+                    <span>h</span>
                   </div>
                   {errors.remainderLimit && (
                     <span className="field-error">{errors.remainderLimit}</span>
@@ -798,190 +798,115 @@ export default function ProjectModal({
                 </div>
               )}
 
-            {projectType !== 'one-time' &&
-              ((initial && !unlimited) || !initial) && (
-                <div style={{ marginTop: '16px' }}>
-                  <label
-                    style={{
-                      fontSize: '11px',
-                      color: 'var(--text-muted)',
-                      marginBottom: '8px',
-                      display: 'block',
-                      fontWeight: 700,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.05em',
-                    }}
+            {projectType !== 'one-time' && (
+              <div className="field-pair">
+                <div className="field">
+                  <label htmlFor="project-monthly-hours">Monthly hours</label>
+                  <div
+                    className={`unit-input ${errors.monthlyHours ? 'input-error' : ''}`}
                   >
-                    {initial ? 'Apply changes to:' : 'Add to:'}
+                    <input
+                      id="project-monthly-hours"
+                      type="number"
+                      min="0"
+                      step="0.25"
+                      value={monthlyHours}
+                      onChange={(e) => setMonthlyHours(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      placeholder="Optional"
+                    />
+                    <span>h / month</span>
+                  </div>
+                  {errors.monthlyHours && (
+                    <span className="field-error">{errors.monthlyHours}</span>
+                  )}
+                </div>
+                <div className="field">
+                  <label htmlFor="project-historical-hours">
+                    Historical monthly usage
                   </label>
                   <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 1fr',
-                      gap: '8px',
+                    className={`unit-input ${errors.historicalMonthly ? 'input-error' : ''}`}
+                  >
+                    <input
+                      id="project-historical-hours"
+                      type="number"
+                      min="0"
+                      step="0.25"
+                      value={historicalMonthly}
+                      onChange={(e) => setHistoricalMonthly(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      placeholder="Optional"
+                    />
+                    <span>h</span>
+                  </div>
+                  {errors.historicalMonthly && (
+                    <span className="field-error">
+                      {errors.historicalMonthly}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section id="edit-phases">
+            {heading('Phases')}
+            <div className="project-task-list" ref={taskListRef}>
+              {tasks.map((task, taskIndex) => (
+                <div
+                  className="project-task-item"
+                  key={task.id}
+                  data-task={task.id}
+                >
+                  <button
+                    type="button"
+                    className="grip"
+                    aria-label={`Reorder ${task.name}. Use arrow keys to move.`}
+                    title="Drag to reorder"
+                    disabled={tasks.length < 2}
+                    onPointerDown={(event) => {
+                      if (event.button !== 0) return;
+                      event.preventDefault();
+                      event.currentTarget.setPointerCapture?.(event.pointerId);
+                      taskDrag.current = task.id;
+                      event.currentTarget
+                        .closest('.project-task-item')
+                        ?.classList.add('is-dragging');
+                    }}
+                    onPointerMove={onTaskGripMove}
+                    onPointerUp={(event) => {
+                      taskDrag.current = null;
+                      event.currentTarget
+                        .closest('.project-task-item')
+                        ?.classList.remove('is-dragging');
+                    }}
+                    onPointerCancel={(event) => {
+                      taskDrag.current = null;
+                      event.currentTarget
+                        .closest('.project-task-item')
+                        ?.classList.remove('is-dragging');
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')
+                        return;
+                      event.preventDefault();
+                      taskRefocus.current = task.id;
+                      moveTask(
+                        task.id,
+                        taskIndex + (event.key === 'ArrowUp' ? -1 : 1),
+                      );
                     }}
                   >
-                    {initial
-                      ? [
-                          { id: 'retro', label: 'Retrospectively' },
-                          { id: 'onwards', label: 'This Week Onwards' },
-                          { id: 'week', label: 'This Week Only' },
-                          { id: 'project', label: 'Entire Project' },
-                        ].map((opt) => (
-                          <button
-                            key={opt.id}
-                            type="button"
-                            onClick={() => setApplyScope(opt.id)}
-                            style={{
-                              padding: '10px 12px',
-                              fontSize: '13px',
-                              border: `1px solid ${applyScope === opt.id ? 'var(--brand)' : 'var(--border)'}`,
-                              borderRadius: 'var(--radius-sm)',
-                              backgroundColor:
-                                applyScope === opt.id
-                                  ? 'var(--brand-glow)'
-                                  : 'var(--bg-elevated)',
-                              color:
-                                applyScope === opt.id
-                                  ? 'var(--brand-light)'
-                                  : 'var(--text-muted)',
-                              cursor: 'pointer',
-                              fontWeight: applyScope === opt.id ? 600 : 500,
-                              transition: 'all 0.2s ease',
-                              textAlign: 'center',
-                            }}
-                            onMouseOver={(e) => {
-                              if (applyScope !== opt.id) {
-                                e.currentTarget.style.borderColor =
-                                  'var(--border-light)';
-                                e.currentTarget.style.color = 'var(--text)';
-                              }
-                            }}
-                            onMouseOut={(e) => {
-                              if (applyScope !== opt.id) {
-                                e.currentTarget.style.borderColor =
-                                  'var(--border)';
-                                e.currentTarget.style.color =
-                                  'var(--text-muted)';
-                              }
-                            }}
-                          >
-                            {opt.label}
-                          </button>
-                        ))
-                      : [
-                          { id: 'week', label: 'This Week Only' },
-                          { id: 'onwards', label: 'This Week Onwards' },
-                          { id: 'next-onwards', label: 'Next Week Onwards' },
-                        ].map((opt) => (
-                          <button
-                            key={opt.id}
-                            type="button"
-                            onClick={() => setApplyScope(opt.id)}
-                            style={{
-                              padding: '10px 12px',
-                              fontSize: '13px',
-                              border: `1px solid ${applyScope === opt.id ? 'var(--brand)' : 'var(--border)'}`,
-                              borderRadius: 'var(--radius-sm)',
-                              backgroundColor:
-                                applyScope === opt.id
-                                  ? 'var(--brand-glow)'
-                                  : 'var(--bg-elevated)',
-                              color:
-                                applyScope === opt.id
-                                  ? 'var(--brand-light)'
-                                  : 'var(--text-muted)',
-                              cursor: 'pointer',
-                              fontWeight: applyScope === opt.id ? 600 : 500,
-                              transition: 'all 0.2s ease',
-                              textAlign: 'center',
-                              gridColumn:
-                                opt.id === 'next-onwards' ? 'span 2' : 'auto',
-                            }}
-                            onMouseOver={(e) => {
-                              if (applyScope !== opt.id) {
-                                e.currentTarget.style.borderColor =
-                                  'var(--border-light)';
-                                e.currentTarget.style.color = 'var(--text)';
-                              }
-                            }}
-                            onMouseOut={(e) => {
-                              if (applyScope !== opt.id) {
-                                e.currentTarget.style.borderColor =
-                                  'var(--border)';
-                                e.currentTarget.style.color =
-                                  'var(--text-muted)';
-                              }
-                            }}
-                          >
-                            {opt.label}
-                          </button>
-                        ))}
-                  </div>
-                </div>
-              )}
-          </div>
-
-          {projectType !== 'one-time' && (
-            <>
-              <div className="field" style={{ marginTop: '16px' }}>
-                <label htmlFor="project-monthly-hours">
-                  Monthly resourced hours (optional)
-                </label>
-                <div className="hours-field-row">
+                    <svg viewBox="0 0 10 10" aria-hidden="true">
+                      <circle cx="2.5" cy="2.5" r="1.5" />
+                      <circle cx="7.5" cy="2.5" r="1.5" />
+                      <circle cx="2.5" cy="7.5" r="1.5" />
+                      <circle cx="7.5" cy="7.5" r="1.5" />
+                    </svg>
+                  </button>
                   <input
-                    id="project-monthly-hours"
-                    type="number"
-                    min="0"
-                    step="0.25"
-                    value={monthlyHours}
-                    onChange={(e) => setMonthlyHours(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder="e.g. 40"
-                    className={errors.monthlyHours ? 'input-error' : ''}
-                  />
-                </div>
-                {errors.monthlyHours && (
-                  <span className="field-error">{errors.monthlyHours}</span>
-                )}
-              </div>
-
-              <div className="field" style={{ marginTop: '16px' }}>
-                <label htmlFor="project-historical-hours">
-                  Historical monthly usage (optional)
-                </label>
-                <div className="hours-field-row">
-                  <input
-                    id="project-historical-hours"
-                    type="number"
-                    min="0"
-                    step="0.25"
-                    value={historicalMonthly}
-                    onChange={(e) => setHistoricalMonthly(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder="e.g. 10"
-                    className={errors.historicalMonthly ? 'input-error' : ''}
-                  />
-                </div>
-                {errors.historicalMonthly && (
-                  <span className="field-error">
-                    {errors.historicalMonthly}
-                  </span>
-                )}
-              </div>
-            </>
-          )}
-
-          <div className="field project-tasks-field">
-            <label>Tasks / phases</label>
-            <p className="field-help">
-              Use General for unassigned time, or add task lines for a more
-              detailed timesheet.
-            </p>
-            <div className="project-task-list">
-              {tasks.map((task) => (
-                <div className="project-task-item" key={task.id}>
-                  <input
+                    ref={task.id === focusPhase ? phaseRef : undefined}
                     aria-label={`Task name: ${task.name}`}
                     value={task.name}
                     onChange={(event) =>
@@ -1006,10 +931,20 @@ export default function ProjectModal({
                       )
                     }
                   />
+                  {isGeneralTask(task) && (
+                    <span className="reserved">Reserved</span>
+                  )}
+                  <b className="phase-hours">
+                    {fmt(phaseHours(initial, task.id))}h
+                  </b>
                   <button
                     type="button"
+                    className="phase-remove"
+                    disabled={tasks.length === 1}
                     onClick={() => {
                       if (tasks.length === 1) return;
+                      // Same rule as before the redesign: only phase (taskEntries)
+                      // time triggers the confirmation.
                       const hasLoggedTime = Object.values(
                         initial?.taskEntries?.[task.id] || {},
                       ).some((week) =>
@@ -1023,13 +958,29 @@ export default function ProjectModal({
                           current.filter((item) => item.id !== task.id),
                         );
                     }}
-                    disabled={tasks.length === 1}
                     aria-label={`Remove task ${task.name}`}
                   >
                     ×
                   </button>
                 </div>
               ))}
+              <div className="project-task-add">
+                <input
+                  aria-label="New task or phase"
+                  value={newTask}
+                  onChange={(event) => setNewTask(event.target.value)}
+                  placeholder="+ New task or phase"
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      addTask();
+                    }
+                  }}
+                />
+                <button type="button" onClick={addTask}>
+                  Add task
+                </button>
+              </div>
             </div>
             {pendingTaskRemoval && (
               <div className="task-remove-confirm" role="alert">
@@ -1056,77 +1007,18 @@ export default function ProjectModal({
                 </button>
               </div>
             )}
-            <div className="project-task-add">
-              <input
-                aria-label="New task or phase"
-                value={newTask}
-                onChange={(event) => setNewTask(event.target.value)}
-                placeholder="New task or phase"
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    const value = newTask.trim();
-                    if (value) {
-                      setTasks((current) => [
-                        ...current,
-                        { id: uuid(), name: value },
-                      ]);
-                      setNewTask('');
-                    }
-                  }
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  const value = newTask.trim();
-                  if (value) {
-                    setTasks((current) => [
-                      ...current,
-                      { id: uuid(), name: value },
-                    ]);
-                    setNewTask('');
-                  }
-                }}
-              >
-                Add task
-              </button>
-            </div>
-          </div>
+          </section>
 
-          <div
-            className="field"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              marginTop: '16px',
-            }}
-          >
-            <input
-              id="project-billable"
-              type="checkbox"
-              checked={isBillable}
-              onChange={(e) => setIsBillable(e.target.checked)}
-              style={{
-                width: '16px',
-                height: '16px',
-                margin: 0,
-                cursor: 'pointer',
-              }}
-            />
-            <label
-              htmlFor="project-billable"
-              style={{
-                margin: 0,
-                cursor: 'pointer',
-                fontSize: '14px',
-                color: 'var(--text)',
-              }}
-            >
-              Billable project
-            </label>
-          </div>
+          {showSchedule && (
+            <section id="edit-schedule">
+              {heading('Schedule')}
+              <ScopePicker
+                options={scopeOptions}
+                value={applyScope}
+                onChange={setApplyScope}
+              />
+            </section>
+          )}
         </div>
 
         <div className="modal-footer">
