@@ -21,7 +21,7 @@
   --healthy: #2e6a3b;
   --info: #316c86;
   --focus: #375ed8;
-  --radius: 6px;
+  --radius: 4px;
   --font-xs: 11px;
   --font-sm: 12px;
   --font-md: 14px;
@@ -130,7 +130,7 @@ select {
 button {
   min-height: 40px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 6px;
   padding: 8px 13px;
   background: var(--surface);
   color: var(--ink);
@@ -222,7 +222,7 @@ select:focus-visible {
 .top-actions {
   flex-wrap: wrap;
 }
-.top-actions button {
+.top-actions > button {
   white-space: nowrap;
 }
 .week-head,
@@ -558,7 +558,7 @@ main {
   align-items: center;
   gap: 7px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 6px;
   padding: 0 9px;
 }
 .search input {
@@ -574,7 +574,7 @@ main {
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--ink);
-  border-radius: 8px;
+  border-radius: 6px;
 }
 .table-scroll {
   overflow: auto;
@@ -620,14 +620,14 @@ thead th button {
   min-height: 24px;
   padding: 2px 5px;
   font-size: 9px;
-  border-radius: 5px;
+  border-radius: 4px;
 }
 td input {
   width: 54px;
   text-align: right;
   border: 1px solid transparent;
   background: transparent;
-  border-radius: 5px;
+  border-radius: 4px;
   padding: 5px;
   color: var(--ink);
 }
@@ -806,7 +806,7 @@ tfoot th small {
   background: var(--ink);
   color: var(--surface);
   border: 1px solid color-mix(in srgb, var(--surface) 15%, transparent);
-  border-radius: 9px;
+  border-radius: 6px;
   display: flex;
   gap: 15px;
   z-index: 30;
@@ -854,7 +854,7 @@ tfoot th small {
   overflow: auto;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: 6px;
   padding: 24px;
   box-shadow: var(--shadow);
 }
@@ -891,7 +891,7 @@ tfoot th small {
 .modal select {
   height: 42px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--surface-2);
   color: var(--ink);
   padding: 8px;
@@ -978,11 +978,11 @@ tfoot th small {
 .field select,
 .project-select-btn {
   width: 100%;
-  height: 42px;
+  height: 38px;
   border: 1px solid var(--border) !important;
   background: var(--surface-2) !important;
   color: var(--ink) !important;
-  border-radius: 8px !important;
+  border-radius: 4px !important;
   padding: 8px 11px;
 }
 .field-error,
@@ -1015,7 +1015,7 @@ tfoot th small {
 }
 .drop-zone {
   border: 1px dashed var(--border);
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 32px;
   text-align: center;
   cursor: pointer;
@@ -1041,7 +1041,7 @@ tfoot th small {
   display: flex;
   background: color-mix(in srgb, var(--danger) 11%, transparent);
   border: 1px solid var(--danger);
-  border-radius: 8px;
+  border-radius: 6px;
   padding: 11px;
   margin-top: 12px;
 }
@@ -1058,7 +1058,7 @@ tfoot th small {
   max-height: 330px;
   overflow: auto;
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: 6px;
 }
 .import-table {
   min-width: 600px;
@@ -1310,7 +1310,7 @@ body {
   width: max-content;
   max-width: 100%;
   padding: 4px 8px;
-  border-radius: 999px;
+  border-radius: 4px;
   background: var(--surface-2);
   color: var(--muted);
   font-size: var(--font-xs);
@@ -1376,7 +1376,7 @@ body {
 }
 .manage-card-tags > span {
   padding: 4px 8px;
-  border-radius: 999px;
+  border-radius: 4px;
   background: var(--surface-3);
   font-size: var(--font-xs);
 }
@@ -1470,7 +1470,7 @@ body {
   gap: 7px;
   padding: 9px;
   border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--border));
-  border-radius: 8px;
+  border-radius: 6px;
   background: color-mix(in srgb, var(--danger) 7%, var(--surface));
   font-size: var(--font-xs);
 }
@@ -1514,7 +1514,7 @@ body {
   padding: 4px 7px;
   font-size: var(--font-xs);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 4px;
 }
 .row-actions .row-options {
   color: var(--ink);
@@ -1665,7 +1665,7 @@ body {
   width: max-content;
   padding: 2px 6px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 4px;
   background: var(--surface-2);
   color: var(--muted);
   font-size: 9px;
@@ -1732,7 +1732,7 @@ body {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
   }
-  .top-actions button {
+  .top-actions > button {
     padding: 7px 5px;
     font-size: 12px;
   }
@@ -1766,7 +1766,7 @@ body {
     display: flex;
     margin: 0 14px 12px;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 3px;
   }
   .mobile-switch button {
@@ -1787,7 +1787,7 @@ body {
   }
   .mobile-cards article {
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: 6px;
     padding: 14px;
     background: var(--surface);
   }
@@ -1824,7 +1824,7 @@ body {
     height: 38px;
     margin-top: 4px;
     border: 1px solid var(--border);
-    border-radius: 7px;
+    border-radius: 6px;
     background: var(--surface-2);
     color: var(--ink);
     padding: 6px;
@@ -1941,7 +1941,7 @@ body {
     min-width: 20px;
     height: 20px;
     padding: 0 6px;
-    border-radius: 99px;
+    border-radius: 4px;
     background: var(--surface-2);
     font-size: 10px;
   }
@@ -1966,7 +1966,7 @@ body {
   }
   .mobile-days article {
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: 6px;
     padding: 14px;
     background: var(--surface);
   }
@@ -2018,7 +2018,7 @@ body {
     height: 38px;
     text-align: right;
     border: 1px solid var(--border);
-    border-radius: 7px;
+    border-radius: 6px;
     background: var(--surface-2);
     color: var(--ink);
     padding: 6px;
@@ -2219,7 +2219,7 @@ main,
     margin: 0;
     padding: 14px;
     border: 1px solid var(--border);
-    border-radius: 9px;
+    border-radius: 6px;
     background: var(--surface-2);
   }
   .workspace > .insights .insight-item:last-child {
@@ -2343,7 +2343,7 @@ main,
 }
 .capacity-breakdown {
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: 6px;
   overflow: hidden;
 }
 .capacity-breakdown-head,
@@ -2407,7 +2407,7 @@ main,
   place-items: center;
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  border-radius: 6px;
   vertical-align: middle;
 }
 .frontload-button {
@@ -2442,7 +2442,7 @@ main,
   margin: 0 0 2px auto;
   padding: 2px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 4px;
   background: var(--brand-glow);
   color: var(--brand-light);
 }
@@ -2486,7 +2486,7 @@ main,
 .frontload-preview > div {
   padding: 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--surface-2);
 }
 .frontload-preview span,
@@ -2505,7 +2505,7 @@ main,
   margin: 15px 0 0;
   padding: 10px 12px;
   border: 1px solid color-mix(in srgb, var(--warning) 45%, var(--border));
-  border-radius: 8px;
+  border-radius: 6px;
   background: color-mix(in srgb, var(--warning) 11%, transparent);
   color: var(--ink);
   font-size: 12px;
@@ -2592,7 +2592,7 @@ main,
   place-items: center;
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  border-radius: 6px;
   vertical-align: middle;
 }
 .frontload-button {
@@ -2627,7 +2627,7 @@ main,
   margin: 0 0 2px auto;
   padding: 2px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 4px;
   background: var(--brand-glow);
   color: var(--brand-light);
 }
@@ -2671,7 +2671,7 @@ main,
 .frontload-preview > div {
   padding: 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--surface-2);
 }
 .frontload-preview span,
@@ -2690,7 +2690,7 @@ main,
   margin: 15px 0 0;
   padding: 10px 12px;
   border: 1px solid color-mix(in srgb, var(--warning) 45%, var(--border));
-  border-radius: 8px;
+  border-radius: 6px;
   background: color-mix(in srgb, var(--warning) 11%, transparent);
   color: var(--ink);
   font-size: 12px;

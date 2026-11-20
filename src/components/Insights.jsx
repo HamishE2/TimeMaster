@@ -49,7 +49,7 @@ export default function Insights({ projects, week, leaveWeeks }) {
                               : `${fmt(m.logged)} / ${fmt(m.effective)}h`}
                       </span>
                     </div>
-                    <ProjectAllocationBars
+                    <ProjectAllocationBars className={key === "under" && m.effective === m.weeklyAllowance && !m.frontloadedOut ? "summary-has-weekly" : ""}
                       project={p}
                       week={week}
                       leaveWeeks={leaveWeeks}

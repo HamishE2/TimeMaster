@@ -17,7 +17,7 @@ export default function Overview({ totals, week, settings }) {
       </strong>
       <div
         aria-hidden="true"
-        className={`readout-meter segmented ${over ? 'excess' : ''}`}
+        className={`readout-meter ${over ? 'excess' : ''}`}
       >
         <i style={{ width: Math.min(usedPct, 100) + '%' }} />
       </div>

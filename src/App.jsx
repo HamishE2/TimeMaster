@@ -39,6 +39,8 @@ import {
   setFrontloadRecord,
   showProjectRecord,
   moveProjectRecord,
+  placeProjectRecord,
+  placeTaskRecord,
   setEntryRecord,
   setTaskEntryRecord,
   toggleLeaveRecord,
@@ -68,6 +70,7 @@ import Overview from './components/Overview.jsx';
 import ProjectLineModal from './components/ProjectLineModal.jsx';
 import Settings from './components/Settings.jsx';
 import TimesheetTable from './components/TimesheetTable.jsx';
+import useHistory from './lib/useHistory.js';
 
 const empty = {
   schemaVersion: SCHEMA_VERSION,
@@ -87,8 +90,9 @@ const icon = (d) => (
 );
 
 export default function App() {
-  const [data, setData] = useState(empty),
-    [ready, setReady] = useState(false),
+  const { data, setData, resetData, undo, redo, canUndo, canRedo } =
+    useHistory(empty);
+  const [ready, setReady] = useState(false),
     [week, setWeek] = useState(weekKeyFor(new Date())),
     [panel, setPanel] = useState(null),
     [edit, setEdit] = useState(null),
@@ -102,7 +106,13 @@ export default function App() {
     [query, setQuery] = useState(''),
     [showSheetTools, setShowSheetTools] = useState(false),
     [filter, setFilter] = useState('all'),
-    [category, setCategory] = useState('none'),
+    [category, setCategory] = useState(() => {
+      try {
+        return localStorage.getItem('timemaster.grouping') || 'none';
+      } catch {
+        return 'none';
+      }
+    }),
     [notice, setNotice] = useState(null),
     [file, setFile] = useState(null),
     [mobileView, setMobileView] = useState('projects');
@@ -111,6 +121,35 @@ export default function App() {
     [fileStatus, setFileStatus] = useState('local'),
     [lastSavedAt, setLastSavedAt] = useState(null),
     [savedFileSignature, setSavedFileSignature] = useState('');
+  // Ctrl/Cmd Z undoes, Ctrl Shift Z or Ctrl Y redoes. Text fields keep their
+  // own native undo so typing corrections are not hijacked.
+  useEffect(() => {
+    const onKey = (event) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+      const target = event.target;
+      if (target.closest?.('input, textarea, select, [contenteditable="true"]'))
+        return;
+      const key = event.key.toLowerCase();
+      if (key === 'z' && !event.shiftKey) {
+        event.preventDefault();
+        undo();
+      } else if ((key === 'z' && event.shiftKey) || key === 'y') {
+        event.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [undo, redo]);
+  // Remember the timesheet grouping between visits (a view preference, so it
+  // lives in this browser rather than the workspace file).
+  useEffect(() => {
+    try {
+      localStorage.setItem('timemaster.grouping', category);
+    } catch {
+      /* storage unavailable: grouping just resets next visit */
+    }
+  }, [category]);
   const autoSaveTimer = useRef(),
     saveInFlight = useRef(false),
     saveBlocked = useRef(false),
@@ -123,7 +162,7 @@ export default function App() {
           signature = workspaceSignature(restored),
           handle = session?.fileHandle || null,
           saved = session?.savedSignature || (handle ? signature : '');
-        setData(restored);
+        resetData(restored);
         latestSignature.current = signature;
         setSavedFileSignature(saved);
         setFile(handle);
@@ -142,7 +181,7 @@ export default function App() {
         setReady(true);
       })
       .catch(() => setReady(true));
-  }, []);
+  }, [resetData]);
   const currentSignature = useMemo(() => workspaceSignature(data), [data]);
   useEffect(() => {
     latestSignature.current = currentSignature;
@@ -273,6 +312,10 @@ export default function App() {
   };
   const move = (id, direction) =>
     setData((d) => moveProjectRecord(d, id, direction));
+  const place = (id, targetId, after) =>
+    setData((d) => placeProjectRecord(d, id, targetId, after));
+  const placeTask = (projectId, taskId, targetId, after) =>
+    setData((d) => placeTaskRecord(d, projectId, taskId, targetId, after));
   const showProjectForWeek = (id, targetWeek) =>
     setData((d) => ({
       ...d,
@@ -495,7 +538,14 @@ export default function App() {
         code: 'PRJ-1042',
         color: '#078579',
         hours: 12,
-        entries: { 0: 4, 1: 3, 3: 3 },
+        entries: { 0: 2, 3: 1 },
+        tasks: [
+          { id: 'general', name: 'General' },
+          { id: 'training', name: 'Training' },
+          { id: 'champions', name: 'Champions network' },
+          { id: 'comms', name: 'Comms and launch' },
+        ],
+        phases: { training: { 0: 2, 1: 3 }, champions: { 3: 2 } },
       },
       {
         name: 'Northwind Teams Governance',
@@ -517,6 +567,8 @@ export default function App() {
           { id: 'general', name: 'General' },
           { id: 'discovery', name: 'Discovery' },
           { id: 'build', name: 'Build' },
+          { id: 'uat', name: 'UAT' },
+          { id: 'launch', name: 'Launch' },
         ],
         phases: { discovery: { 0: 1.5, 1: 1 }, build: { 3: 1.5 } },
       },
@@ -527,7 +579,13 @@ export default function App() {
         isBillable: false,
         color: '#b64e82',
         hours: 3,
-        entries: { 1: 1.5, 3: 1.5 },
+        entries: { 1: 1.5 },
+        tasks: [
+          { id: 'general', name: 'General' },
+          { id: 'readiness', name: 'Readiness assessment' },
+          { id: 'pilot', name: 'Pilot group' },
+        ],
+        phases: { readiness: { 3: 1.5 } },
       },
       {
         name: 'Presales',
@@ -566,22 +624,25 @@ export default function App() {
     setData((d) => ({ ...d, projects: [...d.projects, ...sample] }));
     setNotice({ type: 'success', text: 'Sample workspace added.' });
   };
-  const attachLoadedFile = useCallback((result) => {
-    const signature = workspaceSignature(result.data);
-    setSavedFileSignature(signature);
-    latestSignature.current = signature;
-    saveBlocked.current = false;
-    setData(result.data);
-    setFile(result.handle);
-    setFileName(result.name);
-    setFileRevision(result.revision);
-    setLastSavedAt(
-      result.revision?.lastModified
-        ? new Date(result.revision.lastModified)
-        : new Date(),
-    );
-    setFileStatus(result.handle ? 'saved' : 'local');
-  }, []);
+  const attachLoadedFile = useCallback(
+    (result) => {
+      const signature = workspaceSignature(result.data);
+      setSavedFileSignature(signature);
+      latestSignature.current = signature;
+      saveBlocked.current = false;
+      resetData(result.data);
+      setFile(result.handle);
+      setFileName(result.name);
+      setFileRevision(result.revision);
+      setLastSavedAt(
+        result.revision?.lastModified
+          ? new Date(result.revision.lastModified)
+          : new Date(),
+      );
+      setFileStatus(result.handle ? 'saved' : 'local');
+    },
+    [resetData],
+  );
   const doOpenFile = async () => {
     try {
       const result = await openBackup();
@@ -801,7 +862,9 @@ export default function App() {
               strokeWidth="2"
             />
           </svg>
-          Time <span>Master</span>
+          <b className="brand-name">
+            Time <span>Master</span>
+          </b>
         </a>
         <button
           className={`file-status file-status-${fileStatus}`}
@@ -824,6 +887,10 @@ export default function App() {
                 'Timesheet actions',
                 [
                   ['Add line', () => setLineTarget(true)],
+                  [
+                    'Export timesheet CSV',
+                    () => downloadTimesheetCsv(data.projects),
+                  ],
                   ['Capacity breakdown', () => setCapacityDetails(true)],
                   ['Previous week', () => setWeek(shiftWeek(week, -1))],
                   ['Next week', () => setWeek(shiftWeek(week, 1))],
@@ -843,6 +910,9 @@ export default function App() {
                   ['Manage projects', () => setPanel('manage')],
                   ['Import', () => setPanel('import')],
                   ['File', () => setPanel('file')],
+                  ...(file && dirty
+                    ? [['Save now', () => saveAttachedFile({ notify: true })]]
+                    : []),
                 ],
               ],
               [
@@ -856,18 +926,37 @@ export default function App() {
           <button onClick={() => setPanel('manage')}>Projects</button>
           <button onClick={() => setPanel('settings')}>Settings</button>
           <button
-            className="primary"
+            className="primary new-project"
+            aria-label="New project"
             onClick={() => {
               setEdit(null);
               setPanel('project');
             }}
           >
-            New project
+            <span className="btn-label">New project</span>
           </button>
         </nav>
       </header>
       <main id="workspace">
         <section className="week-head">
+          <nav className="history-nav" aria-label="History">
+            <button
+              onClick={undo}
+              disabled={!canUndo}
+              aria-label="Undo"
+              title="Undo (Ctrl Z)"
+            >
+              {icon('M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11')}
+            </button>
+            <button
+              onClick={redo}
+              disabled={!canRedo}
+              aria-label="Redo"
+              title="Redo (Ctrl Shift Z)"
+            >
+              {icon('m15 14 5-5-5-5M20 9H9.5a5.5 5.5 0 0 0 0 11H13')}
+            </button>
+          </nav>
           <div>
             <h1>{weekLabel(week, days)}</h1>
           </div>
@@ -912,6 +1001,12 @@ export default function App() {
         <section
           className={`workspace ${mobileView === 'days' ? 'day-mode' : ''}`}
         >
+          <div className="phone-week-summary">
+            <b>{fmt(totals.logged)}h logged</b> ·{' '}
+            {fmt(Math.abs(totals.remaining))}h{' '}
+            {totals.remaining < 0 ? 'over' : 'free'}{' '}
+            <button onClick={() => setCapacityDetails(true)}>Capacity ↗</button>
+          </div>
           <div className="week-readouts">
             <Overview totals={totals} week={week} settings={data.settings} />
             <CounterRail
@@ -953,68 +1048,66 @@ export default function App() {
               >
                 Filters
                 {(query || filter !== 'all' || category !== 'none') && ' •'}
+                <svg className="chevron" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
               </button>
-              <label className="search">
-                <span className="sr-only">Search projects</span>
-                {icon(
-                  'M21 21l-4.35-4.35m2.35-5.15a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0z',
-                )}
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Find a project"
-                />
-              </label>
-              <select
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                aria-label="Filter projects"
-              >
-                <option value="all">All projects</option>
-                <option value="logged">Logged</option>
-                <option value="unlogged">Not logged</option>
-                <option value="under">Allowance left</option>
-                <option value="at">At allocation</option>
-                <option value="over">Over allocation</option>
-                <option value="unlimited">Unlimited</option>
-                <option value="billable">Billable</option>
-                <option value="nonbillable">Non-billable</option>
-              </select>
-              <label className="timesheet-grouping">
-                <span className="sr-only">Group</span>
-                <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  aria-label="Categorise timesheet"
-                >
-                  <option value="none">No grouping</option>
-                  <option value="status">Status</option>
-                  <option value="client">Client</option>
-                  <option value="billability">Billable / non-billable</option>
-                  <option value="usage">Usage</option>
-                </select>
-              </label>
-              {(query || filter !== 'all') && (
-                <button
-                  onClick={() => {
-                    setQuery('');
-                    setFilter('all');
-                  }}
-                >
-                  Clear
-                </button>
-              )}
-              <button
-                onClick={() => {
-                  downloadTimesheetCsv(data.projects);
-                  setNotice({
-                    type: 'success',
-                    text: 'Exported the complete timesheet as CSV.',
-                  });
-                }}
-              >
-                Export CSV
-              </button>
+              <div className="sheet-tools">
+                <div className="sheet-tools-inner">
+                  <label className="search">
+                    <span className="sr-only">Search projects</span>
+                    {icon(
+                      'M21 21l-4.35-4.35m2.35-5.15a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0z',
+                    )}
+                    <input
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="Find a project"
+                    />
+                  </label>
+                  <select
+                    value={filter}
+                    onChange={(e) => setFilter(e.target.value)}
+                    aria-label="Filter projects"
+                  >
+                    <option value="all">All projects</option>
+                    <option value="logged">Logged</option>
+                    <option value="unlogged">Not logged</option>
+                    <option value="under">Allowance left</option>
+                    <option value="at">At allocation</option>
+                    <option value="over">Over allocation</option>
+                    <option value="unlimited">Unlimited</option>
+                    <option value="billable">Billable</option>
+                    <option value="nonbillable">Non-billable</option>
+                  </select>
+                  <label className="timesheet-grouping">
+                    <span className="sr-only">Group</span>
+                    <select
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                      aria-label="Categorise timesheet"
+                    >
+                      <option value="none">No grouping</option>
+                      <option value="status">Status</option>
+                      <option value="client">Client</option>
+                      <option value="billability">
+                        Billable / non-billable
+                      </option>
+                      <option value="usage">Usage</option>
+                    </select>
+                  </label>
+                  {(query || filter !== 'all') && (
+                    <button
+                      onClick={() => {
+                        setQuery('');
+                        setFilter('all');
+                      }}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
               <button className="primary" onClick={() => setLineTarget(true)}>
                 Add line
               </button>
@@ -1043,7 +1136,8 @@ export default function App() {
                   onAddLine={(project) => setLineTarget(project.id)}
                   onRemoveTaskLine={removeTaskLine}
                   onLeave={toggleLeave}
-                  onEdit={(p) => {
+                  onEdit={(p, phaseId = null) => {
+                    setFocusPhase(phaseId);
                     setEdit(p);
                     setPanel('project');
                   }}
@@ -1060,6 +1154,8 @@ export default function App() {
                   }
                   onRemove={setRemoveTarget}
                   onMove={move}
+                  onPlace={place}
+                  onPlaceTask={placeTask}
                 />
                 {mobileView === 'projects' ? (
                   <MobileCards
@@ -1073,7 +1169,8 @@ export default function App() {
                     onTaskEntry={setTaskEntry}
                     onAddLine={(project) => setLineTarget(project.id)}
                     onRemoveTaskLine={removeTaskLine}
-                    onEdit={(p) => {
+                    onEdit={(p, phaseId = null) => {
+                      setFocusPhase(phaseId);
                       setEdit(p);
                       setPanel('project');
                     }}
@@ -1116,6 +1213,22 @@ export default function App() {
             leaveWeeks={data.settings.leaveWeeks}
           />
         </section>
+        <nav className="phone-dock" aria-label="Mobile workspace">
+          <button
+            onClick={() =>
+              document.querySelector('.week-head').scrollIntoView()
+            }
+          >
+            Week
+          </button>
+          <button
+            onClick={() => document.querySelector('.insights').scrollIntoView()}
+          >
+            Usage
+          </button>
+          <button onClick={() => setPanel('manage')}>Projects</button>
+          <button onClick={() => setPanel('file')}>File</button>
+        </nav>
       </main>
       {notice && (
         <div className={`toast ${notice.type}`} role="status">
@@ -1177,6 +1290,7 @@ export default function App() {
         }}
       />
       <ConfirmDeleteModal
+        key={removeTarget?.id || 'closed'}
         isOpen={!!removeTarget}
         onClose={() => setRemoveTarget(null)}
         project={removeTarget}
@@ -1205,6 +1319,8 @@ export default function App() {
       )}
       {capacityDetails && (
         <CapacityModal
+          allProjects={data.projects}
+          settings={data.settings}
           projects={visible}
           week={week}
           leaveWeeks={data.settings.leaveWeeks}

@@ -59,6 +59,24 @@ export default function MobileCards({
                   </div>
                   <span className={m.status}>{remainingLabel}</span>
                 </header>
+                {m.weeklyAllowance != null && (
+                  <section
+                    className={`phone-meter ${m.logged > m.weeklyAllowance ? 'over' : ''}`}
+                  >
+                    <small>
+                      <span>Weekly</span>
+                      <b>
+                        {fmt(m.logged)} / {fmt(m.weeklyAllowance)}h
+                      </b>
+                    </small>
+                    <meter
+                      aria-label="Weekly allocation used"
+                      min={0}
+                      max={Math.max(m.logged, m.weeklyAllowance, 0.01)}
+                      value={m.logged}
+                    />
+                  </section>
+                )}
                 {(status !== 'active' || p.isBillable === false) && (
                   <div className="mobile-project-meta">
                     {status !== 'active' && (
@@ -132,16 +150,21 @@ export default function MobileCards({
                   </section>
                 ))}
                 <footer>
-                  {fmt(m.logged)}h logged ·{' '}
-                  {m.plan == null
-                    ? 'Unlimited plan'
-                    : `${fmt(m.plan)}h planned`}
+                  {/* The weekly meter already shows logged / allowance. */}
+                  {m.weeklyAllowance == null && (
+                    <>
+                      {fmt(m.logged)}h logged ·{' '}
+                      {m.plan == null
+                        ? 'Unlimited plan'
+                        : `${fmt(m.plan)}h planned`}
+                    </>
+                  )}
                   {sourceNote && (
                     <span
                       className="frontload-source-note"
                       title={sourceNoteTitle}
                     >
-                      {` · ${sourceNote}`}
+                      {m.weeklyAllowance == null ? ` · ${sourceNote}` : sourceNote}
                     </span>
                   )}
                   {hasTasks && (

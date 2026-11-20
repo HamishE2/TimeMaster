@@ -11,7 +11,7 @@
   text-align: left;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: 6px;
 }
 
 .topbar .file-status:hover {
@@ -53,7 +53,7 @@
   padding: 14px;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 6px;
 }
 
 .active-file-card span,
@@ -78,7 +78,7 @@
   line-height: 1.5;
   background: color-mix(in srgb, var(--warning) 10%, transparent);
   border: 1px solid color-mix(in srgb, var(--warning) 45%, var(--border));
-  border-radius: 8px;
+  border-radius: 6px;
 }
 
 .file-primary-actions {
@@ -103,7 +103,7 @@
   font-size: 12px;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 6px;
 }
 
 .conflict-advice summary {

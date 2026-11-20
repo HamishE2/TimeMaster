@@ -1,4 +1,4 @@
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
 import { DAY_NAMES, fmt, weekDates } from '../lib/utils.js';
 import { taskHoursForDay, taskLinesFor } from '../lib/taskLines.js';
 import { hasPhases } from '../lib/tasks.js';
@@ -11,10 +11,13 @@ export default function MobileDays({
   onEntry,
   onTaskEntry,
 }) {
+  const [selected,setSelected]=useState((new Date().getDay()+6)%7);
+  const current=days.includes(selected)?selected:days[0];
   const dates = weekDates(week);
   return (
     <div className="mobile-days">
-      {days.map((day) => {
+      <nav aria-label="Timesheet day">{days.map(d=><button key={d} aria-pressed={d===current} onClick={()=>setSelected(d)}>{DAY_NAMES[d].slice(0,3)} {dates[d].getDate()}</button>)}</nav>
+      {[current].map((day) => {
         const isLeave = leave.includes(day),
           total = projects.reduce(
             (sum, project) =>

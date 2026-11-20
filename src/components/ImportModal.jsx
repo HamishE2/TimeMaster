@@ -12,6 +12,7 @@ export default function ImportModal({
   onImport,
 }) {
   const [dragOver, setDragOver] = useState(false);
+  const [fileName,setFileName]=useState("");
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [classified, setClassified] = useState([]);
@@ -80,7 +81,7 @@ export default function ImportModal({
     (file) => {
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = (e) => processText(e.target.result);
+      reader.onload = (e) => {setFileName(file.name);processText(e.target.result);};
       reader.readAsText(file);
     },
     [processText],
@@ -182,12 +183,7 @@ export default function ImportModal({
                     strokeLinejoin="round"
                   />
                 </svg>
-                <p className="drop-text">
-                  Drop a CSV file here or click to browse
-                </p>
-                <p className="drop-hint">
-                  Supports Resourcing and Timesheet CSV exports
-                </p>
+                <p className="drop-text">Drop a CSV or click to browse</p>
               </>
             ) : (
               <p className="drop-text-compact">
@@ -206,7 +202,22 @@ export default function ImportModal({
                     strokeLinejoin="round"
                   />
                 </svg>
-                File loaded — drop another to replace
+                <strong>{fileName}</strong>
+                <span>
+                  {classified.length} project{classified.length === 1 ? "" : "s"} found
+                  {result.format === "resourcing" ? " · Resourcing" : " · Timesheet"}
+                  {result.weekKey ? ` · week of ${result.weekKey}` : ""}
+                </span>
+                <button
+                  type="button"
+                  className="drop-replace"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    fileInputRef.current?.click();
+                  }}
+                >
+                  Replace file
+                </button>
               </p>
             )}
           </div>
@@ -242,29 +253,21 @@ export default function ImportModal({
           {/* Preview table */}
           {classified.length > 0 && (
             <>
-              <div className="import-meta">
-                <span className="import-format-badge">
-                  {result.format === 'resourcing'
-                    ? '📊 Resourcing'
-                    : '⏱️ Timesheet'}
-                </span>
-                {result.weekKey && (
-                  <span className="import-week">Week of {result.weekKey}</span>
-                )}
-              </div>
 
               <div className="import-table-wrap">
                 <table className="import-table">
                   <thead>
                     <tr>
-                      <th className="import-th-check"></th>
-                      <th className="import-th-status">Status</th>
+                      <th className="import-th-check">
+                        <span className="sr-only">Include</span>
+                      </th>
                       <th className="import-th-name">Project</th>
                       {result.format === 'resourcing' ? (
                         <th className="import-th-hours">Resourced</th>
                       ) : (
-                        <th className="import-th-hours">Total Hours</th>
+                        <th className="import-th-hours">Total hours</th>
                       )}
+                      <th className="import-th-status">Status</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -286,15 +289,6 @@ export default function ImportModal({
                             />
                           )}
                         </td>
-                        <td className="import-td-status">
-                          <span
-                            className={`import-status-badge import-status-${item.status}`}
-                          >
-                            {item.status === 'new' && '🆕 New'}
-                            {item.status === 'update' && '🔄 Update'}
-                            {item.status === 'skip' && '⏭️ No change'}
-                          </span>
-                        </td>
                         <td className="import-td-name">{item.name}</td>
                         <td className="import-td-hours">
                           {result.format === 'resourcing' ? (
@@ -314,6 +308,15 @@ export default function ImportModal({
                           ) : (
                             `${fmtHours(item.totalHours)}h`
                           )}
+                        </td>
+                        <td className="import-td-status">
+                          <span
+                            className={`import-status-badge import-status-${item.status}`}
+                          >
+                            {item.status === 'new' && 'New'}
+                            {item.status === 'update' && 'Updates existing'}
+                            {item.status === 'skip' && 'No change'}
+                          </span>
                         </td>
                       </tr>
                     ))}
