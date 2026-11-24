@@ -1390,3 +1390,18 @@ main#workspace {
     font-size: 11px;
   }
 }
+
+/* Project usage sidebar: client name under the project name. */
+.insight-title {
+  min-width: 0;
+}
+.insight-title .insight-client {
+  display: block;
+  padding-left: 17px;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
