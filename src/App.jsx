@@ -205,6 +205,7 @@ export default function App() {
     // change made elsewhere.
     attemptedSignatures = useRef([]),
     sessionUnreadable = useRef(false),
+    lostHandleNotified = useRef(null),
     latestSignature = useRef(workspaceSignature(empty));
   const [saveRetry, setSaveRetry] = useState(0);
 
@@ -974,13 +975,17 @@ export default function App() {
     // after edits: a transient IndexedDB failure must not replace real work.
     // Opening or importing a file lifts the guard.
     if (!sessionUnreadable.current)
-      saveSessionToIdb(
-        file,
-        week,
-        payload,
-        fileRevision,
-        savedFileSignature,
-      ).catch(() =>
+      saveSessionToIdb(file, week, payload, fileRevision, savedFileSignature)
+        .then((result) => {
+          if (!file || result?.handleStored !== false) return;
+          if (lostHandleNotified.current === file) return;
+          lostHandleNotified.current = file;
+          setNotice({
+            type: 'error',
+            text: `The browser can no longer reach ${file.name || 'the attached file'}. Your work is still saved in this browser. Open the file again from File to reattach it.`,
+          });
+        })
+        .catch(() =>
         setNotice({
           type: 'error',
           text: 'The browser copy could not be saved. Export a backup copy from File.',
