@@ -1,12 +1,20 @@
 // Local, dependency-free matching of free-text entry notes to a project's
 // costed activities. Everything runs in the browser (the app is a static
 // page), so "semantic" matching is built from normalisation, stemming,
-// acronyms, a consulting synonym table and typo-tolerant token comparison.
+// acronyms, a consulting synonym table, typo tolerance and word weighting:
+// words shared by many of a project's activities ("Copilot", "session")
+// count for less than the words that tell activities apart.
 
 const STOPWORDS = new Set(
-  'a an and the of for to on in with at by from into re about my our my your their this that these those some more draft drafted drafting work worked working on update updated updating review reviewed reviewing finalise finalised finalize finalized prep prepped prepare prepared preparing build built building create created creating write wrote writing continue continued continuing team teams'.split(
-    ' ',
-  ),
+  `a an and the of for to on in with at by from into re about my our your
+  their this that these those some more draft drafted drafting work worked
+  working update updated updating review reviewed reviewing finalise
+  finalised finalize finalized prep prepped prepare prepared preparing build
+  built building create created creating write wrote writing continue
+  continued continuing team teams ran run running deliver delivered
+  delivering x1 x2 x3 up minute second mins min sec hour`
+    .split(/\s+/)
+    .filter(Boolean),
 );
 
 // Notes made only of these words can't be tied to one activity.
@@ -38,9 +46,13 @@ export const VAGUE_TERMS = [
   'content',
   'outputs',
   'materials',
+  'meeting',
+  'meetings',
+  'emails',
 ];
 
-// Phrases in the same group name the same kind of deliverable.
+// Phrases in the same group name the same kind of deliverable. Names follow
+// the Transformation & Change activity catalogue and common shorthand.
 export const SYNONYM_GROUPS = [
   [
     'quick reference guide',
@@ -49,59 +61,50 @@ export const SYNONYM_GROUPS = [
     'cheat sheet',
     'job aid',
     'tip sheet',
-    'how to guide',
-    'user guide',
+    'prompt card',
   ],
+  ['user guide', 'how to guide', 'manual'],
+  ['day in the life guide', 'ditl'],
   [
     'facilitator guide',
     'facilitator notes',
     'facilitator pack',
+    'demo notes',
+    'demo runbook',
     'run sheet',
     'speaker notes',
     'presenter notes',
     'session script',
   ],
-  [
-    'training',
-    'training session',
-    'trainings',
-    'course',
-    'class',
-    'lesson',
-    'end user training',
-  ],
   ['train the trainer', 'ttt'],
-  ['workshop', 'workshops', 'working session', 'design session'],
+  ['workshop', 'design session'],
   [
     'communication',
     'comms',
     'email',
     'announcement',
     'newsletter',
-    'message',
     'comms plan',
-    'communication plan',
+    'communications plan',
     'yammer post',
     'viva engage post',
   ],
-  ['change impact assessment', 'cia', 'impact assessment', 'impact analysis'],
+  [
+    'change impact assessment',
+    'change impact and readiness assessment',
+    'cia',
+    'impact assessment',
+    'impact analysis',
+  ],
   [
     'stakeholder analysis',
     'stakeholder map',
     'stakeholder mapping',
     'stakeholder engagement',
-    'stakeholder',
   ],
-  ['champion', 'champions network', 'champion network', 'champions'],
-  [
-    'presentation',
-    'deck',
-    'slide',
-    'slides',
-    'ppt',
-    'powerpoint',
-    'slide deck',
-  ],
+  ['champion', 'champions network', 'champion network', 'champion toolkit'],
+  ['community of practice', 'cop', 'centre of excellence', 'coe'],
+  ['presentation', 'deck', 'slide', 'ppt', 'powerpoint', 'slide deck'],
   ['survey', 'pulse survey', 'questionnaire', 'poll', 'feedback form'],
   [
     'adoption plan',
@@ -111,70 +114,76 @@ export const SYNONYM_GROUPS = [
     'change management plan',
   ],
   [
-    'report',
-    'reporting',
-    'status report',
     'dashboard',
-    'metrics',
+    'status report',
     'usage report',
     'analytics',
+    'dashboard analysis',
   ],
   [
+    'project governance',
     'project management',
     'pm',
     'governance',
     'status meeting',
     'steerco',
     'steering committee',
-    'planning',
   ],
+  ['discovery', 'interview', 'current state', 'current state assessment'],
+  ['persona', 'scenario', 'use case', 'prompt library'],
   [
-    'discovery',
-    'interview',
-    'interviews',
-    'current state',
-    'current state assessment',
-    'persona',
-    'personas',
+    'video',
+    'recording',
+    'demo video',
+    'screen recording',
+    'walkthrough video',
+    'learning video',
   ],
-  ['video', 'recording', 'demo video', 'screen recording', 'walkthrough video'],
   [
     'intranet',
     'sharepoint page',
     'sharepoint site',
-    'hub',
     'landing page',
+    'training hub',
     'learning hub',
   ],
-  ['elearning', 'e learning', 'online module', 'learning module', 'lms module'],
+  ['elearning', 'online module', 'learning module', 'lms module'],
   [
-    'office hours',
-    'drop in',
+    'dropin',
     'drop in clinic',
+    'office hours',
     'floor walking',
     'floorwalking',
-    'hypercare',
     'clinic',
   ],
-  [
-    'use case',
-    'use cases',
-    'scenario',
-    'scenarios',
-    'prompt library',
-    'prompt guide',
-  ],
-  ['readiness assessment', 'readiness', 'change readiness'],
+  ['hypercare', 'post launch support', 'lite hypercare'],
+  ['readiness assessment', 'change readiness'],
   ['training needs analysis', 'tna', 'learning needs analysis'],
-  ['showcase', 'demo', 'demonstration', 'show and tell'],
-  ['playbook', 'runbook', 'handbook', 'guidelines'],
-  ['faq', 'faqs', 'frequently asked questions', 'q and a'],
-  ['go live', 'launch', 'cutover', 'rollout'],
+  ['showcase', 'show and tell'],
+  ['playbook', 'runbook', 'handbook'],
+  ['faq', 'frequently asked questions'],
+  ['golive', 'launch', 'cutover', 'rollout'],
+  ['kickoff', 'kick off meeting', 'project kickoff'],
+  ['consulting qa', 'quality assurance', 'qa', 'peer review'],
+  ['masterclass', 'prompting masterclass', 'prompting session'],
+  ['tip', 'weekly tip', 'tip of the week'],
+  [
+    'escape room',
+    'prompt a thon',
+    'promptathon',
+    'hackathon',
+    'engagement event',
+  ],
 ];
 
-const DEFAULT_THRESHOLD = 0.75;
-const AMBIGUOUS_FLOOR = 0.45;
-const MARGIN = 0.12;
+const DEFAULT_THRESHOLD = 0.7;
+const AMBIGUOUS_FLOOR = 0.4;
+const MARGIN = 0.1;
+
+// Hyphenated or spaced compounds ("kick-off", "drop in", "e-learning")
+// become one word so every spelling compares equal.
+const COMPOUNDS =
+  /\b(kick|drop|check|sign|walk|follow|roll|go|e|lead|hand|set|deep)[\s-]+(off|ins?|ups?|through|out|live|learning|over|dive)\b/g;
 
 export function normalise(text) {
   return String(text ?? '')
@@ -182,12 +191,13 @@ export function normalise(text) {
     .normalize('NFKD')
     .replace(/[̀-ͯ]/g, '')
     .replace(/&/g, ' and ')
+    .replace(COMPOUNDS, '$1$2')
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
 }
 
 export function stem(word) {
-  let w = word;
+  const w = word;
   if (w.length <= 3)
     return w.endsWith('s') && w.length === 3 && !/[aeiou]/.test(w)
       ? w.slice(0, -1)
@@ -200,12 +210,21 @@ export function stem(word) {
     !w.endsWith('us') &&
     !w.endsWith('is')
   )
-    w = w.slice(0, -1);
+    return w.slice(0, -1);
   return w;
 }
 
-const words = (text) => normalise(text).split(' ').filter(Boolean).map(stem);
+const words = (text) =>
+  normalise(text)
+    .split(' ')
+    .filter((t) => t && !/^\d+$/.test(t))
+    .map(stem);
 const significant = (tokens) => tokens.filter((t) => !STOPWORDS.has(t));
+// Synonym phrases only lose true function words, so "run sheet" keeps "run".
+const FUNCTION_WORDS = new Set(
+  'a an and the of for to on in with at by from into'.split(' '),
+);
+const contentWords = (tokens) => tokens.filter((t) => !FUNCTION_WORDS.has(t));
 const initials = (tokens) => tokens.map((t) => t[0]).join('');
 
 function levenshtein(a, b, max) {
@@ -252,22 +271,36 @@ const containsPhrase = (tokens, phrase, options) => {
   return false;
 };
 
-const GROUPS = SYNONYM_GROUPS.map((group) => group.map(words));
+const GROUPS = SYNONYM_GROUPS.map((group) =>
+  group.map((phrase) => contentWords(words(phrase))).filter((p) => p.length),
+);
 
-const groupsIn = (tokens) => {
+const exactPhrase = (tokens, phrase) =>
+  tokens.some((_, i) => phrase.every((p, j) => tokens[i + j] === p));
+
+// Notes may contain typos; activity names are typed with care, so they only
+// join a group on exact words ("learning video" is not "elearning").
+const groupsIn = (tokens, { fuzzy = true } = {}) => {
   const found = new Set();
   GROUPS.forEach((phrases, index) => {
-    if (phrases.some((p) => containsPhrase(tokens, p, { prefix: false })))
+    if (
+      phrases.some((p) =>
+        fuzzy
+          ? containsPhrase(tokens, p, { prefix: false })
+          : exactPhrase(tokens, p),
+      )
+    )
       found.add(index);
   });
   return found;
 };
 
-// Initials of every 2–5 token run, so "quick reference guides" offers "qrg".
+// Initials of every 2–6 word run, with and without small words, so
+// "community of practice" offers "cop" and "quick reference guide" "qrg".
 const runInitials = (tokens) => {
   const out = new Set();
   for (let i = 0; i < tokens.length; i += 1)
-    for (let n = 2; n <= 5 && i + n <= tokens.length; n += 1)
+    for (let n = 2; n <= 6 && i + n <= tokens.length; n += 1)
       out.add(initials(tokens.slice(i, i + n)));
   return out;
 };
@@ -281,50 +314,119 @@ export function activityKeys(activity) {
     .concat(bracketed)
     .map((alias) => String(alias ?? ''))
     .filter((alias) => normalise(alias));
-  const phrases = [base, ...aliases]
+  const texts = [base, ...aliases];
+  const phrases = texts
     .map((text) => significant(words(text)))
     .filter((tokens) => tokens.length);
   const acronyms = new Set();
-  for (const tokens of phrases) {
-    if (tokens.length >= 2) acronyms.add(initials(tokens));
-    if (tokens.length === 1 && tokens[0].length <= 5) acronyms.add(tokens[0]);
+  for (const text of texts) {
+    const all = words(text);
+    for (const a of runInitials(all)) acronyms.add(a);
+    for (const a of runInitials(significant(all))) acronyms.add(a);
   }
+  // A short single word such as "QRGs" is itself an acronym.
+  for (const tokens of phrases)
+    if (tokens.length === 1 && tokens[0].length <= 5) acronyms.add(tokens[0]);
+  const vocabulary = new Set(phrases.flat());
   const groups = new Set();
-  for (const tokens of phrases) for (const g of groupsIn(tokens)) groups.add(g);
-  return { id: activity?.id ?? null, phrases, acronyms, groups };
+  for (const tokens of phrases)
+    for (const g of groupsIn(tokens, { fuzzy: false })) groups.add(g);
+  return { id: activity?.id ?? null, phrases, vocabulary, acronyms, groups };
 }
 
+const VAGUE = new Set(VAGUE_TERMS.map((t) => words(t).join(' ')));
 const isVagueText = (tokens) => {
   const text = tokens.join(' ');
-  if (!text) return true;
-  const vague = new Set(VAGUE_TERMS.map((t) => words(t).join(' ')));
-  if (vague.has(text)) return true;
-  return tokens.every((t) => vague.has(t) || STOPWORDS.has(t));
+  if (!text || VAGUE.has(text)) return true;
+  return tokens.every((t) => VAGUE.has(t) || STOPWORDS.has(t));
 };
 
-function scoreActivity(noteTokens, noteSig, noteGroups, noteInitials, keys) {
+// Rarer words across this project's activities carry more weight.
+function weightsFor(keyList) {
+  const df = new Map();
+  for (const keys of keyList)
+    for (const token of keys.vocabulary)
+      df.set(token, (df.get(token) || 0) + 1);
+  const n = Math.max(1, keyList.length);
+  const weight = (token) => Math.log(1 + n / (df.get(token) || 0.5));
+  const vocabulary = [...df.keys()];
+  weight.known = (token) =>
+    df.has(token) || vocabulary.some((v) => tokenSimilarity(token, v) > 0);
+  return weight;
+}
+
+const bestSimilarity = (token, pool) => {
+  let best = 0;
+  for (const other of pool) {
+    const sim = tokenSimilarity(token, other);
+    if (sim > best) best = sim;
+    if (best === 1) break;
+  }
+  return best;
+};
+
+function scoreActivity(note, keys, weight) {
+  const { tokens, sig, groups, initialsSet } = note;
   let best = { score: 0, reason: null };
   const consider = (score, reason) => {
     if (score > best.score) best = { score, reason };
   };
+  for (const phrase of keys.phrases)
+    if (phrase.length > 1 && containsPhrase(tokens, phrase))
+      consider(1, 'name');
+
+  // Precision: how much of the note this activity explains.
+  // Recall: how much of the activity's name the note mentions.
+  let noteHit = 0,
+    noteTotal = 0;
+  for (const token of sig) {
+    // Words no activity uses can't tell activities apart, so they only
+    // dilute the score a little.
+    const w =
+      weight.known(token) || keys.acronyms.has(token) ? weight(token) : 0.3;
+    noteTotal += w;
+    const acronymHit = token.length >= 2 && keys.acronyms.has(token) ? 0.95 : 0;
+    noteHit += w * Math.max(acronymHit, bestSimilarity(token, keys.vocabulary));
+  }
+  // Recall is taken per name or alias, so an alias isn't diluted by the
+  // activity's main name.
+  let recall = 0;
   for (const phrase of keys.phrases) {
-    if (containsPhrase(noteTokens, phrase))
-      consider(phrase.length > 1 || phrase[0].length > 2 ? 1 : 0.9, 'name');
-    // Partial overlap: share of the activity's words present in the note.
-    let hit = 0;
+    let hit = 0,
+      total = 0;
     for (const token of phrase) {
-      const sim = Math.max(0, ...noteSig.map((n) => tokenSimilarity(token, n)));
-      hit += sim;
+      const w = weight(token);
+      total += w;
+      hit += w * bestSimilarity(token, sig);
     }
-    if (phrase.length) consider((hit / phrase.length) * 0.85, 'words');
+    if (total) recall = Math.max(recall, hit / total);
   }
-  for (const acronym of keys.acronyms) {
-    if (acronym.length < 2) continue;
-    if (noteSig.includes(acronym)) consider(0.95, 'acronym');
-    else if (acronym.length >= 3 && noteInitials.has(acronym))
+  // A note acronym ("CIA", "TTT") that spells out this activity's name.
+  for (const token of sig)
+    if (
+      token.length >= 3 &&
+      keys.acronyms.has(token) &&
+      !keys.vocabulary.has(token)
+    )
+      consider(0.92, 'acronym');
+  // Acronyms in the activity name ("QRG") spelled out in the note.
+  for (const acronym of keys.acronyms)
+    if (
+      acronym.length >= 3 &&
+      keys.vocabulary.has(acronym) &&
+      initialsSet.has(acronym)
+    )
       consider(0.95, 'acronym');
+  let wordScore = 0;
+  if (noteTotal) {
+    const precision = noteHit / noteTotal;
+    if (precision > 0) wordScore = 0.95 * (0.7 * precision + 0.3 * recall);
+    consider(wordScore, 'words');
   }
-  for (const g of keys.groups) if (noteGroups.has(g)) consider(0.9, 'synonym');
+  // A shared synonym group is strong evidence; word overlap breaks ties
+  // between activities that fall in the same group.
+  if ([...keys.groups].some((g) => groups.has(g)))
+    consider(0.78 + 0.2 * wordScore, 'synonym');
   return best;
 }
 
@@ -336,22 +438,24 @@ export function matchActivity(
   const list = (Array.isArray(activities) ? activities : []).filter(
     (a) => a?.id,
   );
-  const noteTokens = words(note),
-    noteSig = significant(noteTokens);
+  const tokens = words(note),
+    sig = significant(tokens);
   const empty = { activityId: null, candidates: [] };
-  if (!noteSig.length)
-    return { status: noteTokens.length ? 'vague' : 'none', ...empty };
-  const noteGroups = groupsIn(noteTokens),
-    noteInitials = runInitials(noteSig);
+  if (!sig.length)
+    return { status: tokens.length ? 'vague' : 'none', ...empty };
+  const vague = isVagueText(sig);
+  if (vague) return { status: 'vague', ...empty };
+  const keyList = list.map(activityKeys),
+    weight = weightsFor(keyList),
+    noteInfo = {
+      tokens,
+      sig,
+      groups: groupsIn(tokens),
+      initialsSet: runInitials(sig),
+    };
   const candidates = list
-    .map((activity) => {
-      const { score, reason } = scoreActivity(
-        noteTokens,
-        noteSig,
-        noteGroups,
-        noteInitials,
-        activityKeys(activity),
-      );
+    .map((activity, index) => {
+      const { score, reason } = scoreActivity(noteInfo, keyList[index], weight);
       return {
         activityId: activity.id,
         score: Math.round(score * 1000) / 1000,
@@ -367,13 +471,8 @@ export function matchActivity(
     (!second || first.score - second.score >= MARGIN)
   )
     return { status: 'match', activityId: first.activityId, candidates };
-  if (first && (second || !isVagueText(noteSig)))
-    return { status: 'ambiguous', activityId: null, candidates };
-  return {
-    status: isVagueText(noteSig) ? 'vague' : 'none',
-    activityId: null,
-    candidates,
-  };
+  if (first) return { status: 'ambiguous', activityId: null, candidates };
+  return { status: 'none', activityId: null, candidates };
 }
 
 // Tag value meaning "this entry is not a costed activity".

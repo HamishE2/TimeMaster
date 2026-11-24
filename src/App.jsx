@@ -18,6 +18,7 @@ import {
 } from './lib/utils.js';
 import {
   FILE_CHANGED_CODE,
+  FILE_PERMISSION_CODE,
   backupPayload,
   chooseNewBackupHandle,
   downloadBackup,
@@ -156,7 +157,18 @@ export default function App() {
   const autoSaveTimer = useRef(),
     saveInFlight = useRef(false),
     saveBlocked = useRef(false),
+    // A save requested while another was writing; retried when that ends.
+    saveQueued = useRef(false),
+    // Bumped whenever a different file is attached, so a save still writing
+    // to the previous file cannot overwrite the new file's saved state.
+    fileGeneration = useRef(0),
+    // Signatures this tab tried to write since the last confirmed save. A
+    // write that timed out may still land; its content is ours, not a
+    // change made elsewhere.
+    attemptedSignatures = useRef([]),
+    sessionUnreadable = useRef(false),
     latestSignature = useRef(workspaceSignature(empty));
+  const [saveRetry, setSaveRetry] = useState(0);
 
   useEffect(() => {
     loadSessionFromIdb()
@@ -183,7 +195,16 @@ export default function App() {
           setWeek(session.weekKey);
         setReady(true);
       })
-      .catch(() => setReady(true));
+      .catch(() => {
+        // Keep whatever is stored: writing the blank workspace back would
+        // replace the browser copy before anyone could recover it.
+        sessionUnreadable.current = true;
+        setNotice({
+          type: 'error',
+          text: 'The workspace saved in this browser could not be opened. Open your TimeMaster file from File, or import a backup copy.',
+        });
+        setReady(true);
+      });
   }, [resetData]);
   const currentSignature = useMemo(() => workspaceSignature(data), [data]);
   useEffect(() => {
@@ -658,6 +679,9 @@ export default function App() {
   const attachLoadedFile = useCallback(
     (result) => {
       const signature = workspaceSignature(result.data);
+      // Attempted signatures are kept: a write that was still landing when
+      // the file was refreshed holds our content, not someone else's.
+      fileGeneration.current += 1;
       setSavedFileSignature(signature);
       latestSignature.current = signature;
       saveBlocked.current = false;
@@ -718,20 +742,22 @@ export default function App() {
       return;
     }
     try {
-      const handle = await chooseNewBackupHandle(),
+      const handle = await chooseNewBackupHandle(fileName || undefined),
         payload = backupPayload(data.projects, data.settings),
         signature = workspaceSignature(payload),
         revision = await writeHandle(handle, payload);
+      fileGeneration.current += 1;
+      attemptedSignatures.current = [];
       setSavedFileSignature(signature);
       saveBlocked.current = false;
       setFile(handle);
       setFileName(handle.name);
       setFileRevision(revision);
       setLastSavedAt(new Date(revision.lastModified));
-      setFileStatus('saved');
+      setFileStatus(latestSignature.current === signature ? 'saved' : 'dirty');
       setNotice({
         type: 'success',
-        text: `Created and attached ${handle.name}.`,
+        text: `Saved and attached ${handle.name}.`,
       });
     } catch (error) {
       if (error?.name !== 'AbortError')
@@ -747,13 +773,30 @@ export default function App() {
         if (notify) setPanel('file');
         return false;
       }
-      if (saveInFlight.current) return false;
+      if (saveInFlight.current) {
+        saveQueued.current = true;
+        return false;
+      }
       saveInFlight.current = true;
+      saveQueued.current = false;
       setFileStatus('saving');
-      const payload = backupPayload(data.projects, data.settings),
-        signature = workspaceSignature(payload);
+      const generation = fileGeneration.current,
+        payload = backupPayload(data.projects, data.settings),
+        signature = workspaceSignature(payload),
+        ownSignatures = [savedFileSignature, ...attemptedSignatures.current];
+      attemptedSignatures.current = [
+        ...attemptedSignatures.current,
+        signature,
+      ].slice(-5);
       try {
-        const revision = await writeHandle(file, payload, fileRevision);
+        const revision = await writeHandle(file, payload, fileRevision, {
+          // Only a click may raise the browser's permission prompt.
+          interactive: notify,
+          ownSignatures,
+        });
+        // Another file was attached while this one was writing.
+        if (generation !== fileGeneration.current) return false;
+        attemptedSignatures.current = [];
         setSavedFileSignature(signature);
         saveBlocked.current = false;
         setFileRevision(revision);
@@ -764,9 +807,15 @@ export default function App() {
         if (notify) setNotice({ type: 'success', text: `Saved ${file.name}.` });
         return true;
       } catch (error) {
+        if (generation !== fileGeneration.current) return false;
         if (error?.code === FILE_CHANGED_CODE) {
           saveBlocked.current = true;
           setFileStatus('conflict');
+          setNotice({ type: 'error', text: error.message });
+        } else if (error?.code === FILE_PERMISSION_CODE) {
+          // Autosave cannot ask for permission; wait for Save now.
+          saveBlocked.current = true;
+          setFileStatus('permission');
           setNotice({ type: 'error', text: error.message });
         } else {
           setFileStatus('error');
@@ -780,9 +829,15 @@ export default function App() {
         return false;
       } finally {
         saveInFlight.current = false;
+        // Edits made while this save was writing still need writing, even
+        // when this save failed or was for a file no longer attached.
+        if (saveQueued.current) {
+          saveQueued.current = false;
+          setSaveRetry((count) => count + 1);
+        }
       }
     },
-    [data, file, fileRevision],
+    [data, file, fileRevision, savedFileSignature],
   );
   const doRefreshFile = async () => {
     if (!file) return;
@@ -816,22 +871,29 @@ export default function App() {
     if (!ready) return;
     const payload = backupPayload(data.projects, data.settings),
       signature = workspaceSignature(payload);
-    saveSessionToIdb(
-      file,
-      week,
-      payload,
-      fileRevision,
-      savedFileSignature,
-    ).catch(() =>
-      setNotice({
-        type: 'error',
-        text: 'The browser copy could not be saved. Export a backup copy from File.',
-      }),
-    );
+    if (!(sessionUnreadable.current && data === empty))
+      saveSessionToIdb(
+        file,
+        week,
+        payload,
+        fileRevision,
+        savedFileSignature,
+      ).catch(() =>
+        setNotice({
+          type: 'error',
+          text: 'The browser copy could not be saved. Export a backup copy from File.',
+        }),
+      );
     clearTimeout(autoSaveTimer.current);
     if (file && signature !== savedFileSignature && !saveBlocked.current) {
       setFileStatus((current) => (current === 'saving' ? current : 'dirty'));
       autoSaveTimer.current = setTimeout(() => saveAttachedFile(), 800);
+    } else if (file && signature === savedFileSignature && !saveInFlight.current) {
+      // Edits undone back to the saved state leave nothing to save, so an
+      // "Unsaved changes" or failed-save status must not linger.
+      setFileStatus((current) =>
+        current === 'dirty' || current === 'error' ? 'saved' : current,
+      );
     }
     return () => {
       clearTimeout(autoSaveTimer.current);
@@ -843,8 +905,22 @@ export default function App() {
     ready,
     saveAttachedFile,
     savedFileSignature,
+    saveRetry,
     week,
   ]);
+  // Write pending edits straight away when the tab is hidden (switching
+  // away, minimising or closing), rather than waiting for the autosave delay
+  // that background tabs may throttle or never reach.
+  useEffect(() => {
+    if (!dirty) return;
+    const flush = () => {
+      if (document.visibilityState !== 'hidden' || saveBlocked.current) return;
+      clearTimeout(autoSaveTimer.current);
+      saveAttachedFile();
+    };
+    document.addEventListener('visibilitychange', flush);
+    return () => document.removeEventListener('visibilitychange', flush);
+  }, [dirty, saveAttachedFile]);
   useEffect(() => {
     if (!dirty) return;
     const warn = (event) => {
@@ -862,7 +938,9 @@ export default function App() {
         ? 'Unsaved changes'
         : fileStatus === 'conflict'
           ? 'Save blocked · file changed'
-          : fileStatus === 'error'
+          : fileStatus === 'permission'
+            ? 'Save paused · allow access'
+            : fileStatus === 'error'
             ? 'Save needs attention'
             : fileStatus === 'saved' && lastSavedAt
               ? `Saved ${lastSavedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
@@ -898,7 +976,7 @@ export default function App() {
           </b>
         </a>
         <button
-          className={`file-status file-status-${fileStatus}`}
+          className={`file-status file-status-${fileStatus === 'permission' ? 'error' : fileStatus}`}
           onClick={() => setPanel('file')}
           title="Open file controls"
         >
@@ -1164,6 +1242,10 @@ export default function App() {
                   totals={totals}
                   onEntry={setEntry}
                   onTaskEntry={setTaskEntry}
+                  onSaveNote={(projectId, taskId, wk, day, text) =>
+                    saveEntryNote({ projectId, taskId, week: wk, day }, text)
+                  }
+                  onUndo={undo}
                   onNote={(projectId, taskId, wk, day) =>
                     setNoteTarget({ projectId, taskId, week: wk, day })
                   }
@@ -1444,6 +1526,7 @@ export default function App() {
           onClose={() => setPanel(null)}
           onOpen={openFile}
           onCreate={saveAs}
+          needsAttention={fileStatus === 'error' || fileStatus === 'permission'}
           onSaveNow={() => saveAttachedFile({ notify: true })}
           onRefresh={refreshFile}
           onExport={() => {

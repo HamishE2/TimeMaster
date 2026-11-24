@@ -1,6 +1,7 @@
 import { DAY_SHORT, dayDate, dateString } from './utils.js';
 import { phasesOf } from './tasks.js';
 import { entryNote } from './entryNotes.js';
+import { downloadBlob } from './backupService.js';
 
 const escapeCell = (value) => {
   const text = String(value ?? '');
@@ -56,11 +57,8 @@ export function downloadTimesheetCsv(
   projects,
   name = `timesheet-${dateString(new Date())}.csv`,
 ) {
-  const anchor = document.createElement('a');
-  anchor.href = URL.createObjectURL(
+  downloadBlob(
     new Blob([buildTimesheetCsv(projects)], { type: 'text/csv;charset=utf-8' }),
+    name,
   );
-  anchor.download = name;
-  anchor.click();
-  setTimeout(() => URL.revokeObjectURL(anchor.href), 500);
 }

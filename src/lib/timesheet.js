@@ -1,5 +1,8 @@
 import {
+  DEFAULT_CAPACITY,
+  EPSILON,
   capacityFor,
+  hoursValue,
   projectMetrics,
   weekKeyFor,
   weeklyResourcedHours,
@@ -89,10 +92,14 @@ export function developmentEntryUpdates(
           taskHoursForDay(p, week, day),
         0,
       ),
-      space = Math.max(0, Number(settings.capacityByDay?.[day] || 0) - dayUsed),
-      add = Math.min(space, remaining);
-    if (add > 0) {
-      updates[day] = Number(pd.entries?.[week]?.[day] || 0) + add;
+      capacity = (settings.capacityByDay || DEFAULT_CAPACITY)[day],
+      space = Math.max(0, hoursValue(capacity) - dayUsed),
+      // Rounded so float noise (7.6 - 2.3 - 5.3) never writes a 0.0000001h
+      // entry or tips a full day over its capacity.
+      add = Math.round(Math.min(space, remaining) * 100) / 100;
+    if (add > EPSILON) {
+      updates[day] =
+        Math.round((hoursValue(pd.entries?.[week]?.[day]) + add) * 100) / 100;
       remaining -= add;
     }
   }

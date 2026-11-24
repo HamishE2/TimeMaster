@@ -1,6 +1,6 @@
 import { DAY_NAMES, fmt } from '../lib/utils.js';
 import EntryFrontloadButton from './EntryFrontloadButton.jsx';
-import EntryNoteButton from './EntryNoteButton.jsx';
+import EntryCell from './EntryCell.jsx';
 import { entryNote } from '../lib/entryNotes.js';
 
 export default function TaskEntryRow({
@@ -11,7 +11,6 @@ export default function TaskEntryRow({
   leave,
   suggestion,
   onEntry,
-  onNote,
   onSuggestFrontload,
   dragging,
   overDays,
@@ -60,24 +59,18 @@ export default function TaskEntryRow({
                   adjustment={suggestion.adjustment}
                 />
               )}
-              <input
-                aria-label={`${project.name}, ${task.name}, ${DAY_NAMES[day]}`}
-                key={`${project.id}-${task.id}-${week}-${day}-${entries[day] ?? ''}`}
-                defaultValue={entries[day] == null ? '' : fmt(entries[day])}
-                onBlur={(event) =>
-                  onEntry(project.id, task.id, week, day, event.target.value)
+              <EntryCell
+                projectId={project.id}
+                taskId={task.id}
+                week={week}
+                day={day}
+                value={entries[day]}
+                note={entryNote(project, task.id, week, day)}
+                label={`${project.name}, ${task.name}, ${DAY_NAMES[day]}`}
+                onCommit={(value) =>
+                  onEntry(project.id, task.id, week, day, value)
                 }
-                placeholder="—"
-                inputMode="decimal"
               />
-              {(entries[day] != null ||
-                entryNote(project, task.id, week, day)) && (
-                <EntryNoteButton
-                  note={entryNote(project, task.id, week, day)}
-                  label={`${project.name}, ${task.name}, ${DAY_NAMES[day]}`}
-                  onOpen={() => onNote(project.id, task.id, week, day)}
-                />
-              )}
             </>
           )}
         </td>

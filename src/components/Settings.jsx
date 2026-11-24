@@ -6,6 +6,7 @@ import {
   DEFAULT_VISIBLE_DAYS,
 } from '../lib/utils.js';
 import Modal from './Modal.jsx';
+import { parseRate } from '../lib/budget.js';
 
 const THEMES = [
   ['system', 'System'],
@@ -13,12 +14,24 @@ const THEMES = [
   ['dark', 'Dark'],
 ];
 
-export default function Settings({ settings, onClose, onSave }) {
+export default function Settings({ settings, focus, onClose, onSave }) {
   const [draft, setDraft] = useState({
     ...settings,
     capacityByDay: [...(settings.capacityByDay || DEFAULT_CAPACITY)],
     visibleDays: [...(settings.visibleDays || DEFAULT_VISIBLE_DAYS)],
   });
+  const [rateText, setRateText] = useState(
+      settings.hourlyRate == null ? '' : String(settings.hourlyRate),
+    ),
+    [rateError, setRateError] = useState('');
+  const save = () => {
+    const rate = parseRate(rateText);
+    if (rate.error) {
+      setRateError(rate.error);
+      return;
+    }
+    onSave({ ...draft, hourlyRate: rate.value });
+  };
   const weekly = draft.visibleDays.reduce(
     (sum, d) => sum + Number(draft.capacityByDay[d] || 0),
     0,
@@ -89,9 +102,43 @@ export default function Settings({ settings, onClose, onSave }) {
           </li>
         </ul>
       </fieldset>
+      <fieldset className="settings-group settings-billing">
+        <legend>Billing</legend>
+        <label htmlFor="settings-hourly-rate">Hourly rate</label>
+        <span className={`unit-input ${rateError ? 'input-error' : ''}`}>
+          <span aria-hidden="true">$</span>
+          <input
+            id="settings-hourly-rate"
+            autoFocus={focus === 'rate'}
+            inputMode="decimal"
+            placeholder="Not set"
+            value={rateText}
+            aria-invalid={!!rateError}
+            aria-describedby="settings-hourly-rate-help"
+            onChange={(e) => {
+              setRateText(e.target.value);
+              setRateError('');
+            }}
+            onBlur={() => {
+              const rate = parseRate(rateText);
+              if (rate.error) setRateError(rate.error);
+              else if (rate.value != null) setRateText(String(rate.value));
+            }}
+          />
+          <span>AUD / h</span>
+        </span>
+        <small
+          id="settings-hourly-rate-help"
+          className={rateError ? 'field-error' : 'help'}
+          role={rateError ? 'alert' : undefined}
+        >
+          {rateError ||
+            'Every logged hour costs this much on the Financials screen. Leave blank to turn costing off.'}
+        </small>
+      </fieldset>
       <div className="modal-actions">
         <button onClick={onClose}>Cancel</button>
-        <button className="primary" onClick={() => onSave(draft)}>
+        <button className="primary" onClick={save}>
           Save settings
         </button>
       </div>
