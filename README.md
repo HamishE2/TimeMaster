@@ -19,24 +19,6 @@ npm install
 npm run dev
 ```
 
-## Desktop application
-
-Run TimeMaster in Electron:
-
-```sh
-npm run desktop
-```
-
-Build the Windows installer and portable executable into `release/`:
-
-```sh
-npm run desktop:dist
-```
-
-The desktop build remains local-first and offline. Use **File** in TimeMaster to
-open or save the JSON workspace; Electron's Chromium renderer provides the same
-file workflow as the browser app.
-
 Validation:
 
 ```sh
@@ -45,4 +27,4 @@ npm run lint
 npm run build
 ```
 
-The production build is a dependency-free static HTML artifact. Vercel serves it with a restrictive Content Security Policy, including `connect-src 'none'`, so the deployed app cannot send application data over HTTP, WebSocket, EventSource, or beacon connections.
+The production build is a single static HTML file (`dist/index.html`). GitHub Pages serves it from https://hamishe2.github.io/TimeMaster/ (deployed by `.github/workflows/pages.yml` on every push to `main`). The app makes no network requests for application data.

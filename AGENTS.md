@@ -2,7 +2,7 @@
 
 - `index.html` loads `src/main.jsx`, which mounts `src/App.jsx`. App owns workspace state, persistence coordination, and layout. React UI lives in `src/components/`, with styles in `src/index.css` and `src/filePersistence.css` (the Financials view, budget editor and costing picker use `src/financials.css`).
 - Put domain logic in `src/lib/` and cover it in `tests/run-tests.mjs`. The jsdom App smoke test lives in `tests/App.test.jsx`.
-- Vite builds the offline app into `dist/index.html`. Vercel serves `dist/` and `electron/main.cjs` loads the same HTML for the desktop build. The workspace stays local through IndexedDB and optional JSON file attachment.
+- Vite builds the offline app into `dist/index.html`. GitHub Pages serves `dist/` (deployed by `.github/workflows/pages.yml` on push to `main`). The workspace stays local through IndexedDB and optional JSON file attachment.
 
 ## Workspace data
 
