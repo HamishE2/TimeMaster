@@ -56,14 +56,26 @@ export class ExternalFileChangedError extends Error {
   }
 }
 
-export function downloadBackup(data, name = 'TimeMaster-backup.json') {
+// Saves a Blob through a temporary download link. The link is attached to the
+// page while it is clicked (older Firefox ignores detached links) and the
+// object URL outlives the click long enough for slower browsers to read it.
+export function downloadBlob(blob, name) {
   const anchor = document.createElement('a');
-  anchor.href = URL.createObjectURL(
-    new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
-  );
+  anchor.href = URL.createObjectURL(blob);
   anchor.download = name;
+  anchor.rel = 'noopener';
+  anchor.style.display = 'none';
+  document.body.appendChild(anchor);
   anchor.click();
-  setTimeout(() => URL.revokeObjectURL(anchor.href), 500);
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(anchor.href), 30000);
+}
+
+export function downloadBackup(data, name = 'TimeMaster-backup.json') {
+  downloadBlob(
+    new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
+    name,
+  );
 }
 
 export const FILE_UNRESPONSIVE_CODE = 'FILE_HANDLE_UNRESPONSIVE';
@@ -74,7 +86,7 @@ export const PERMISSION_TIMEOUT_MS = 60000;
 export class FileUnresponsiveError extends Error {
   constructor(name) {
     super(
-      `The browser stopped responding while reaching ${name || 'the attached file'}. Open the file again from File to reattach it, or save a new copy.`,
+      `The browser stopped responding while reaching ${name || 'the attached file'}. Choose Reattach and save in File and pick the file again; your changes in this tab are kept.`,
     );
     this.name = 'FileUnresponsiveError';
     this.code = FILE_UNRESPONSIVE_CODE;
@@ -122,9 +134,18 @@ export async function openBackup() {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.json,application/json';
+    input.style.display = 'none';
+    // Safari only opens pickers for inputs that are part of the page.
+    document.body.appendChild(input);
+    input.oncancel = () => {
+      input.remove();
+      reject(new DOMException('No file was chosen.', 'AbortError'));
+    };
     input.onchange = async () => {
+      input.remove();
       try {
         const file = input.files[0];
+        if (!file) throw new DOMException('No file was chosen.', 'AbortError');
         const text = await file.text();
         resolve({
           handle: null,
@@ -140,10 +161,10 @@ export async function openBackup() {
   });
 }
 
-export async function chooseNewBackupHandle() {
+export async function chooseNewBackupHandle(suggestedName = 'TimeMaster.json') {
   if (!supportsFileSystemAccess()) return null;
   return window.showSaveFilePicker({
-    suggestedName: 'TimeMaster.json',
+    suggestedName,
     types: [
       {
         description: 'TimeMaster JSON',
@@ -153,36 +174,114 @@ export async function chooseNewBackupHandle() {
   });
 }
 
+export const FILE_PERMISSION_CODE = 'FILE_PERMISSION_REQUIRED';
+
+export class FilePermissionError extends Error {
+  constructor(name) {
+    super(
+      `TimeMaster needs your permission to keep saving ${name || 'the attached file'}. Choose Save now in File to allow it.`,
+    );
+    this.name = 'FilePermissionError';
+    this.code = FILE_PERMISSION_CODE;
+  }
+}
+
+// The workspace signature of a file's text, or null when it is not JSON.
+const textSignature = (text) => {
+  try {
+    return workspaceSignature(JSON.parse(text));
+  } catch {
+    return null;
+  }
+};
+
+// Writes that timed out but may still be running, by handle. One that lands
+// after a later save would put the older workspace back in the file while
+// the app shows "Saved", so the next write to that file waits for it — even
+// through a different handle object for the same file ("Reattach and save"
+// picks the file again and gets a new handle).
+const unsettledWrites = new Map();
+const sameFile = async (a, b) => {
+  if (a === b) return true;
+  try {
+    return typeof a.isSameEntry === 'function' && (await a.isSameEntry(b));
+  } catch {
+    return false;
+  }
+};
+async function waitForUnsettled(handle, step) {
+  for (const [other, settled] of [...unsettledWrites])
+    if (await sameFile(other, handle)) await step(settled);
+}
+
+// Writes the workspace to an attached file handle.
+// - `interactive` must only be true while handling a click: browsers refuse
+//   (or silently ignore) permission prompts without a user gesture, so an
+//   autosave reports FilePermissionError instead of asking.
+// - `ownSignatures` lists workspace signatures this tab knows it wrote. When
+//   the file's revision moved (a sync client touched it, or an earlier write
+//   that timed out landed late) but its content is still one of ours, the
+//   write goes ahead instead of reporting an external change.
 export async function writeHandle(
   handle,
   data,
   expectedRevision = null,
-  { timeoutMs = FILE_TIMEOUT_MS, permissionTimeoutMs = PERMISSION_TIMEOUT_MS } = {},
+  {
+    timeoutMs = FILE_TIMEOUT_MS,
+    permissionTimeoutMs = PERMISSION_TIMEOUT_MS,
+    interactive = true,
+    ownSignatures = [],
+  } = {},
 ) {
   const step = (promise, ms = timeoutMs) => withTimeout(promise, ms, handle.name);
   const permission = { mode: 'readwrite' };
   if (
     typeof handle.queryPermission === 'function' &&
-    (await step(handle.queryPermission(permission))) !== 'granted' &&
-    (await step(handle.requestPermission(permission), permissionTimeoutMs)) !==
-      'granted'
+    (await step(handle.queryPermission(permission))) !== 'granted'
   ) {
-    throw new Error('Permission to write the TimeMaster file was not granted.');
+    if (!interactive || typeof handle.requestPermission !== 'function')
+      throw new FilePermissionError(handle.name);
+    if (
+      (await step(handle.requestPermission(permission), permissionTimeoutMs)) !==
+      'granted'
+    )
+      throw new Error('Permission to write the TimeMaster file was not granted.');
   }
+
+  await waitForUnsettled(handle, step);
 
   if (expectedRevision) {
     const current = await step(handle.getFile());
     const currentText = await step(current.text());
     if (!revisionsMatch(expectedRevision, revisionFor(current, currentText))) {
-      throw new ExternalFileChangedError();
+      const signature = textSignature(currentText);
+      if (
+        !signature ||
+        ![...ownSignatures, workspaceSignature(data)].includes(signature)
+      )
+        throw new ExternalFileChangedError();
     }
   }
 
   const writable = await step(handle.createWritable());
+  const writing = Promise.resolve()
+    .then(() => writable.write(JSON.stringify(data, null, 2)))
+    .then(() => writable.close());
   try {
-    await step(writable.write(JSON.stringify(data, null, 2)));
-    await step(writable.close());
+    await step(writing, timeoutMs * 2);
   } catch (error) {
+    if (error instanceof FileUnresponsiveError) {
+      const settled = writing
+        .then(
+          () => {},
+          () => {},
+        )
+        .finally(() => {
+          if (unsettledWrites.get(handle) === settled)
+            unsettledWrites.delete(handle);
+        });
+      unsettledWrites.set(handle, settled);
+    }
     Promise.resolve()
       .then(() => writable.abort?.())
       .catch(() => {});

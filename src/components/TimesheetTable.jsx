@@ -25,6 +25,19 @@ import {
 import ProjectRow from './ProjectRow.jsx';
 import TaskEntryRow from './TaskEntryRow.jsx';
 import { taskHoursForDay, taskLinesFor } from '../lib/taskLines.js';
+import EntryPopover from './EntryPopover.jsx';
+import QuickEntryBar from './QuickEntryBar.jsx';
+import TickNumber from './TickNumber.jsx';
+import WeekCelebration from './WeekCelebration.jsx';
+import { weekIsComplete } from '../lib/weekGoal.js';
+import { dailyFlexStatus } from '../lib/timesheet.js';
+
+// Put the caret after any existing note text so typing appends to it.
+const focusEnd = (field) => {
+  field.focus();
+  const end = field.value.length;
+  field.setSelectionRange?.(end, end);
+};
 
 export default function TimesheetTable({
   projects,
@@ -39,6 +52,10 @@ export default function TimesheetTable({
   onEntry,
   onTaskEntry,
   onNote,
+  onSaveNote,
+  onUndo,
+  onCheckpoint,
+  renderNoteExtras,
   onAddLine,
   onRemoveTaskLine,
   onLeave,
@@ -48,6 +65,7 @@ export default function TimesheetTable({
   onRemove,
   onPlace,
   onPlaceTask,
+  onRestoreTag,
 }) {
   const dayTotal = (day) =>
       projects.reduce(
@@ -59,9 +77,17 @@ export default function TimesheetTable({
               taskHoursForDay(project, week, day)),
         0,
       ),
-    dailyTarget =
-      totals.planned /
-      Math.max(1, days.filter((day) => !leave.includes(day)).length),
+    // A day is measured against its own working capacity (e.g. 7.6h), not
+    // the week's resourced plan spread across the days.
+    dailyTarget = (day) =>
+      leave.includes(day) ? 0 : Math.max(0, Number(capacityByDay?.[day]) || 0),
+    // Long days that make up for shorter ones in the same week are not over.
+    flexByDay = dailyFlexStatus(
+      days,
+      Object.fromEntries(days.map((day) => [day, dayTotal(day)])),
+      capacityByDay,
+      leave,
+    ),
     over = totals.remaining < -EPSILON,
     groups = categoriseProjects(projects, category, week, leaveWeeks),
     columnCount = days.length + 5;
@@ -76,6 +102,89 @@ export default function TimesheetTable({
     ['actions', 'Actions', 40, 40],
   ];
   const widths = columns.map(([id, , initial]) => sizing.widths[id] || initial);
+
+  // ---- Entry popover ----
+  // Opens on focus of any hours cell. Tab always hops cell to cell, so fast
+  // keyboard entry never lands in the note; ArrowDown or Alt+N opens the note
+  // (reopening the card if Enter or Esc closed it).
+  const [entryTarget, setEntryTarget] = useState(null);
+  const quietFocus = useRef(null);
+  const cancelEntry = useRef(null);
+  const closeEntry = () => setEntryTarget(null);
+  const entryFrom = (node) => {
+    const [projectId, taskId, day] = node.dataset.entry.split('|');
+    return { projectId, taskId: taskId || null, day: Number(day) };
+  };
+  const onCellFocus = (event) => {
+    const node = event.target;
+    if (!node.matches?.('input[data-entry]')) return;
+    if (quietFocus.current === node.dataset.entry) {
+      quietFocus.current = null;
+      return;
+    }
+    setEntryTarget(entryFrom(node));
+  };
+  // Focus a cell (found again after a re-render) without reopening the card.
+  const refocusFrame = useRef(0);
+  const refocusEntry = (key) => {
+    quietFocus.current = key;
+    cancelAnimationFrame(refocusFrame.current);
+    refocusFrame.current = requestAnimationFrame(() => {
+      const cell = tbodyRef.current?.querySelector(
+        `input[data-entry="${key}"]`,
+      );
+      if (cell && document.activeElement !== cell) cell.focus();
+      else quietFocus.current = null;
+    });
+  };
+  const onCellKeyDown = (event) => {
+    const node = event.target;
+    if (!node.matches?.('input[data-entry]')) return;
+    if (event.key === 'Escape') {
+      node.value = node.defaultValue;
+      // Drop the card's unsaved note and costing pick before it closes
+      // (closing otherwise saves the note).
+      cancelEntry.current?.();
+      setEntryTarget(null);
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      setEntryTarget(null);
+      const key = node.dataset.entry;
+      node.blur();
+      refocusEntry(key);
+    } else if (event.key === 'Tab' && !event.altKey) {
+      // Hop straight between hours cells, skipping grips and row menus.
+      const cells = [
+          ...(tbodyRef.current?.querySelectorAll('input[data-entry]') || []),
+        ],
+        next = cells[cells.indexOf(node) + (event.shiftKey ? -1 : 1)];
+      if (next) {
+        event.preventDefault();
+        next.focus();
+      }
+    } else if (
+      event.key === 'ArrowDown' ||
+      (event.altKey && (event.key.toLowerCase() === 'n' || event.code === 'KeyN'))
+    ) {
+      event.preventDefault();
+      const note = document.querySelector('.entry-popover .entry-popover-note');
+      // A pending refocus of the cell would pull focus back out of the note.
+      cancelAnimationFrame(refocusFrame.current);
+      quietFocus.current = null;
+      if (note) focusEnd(note);
+      else setEntryTarget({ ...entryFrom(node), focusNote: true });
+    }
+  };
+  const entryProject =
+    entryTarget && projects.find((p) => p.id === entryTarget.projectId);
+  const setEntryHours = (value) => {
+    if (!entryTarget) return;
+    const { projectId, taskId, day } = entryTarget;
+    if (taskId) onTaskEntry(projectId, taskId, week, day, value);
+    else onEntry(projectId, week, day, value);
+    // Keep typing in the cell (it re-renders with the picked value).
+    refocusEntry(`${projectId}|${taskId ?? ''}|${day}`);
+  };
 
   // ---- Row menu ----
   const [menu, setMenu] = useState(null);
@@ -320,6 +429,19 @@ export default function TimesheetTable({
       ['Remove project…', () => onRemove(p), { danger: true }],
     ].filter((item) => item !== false);
   return (
+    <>
+    <QuickEntryBar
+      projects={allProjects}
+      week={week}
+      days={days}
+      leave={leave}
+      capacityByDay={capacityByDay}
+      onEntry={onEntry}
+      onTaskEntry={onTaskEntry}
+      onSaveNote={onSaveNote}
+      onUndo={onUndo}
+      onCheckpoint={onCheckpoint}
+    />
     <div className="table-scroll">
       <table
         style={{ width: widths.reduce((a, b) => a + b, 0), minWidth: '100%' }}
@@ -329,10 +451,16 @@ export default function TimesheetTable({
             <col
               key={id}
               className={
-                id.startsWith('day-') &&
-                weekDates(week)[Number(id.slice(4))].toDateString() === today
-                  ? 'current-day'
-                  : ''
+                !id.startsWith('day-')
+                  ? ''
+                  : [
+                      weekDates(week)[Number(id.slice(4))].toDateString() ===
+                        today && 'current-day',
+                      Number(id.slice(4)) >= 5 && 'weekend',
+                      leave.includes(Number(id.slice(4))) && 'leave-col',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')
               }
               style={{ width: widths[i] }}
             />
@@ -398,6 +526,8 @@ export default function TimesheetTable({
         <tbody
           ref={tbodyRef}
           className={dragging ? 'is-reordering' : undefined}
+          onFocus={onCellFocus}
+          onKeyDown={onCellKeyDown}
         >
           {groups.map((group) => (
             <Fragment key={group.key}>
@@ -427,7 +557,6 @@ export default function TimesheetTable({
                       leaveWeeks={leaveWeeks}
                       suggestion={suggestion}
                       onEntry={onEntry}
-                      onNote={onNote}
                       onAddLine={() => onAddLine(p)}
                       onEdit={() => onEdit(p)}
                       onFrontload={() => onFrontload(p)}
@@ -451,8 +580,7 @@ export default function TimesheetTable({
                         leave={leave}
                         suggestion={suggestion}
                         onEntry={onTaskEntry}
-                        onNote={onNote}
-                        onSuggestFrontload={() =>
+                          onSuggestFrontload={() =>
                           onSuggestFrontload(p, suggestion)
                         }
                         dragging={
@@ -513,28 +641,44 @@ export default function TimesheetTable({
             </th>
             {days.map((day) => {
               const value = dayTotal(day),
-                pct = dailyTarget ? Math.round((value / dailyTarget) * 100) : 0;
+                target = dailyTarget(day),
+                pct = target ? Math.round((value / target) * 100) : 0,
+                { over: isOver, flex, overBy } = flexByDay[day] || {};
               return (
-                <td key={day} className={pct > 100 ? 'over' : ''}>
+                <td
+                  key={day}
+                  className={isOver ? 'over' : flex ? 'flex-day' : ''}
+                  title={
+                    isOver
+                      ? `${fmt(overBy)}h more than this week's working hours so far`
+                      : flex
+                        ? `Longer than ${fmt(target)}h, balanced by shorter days this week`
+                        : undefined
+                  }
+                >
                   {fmt(value)}h
                   <small>
                     {leave.includes(day)
                       ? 'Leave'
-                      : dailyTarget
-                        ? `${pct}% plan`
+                      : target
+                        ? flex
+                          ? `${pct}% · flex`
+                          : `${pct}% of ${fmt(target)}h`
                         : '—'}
                   </small>
                 </td>
               );
             })}
-            <td>
-              {fmt(
-                projects.reduce(
+            <td
+              className={`week-total${weekIsComplete(totals) ? ' is-complete' : ''}`}
+            >
+              <TickNumber
+                value={projects.reduce(
                   (n, p) => n + projectMetrics(p, week, leaveWeeks).logged,
                   0,
-                ),
-              )}
-              h
+                )}
+                suffix="h"
+              />
             </td>
             <td>—</td>
             <td className={over ? 'over' : ''}>
@@ -552,6 +696,50 @@ export default function TimesheetTable({
         label={menu?.label}
         onClose={closeMenu}
       />
+      {entryProject && (
+        <EntryPopover
+          key={`${entryTarget.projectId}|${entryTarget.taskId}|${entryTarget.day}`}
+          target={entryTarget}
+          project={entryProject}
+          taskName={
+            entryTarget.taskId
+              ? entryProject.tasks?.find((t) => t.id === entryTarget.taskId)
+                  ?.name || 'Task'
+              : 'General'
+          }
+          week={week}
+          // The whole day's hours, not just the rows a search or filter shows.
+          gap={Math.max(
+            0,
+            Number(capacityByDay?.[entryTarget.day] || 0) -
+              allProjects.reduce(
+                (sum, p) =>
+                  sum +
+                  Number(p.entries?.[week]?.[entryTarget.day] || 0) +
+                  taskHoursForDay(p, week, entryTarget.day),
+                0,
+              ),
+          )}
+          rootRef={tbodyRef}
+          onSaveNote={(projectId, taskId, wk, day, text) =>
+            onSaveNote
+              ? onSaveNote(projectId, taskId, wk, day, text)
+              : onNote?.(projectId, taskId, wk, day)
+          }
+          onSetHours={setEntryHours}
+          onRestoreTag={onRestoreTag}
+          cancelRef={cancelEntry}
+          onClose={closeEntry}
+          onFinish={() => {
+            const key = `${entryTarget.projectId}|${entryTarget.taskId ?? ''}|${entryTarget.day}`;
+            setEntryTarget(null);
+            refocusEntry(key);
+          }}
+          renderNoteExtras={renderNoteExtras}
+        />
+      )}
+      <WeekCelebration week={week} totals={totals} />
     </div>
+    </>
   );
 }

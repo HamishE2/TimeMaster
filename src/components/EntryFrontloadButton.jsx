@@ -1,4 +1,5 @@
 import { clockForwardIcon } from './frontloadIcons.jsx';
+import { fmt } from '../lib/utils.js';
 
 const EntryFrontloadButton = ({ project, amount, onOpen, adjustment = false }) => {
   const label = adjustment
@@ -11,7 +12,7 @@ const EntryFrontloadButton = ({ project, amount, onOpen, adjustment = false }) =
       aria-label={`${label} for ${project.name}`}
       title={label}
     >
-      {clockForwardIcon} {amount}h
+      {clockForwardIcon} {fmt(amount)}h
     </button>
   );
 };

@@ -1,4 +1,4 @@
-import { DAY_NAMES, DAY_SHORT, fmt } from '../lib/utils.js';
+import { DAY_NAMES, DAY_SHORT, EPSILON, fmt } from '../lib/utils.js';
 import { categoriseProjects } from '../lib/projectGrouping.js';
 import { hasPhases } from '../lib/tasks.js';
 import { projectSummary } from '../lib/projectSummary.js';
@@ -61,7 +61,7 @@ export default function MobileCards({
                 </header>
                 {m.weeklyAllowance != null && (
                   <section
-                    className={`phone-meter ${m.logged > m.weeklyAllowance ? 'over' : ''}`}
+                    className={`phone-meter ${m.logged > m.weeklyAllowance + EPSILON ? 'over' : ''}`}
                   >
                     <small>
                       <span>Weekly</span>

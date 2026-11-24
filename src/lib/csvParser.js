@@ -161,17 +161,25 @@ function inferYear(dayCols) {
   return year;
 }
 
+/** The date of a day column. `year` is the year of the first column; a week
+ *  that runs from December into January puts the later columns in the next
+ *  year (otherwise 1 Jan would get last year's weekday). */
+function columnDate(col, dayCols, year) {
+  const wraps = col.month < dayCols[0].month;
+  return new Date(year + (wraps ? 1 : 0), col.month, col.day, 12);
+}
+
 /** Get the Monday weekKey from the day columns. */
 function weekKeyFromDayCols(dayCols, year) {
   // Find the Monday column (dowLetter === 'M')
   const monCol = dayCols.find((c) => c.dowLetter === 'M');
   if (monCol) {
-    const d = new Date(year, monCol.month, monCol.day);
-    return toDateStr(d);
+    const d = columnDate(monCol, dayCols, year);
+    if (d.getDay() === 1) return toDateStr(d);
   }
   // Fallback: first column, find its Monday
   const first = dayCols[0];
-  const d = new Date(year, first.month, first.day);
+  const d = columnDate(first, dayCols, year);
   // Walk back to Monday
   const dow = d.getDay();
   const diff = dow === 0 ? -6 : 1 - dow;
@@ -192,7 +200,7 @@ function resolveWeekdayIndices(dayCols, year) {
     .sort((a, b) => a.colIndex - b.colIndex)
     .map((col) => ({
       ...col,
-      dayIndex: (new Date(year, col.month, col.day).getDay() + 6) % 7,
+      dayIndex: (columnDate(col, dayCols, year).getDay() + 6) % 7,
     }));
 }
 
