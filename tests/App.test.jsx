@@ -299,3 +299,20 @@ test('warns once when the attached file handle can no longer be stored', async (
   expect(screen.queryByText(/browser copy could not be saved/)).toBeNull();
   saveSessionToIdb.mockResolvedValue(undefined);
 });
+
+test('warns once when the attached file handle can no longer be stored', async () => {
+  const handle = { name: 'TimeMaster.json' };
+  loadSessionFromIdb.mockResolvedValue({
+    fileHandle: handle,
+    weekKey: '2026-07-13',
+    data: { schemaVersion: 3, projects: [], settings: {} },
+  });
+  saveSessionToIdb.mockResolvedValue({ handleStored: false });
+  render(<App />);
+
+  expect(
+    await screen.findByText(/can no longer reach TimeMaster\.json/),
+  ).toBeTruthy();
+  expect(screen.queryByText(/browser copy could not be saved/)).toBeNull();
+  saveSessionToIdb.mockResolvedValue(undefined);
+});
