@@ -71,6 +71,8 @@ import ProjectLineModal from './components/ProjectLineModal.jsx';
 import Settings from './components/Settings.jsx';
 import TimesheetTable from './components/TimesheetTable.jsx';
 import useHistory from './lib/useHistory.js';
+import EntryNoteModal from './components/EntryNoteModal.jsx';
+import { entryNote, setEntryNoteRecord } from './lib/entryNotes.js';
 
 const empty = {
   schemaVersion: SCHEMA_VERSION,
@@ -100,6 +102,7 @@ export default function App() {
     [returnToManage, setReturnToManage] = useState(false),
     [removeTarget, setRemoveTarget] = useState(null),
     [confirm, setConfirm] = useState(null),
+    [noteTarget, setNoteTarget] = useState(null),
     [lineTarget, setLineTarget] = useState(null),
     [frontloadTarget, setFrontloadTarget] = useState(null),
     [capacityDetails, setCapacityDetails] = useState(false),
@@ -209,6 +212,10 @@ export default function App() {
     [visible, week, data.settings, leave],
   );
 
+  const closeNote = useCallback(() => setNoteTarget(null), []);
+  const noteProject =
+    noteTarget &&
+    data.projects.find((project) => project.id === noteTarget.projectId);
   const setEntry = (projectId, targetWeek, day, value) => {
     const wk = typeof targetWeek === 'string' ? targetWeek : week,
       idx = typeof targetWeek === 'string' ? day : targetWeek,
@@ -218,6 +225,9 @@ export default function App() {
       setNotice({ type: 'error', text: parsed.error });
       return;
     }
+    const previous = data.projects.find((p) => p.id === projectId)?.entries?.[
+      wk
+    ]?.[idx];
     setData((d) => ({
       ...d,
       projects: d.projects.map((p) => {
@@ -225,13 +235,28 @@ export default function App() {
         return setEntryRecord(p, wk, idx, parsed.value);
       }),
     }));
+    if (
+      typeof raw !== 'number' &&
+      parsed.value != null &&
+      parsed.value !== previous
+    )
+      setNoteTarget({ projectId, taskId: null, week: wk, day: idx });
   };
+  const saveEntryNote = ({ projectId, taskId, week: wk, day }, text) =>
+    setData((d) => ({
+      ...d,
+      projects: d.projects.map((p) =>
+        p.id === projectId ? setEntryNoteRecord(p, taskId, wk, day, text) : p,
+      ),
+    }));
   const setTaskEntry = (projectId, taskId, targetWeek, day, value) => {
     const parsed = typeof value === 'number' ? { value } : parseHours(value);
     if (parsed.error) {
       setNotice({ type: 'error', text: parsed.error });
       return;
     }
+    const previous = data.projects.find((p) => p.id === projectId)
+      ?.taskEntries?.[taskId]?.[targetWeek]?.[day];
     setData((d) => ({
       ...d,
       projects: d.projects.map((project) => {
@@ -245,6 +270,12 @@ export default function App() {
         );
       }),
     }));
+    if (
+      typeof value !== 'number' &&
+      parsed.value != null &&
+      parsed.value !== previous
+    )
+      setNoteTarget({ projectId, taskId, week: targetWeek, day });
   };
   const pinTaskLine = (projectId, taskId, targetWeek = week) =>
     setData((d) => ({
@@ -1133,6 +1164,9 @@ export default function App() {
                   totals={totals}
                   onEntry={setEntry}
                   onTaskEntry={setTaskEntry}
+                  onNote={(projectId, taskId, wk, day) =>
+                    setNoteTarget({ projectId, taskId, week: wk, day })
+                  }
                   onAddLine={(project) => setLineTarget(project.id)}
                   onRemoveTaskLine={removeTaskLine}
                   onLeave={toggleLeave}
@@ -1309,6 +1343,35 @@ export default function App() {
             setData((d) => ({ ...d, settings }));
             setPanel(null);
           }}
+        />
+      )}
+      {noteProject && (
+        <EntryNoteModal
+          key={`${noteTarget.projectId}:${noteTarget.taskId}:${noteTarget.week}:${noteTarget.day}`}
+          project={noteProject}
+          taskName={
+            noteTarget.taskId
+              ? noteProject.tasks?.find((task) => task.id === noteTarget.taskId)
+                  ?.name || 'Task'
+              : 'General'
+          }
+          week={noteTarget.week}
+          day={noteTarget.day}
+          hours={
+            noteTarget.taskId
+              ? noteProject.taskEntries?.[noteTarget.taskId]?.[
+                  noteTarget.week
+                ]?.[noteTarget.day]
+              : noteProject.entries?.[noteTarget.week]?.[noteTarget.day]
+          }
+          note={entryNote(
+            noteProject,
+            noteTarget.taskId,
+            noteTarget.week,
+            noteTarget.day,
+          )}
+          onSave={(text) => saveEntryNote(noteTarget, text)}
+          onClose={closeNote}
         />
       )}
       {confirm && (

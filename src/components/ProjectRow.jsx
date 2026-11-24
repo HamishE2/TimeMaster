@@ -2,6 +2,8 @@ import { DAY_NAMES, EPSILON, fmt } from '../lib/utils.js';
 import { hasPhases } from '../lib/tasks.js';
 import { projectSummary } from '../lib/projectSummary.js';
 import EntryFrontloadButton from './EntryFrontloadButton.jsx';
+import EntryNoteButton from './EntryNoteButton.jsx';
+import { entryNote } from '../lib/entryNotes.js';
 import FrontloadButton from './FrontloadButton.jsx';
 import FrontloadWarning from './FrontloadWarning.jsx';
 import { taskLinesFor } from '../lib/taskLines.js';
@@ -16,6 +18,7 @@ export default function ProjectRow({
   hideClient,
   suggestion,
   onEntry,
+  onNote,
   onAddLine,
   onEdit,
   onFrontload,
@@ -163,6 +166,14 @@ export default function ProjectRow({
                     placeholder="—"
                     inputMode="decimal"
                   />
+                  {(p.entries?.[week]?.[d] != null ||
+                    entryNote(p, null, week, d)) && (
+                    <EntryNoteButton
+                      note={entryNote(p, null, week, d)}
+                      label={`${p.name}, General, ${DAY_NAMES[d]}`}
+                      onOpen={() => onNote(p.id, null, week, d)}
+                    />
+                  )}
                 </>
               )}
             </td>

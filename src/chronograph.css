@@ -1405,3 +1405,72 @@ main#workspace {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Entry notes */
+td:has(> .entry-note) {
+  position: relative;
+}
+.entry-note {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.entry-note svg {
+  width: 11px;
+  height: 11px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+}
+.entry-note.has-note {
+  color: var(--accent);
+  opacity: 1;
+}
+.entry-note.has-note svg {
+  fill: currentColor;
+}
+td:hover > .entry-note,
+.entry-note:focus-visible {
+  opacity: 1;
+}
+.entry-note:hover {
+  background: var(--surface-2);
+}
+.entry-note-context {
+  margin-top: 0;
+}
+.modal textarea.entry-note-text {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--ink);
+  padding: 8px;
+  font: inherit;
+  font-weight: 400;
+}
+.modal textarea.entry-note-text:focus {
+  border-color: var(--focus);
+  outline: 0;
+}
+@media (hover: none) {
+  .entry-note {
+    opacity: 0.6;
+  }
+}
