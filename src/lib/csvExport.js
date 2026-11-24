@@ -1,5 +1,6 @@
 import { DAY_SHORT, dayDate, dateString } from './utils.js';
 import { phasesOf } from './tasks.js';
+import { entryNote } from './entryNotes.js';
 
 const escapeCell = (value) => {
   const text = String(value ?? '');
@@ -7,11 +8,14 @@ const escapeCell = (value) => {
 };
 
 export function buildTimesheetCsv(projects) {
-  const rows = [['Date', 'Day', 'Project', 'Client', 'Code', 'Task', 'Hours']];
+  const rows = [
+    ['Date', 'Day', 'Project', 'Client', 'Code', 'Task', 'Hours', 'Notes'],
+  ];
   for (const project of projects) {
     const sources = [
-      { name: 'General', entries: project.entries || {} },
+      { id: null, name: 'General', entries: project.entries || {} },
       ...phasesOf(project).map((task) => ({
+        id: task.id,
         name: task.name,
         entries: project.taskEntries?.[task.id] || {},
       })),
@@ -33,6 +37,7 @@ export function buildTimesheetCsv(projects) {
               .toFixed(2)
               .replace(/\.00$/, '')
               .replace(/(\.\d)0$/, '$1'),
+            entryNote(project, source.id, week, dayIndex),
           ]);
         }
       }

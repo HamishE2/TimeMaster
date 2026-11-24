@@ -1,4 +1,9 @@
 import { EPSILON, shiftWeek, uuid, weeklyPlan } from './utils.js';
+import {
+  pruneNotes,
+  removeWeekNotesRecord,
+  setEntryNoteRecord,
+} from './entryNotes.js';
 
 const knownWeeks = (project) =>
   new Set([
@@ -42,6 +47,7 @@ const commonFields = (project, fields, week) => {
     tasks,
     taskEntries,
     taskRows,
+    ...(project.notes ? { notes: pruneNotes(project.notes, taskIds) } : {}),
     historicalMonthlyMonth: week.slice(0, 7),
     historicalMonthlyHours: fields.historical,
     monthlyAdjustments: {
@@ -393,7 +399,11 @@ export function removeTaskLineRecord(project, taskId, week) {
   delete entries[week];
   if (Object.keys(entries).length) taskEntries[taskId] = entries;
   else delete taskEntries[taskId];
-  return { ...project, taskRows, taskEntries };
+  return removeWeekNotesRecord(
+    { ...project, taskRows, taskEntries },
+    taskId,
+    week,
+  );
 }
 
 const cleanWeek = (week) =>
@@ -411,7 +421,8 @@ export function setEntryRecord(project, week, day, value) {
   const cleaned = cleanWeek(current);
   if (Object.keys(cleaned).length) entries[week] = cleaned;
   else delete entries[week];
-  return { ...project, entries };
+  const next = { ...project, entries };
+  return value == null ? setEntryNoteRecord(next, null, week, day, '') : next;
 }
 
 export function setTaskEntryRecord(project, taskId, targetWeek, day, value) {
@@ -425,7 +436,10 @@ export function setTaskEntryRecord(project, taskId, targetWeek, day, value) {
   else delete entries[targetWeek];
   if (Object.keys(entries).length) taskEntries[taskId] = entries;
   else delete taskEntries[taskId];
-  return { ...project, taskEntries };
+  const next = { ...project, taskEntries };
+  return value == null
+    ? setEntryNoteRecord(next, taskId, targetWeek, day, '')
+    : next;
 }
 
 export function toggleLeaveRecord(workspace, week, day) {

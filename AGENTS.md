@@ -8,6 +8,7 @@
 
 - A workspace contains `schemaVersion`, `projects`, and `settings`. Projects have identity and metadata (`id`, `name`, `client`, `code`, `color`, `status`, `isBillable`), scheduling fields (`projectType`, visibility dates, `hiddenWeeks`, `archived`), allocation fields (weekly and monthly resourced hours, overrides, adjustments, and frontloads), and a `tasks` list of `{ id, name }` records.
 - `entries[week][day]` stores General hours. `taskEntries[taskId][week][day]` stores phase hours. `taskRows[week]` is the list of pinned task IDs and can include phases with no hours. Week keys are Monday dates in `YYYY-MM-DD` form and day indices run from Monday (0) to Sunday (6).
+- `notes[taskId][week][day]` stores a text note for one time entry, with General notes under `general`. Notes are cleared with their hours; use the helpers in `src/lib/entryNotes.js`.
 - The General task has the reserved ID `general`. Phase detection also treats a case-insensitive name of `General` as General for older workspaces. Use the phase helpers in `src/lib/tasks.js`.
 
 ## Delivery

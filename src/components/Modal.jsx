@@ -3,7 +3,8 @@ import { useEffect, useRef } from 'react';
 export default function Modal({ title, children, onClose, wide = false }) {
   const ref = useRef();
   useEffect(() => {
-    ref.current?.focus();
+    // Leave focus alone when a child (e.g. a text field) already took it.
+    if (!ref.current?.contains(document.activeElement)) ref.current?.focus();
     const k = (e) => e.key === 'Escape' && onClose();
     document.addEventListener('keydown', k);
     return () => document.removeEventListener('keydown', k);

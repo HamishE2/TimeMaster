@@ -1,5 +1,7 @@
 import { DAY_NAMES, fmt } from '../lib/utils.js';
 import EntryFrontloadButton from './EntryFrontloadButton.jsx';
+import EntryNoteButton from './EntryNoteButton.jsx';
+import { entryNote } from '../lib/entryNotes.js';
 
 export default function TaskEntryRow({
   project,
@@ -9,6 +11,7 @@ export default function TaskEntryRow({
   leave,
   suggestion,
   onEntry,
+  onNote,
   onSuggestFrontload,
   dragging,
   overDays,
@@ -67,6 +70,14 @@ export default function TaskEntryRow({
                 placeholder="—"
                 inputMode="decimal"
               />
+              {(entries[day] != null ||
+                entryNote(project, task.id, week, day)) && (
+                <EntryNoteButton
+                  note={entryNote(project, task.id, week, day)}
+                  label={`${project.name}, ${task.name}, ${DAY_NAMES[day]}`}
+                  onOpen={() => onNote(project.id, task.id, week, day)}
+                />
+              )}
             </>
           )}
         </td>

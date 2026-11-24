@@ -159,3 +159,40 @@ test('remembers ledger column widths and queues local edits immediately', async 
   fireEvent.keyDown(restored, { key: 'Home' });
   expect(Number(restored.getAttribute('aria-valuenow'))).toBe(before);
 });
+
+test('asks for a note after logging hours and saves it on the slot', async () => {
+  const week = '2026-11-16';
+  loadSessionFromIdb.mockResolvedValue({
+    weekKey: week,
+    data: {
+      schemaVersion: 3,
+      projects: [{ id: 'audit', name: 'Audit', resourcedHours: 8 }],
+      settings: {},
+    },
+  });
+  render(<App />);
+  const table = await screen.findByRole('table');
+  const input = within(table).getByRole('textbox', {
+    name: 'Audit, General, Monday',
+  });
+  fireEvent.blur(input, { target: { value: '1.5' } });
+  const note = await screen.findByRole('textbox', { name: 'Entry note' });
+  fireEvent.change(note, { target: { value: 'Reviewed controls' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save note' }));
+  expect(screen.queryByRole('textbox', { name: 'Entry note' })).toBeNull();
+  const saved = saveSessionToIdb.mock.lastCall[2].projects[0];
+  expect(saved.entries[week][0]).toBe(1.5);
+  expect(saved.notes.general[week][0]).toBe('Reviewed controls');
+  expect(
+    within(table).getByRole('button', {
+      name: 'Edit note for Audit, General, Monday: Reviewed controls',
+    }),
+  ).toBeTruthy();
+
+  // Re-entering the same value does not prompt again.
+  fireEvent.blur(
+    within(table).getByRole('textbox', { name: 'Audit, General, Monday' }),
+    { target: { value: '1.5' } },
+  );
+  expect(screen.queryByRole('textbox', { name: 'Entry note' })).toBeNull();
+});

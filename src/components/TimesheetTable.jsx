@@ -38,6 +38,7 @@ export default function TimesheetTable({
   totals,
   onEntry,
   onTaskEntry,
+  onNote,
   onAddLine,
   onRemoveTaskLine,
   onLeave,
@@ -426,6 +427,7 @@ export default function TimesheetTable({
                       leaveWeeks={leaveWeeks}
                       suggestion={suggestion}
                       onEntry={onEntry}
+                      onNote={onNote}
                       onAddLine={() => onAddLine(p)}
                       onEdit={() => onEdit(p)}
                       onFrontload={() => onFrontload(p)}
@@ -449,6 +451,7 @@ export default function TimesheetTable({
                         leave={leave}
                         suggestion={suggestion}
                         onEntry={onTaskEntry}
+                        onNote={onNote}
                         onSuggestFrontload={() =>
                           onSuggestFrontload(p, suggestion)
                         }
