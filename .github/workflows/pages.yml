@@ -2,8 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    # Preview deploys from the polish/budget branch until it merges.
-    branches: [main, claude/time-master-polish-budget-ma32q1]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
