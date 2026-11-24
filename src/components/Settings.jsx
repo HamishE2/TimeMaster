@@ -133,7 +133,7 @@ export default function Settings({ settings, focus, onClose, onSave }) {
           role={rateError ? 'alert' : undefined}
         >
           {rateError ||
-            'Use the rate your time is costed at on the project’s quote (e.g. day rate ÷ 7.6). Each logged hour costs this much on the Money screen; projects can override it. Leave blank to turn costing off.'}
+            'Cost per logged hour. Projects can override it. Blank turns costing off.'}
         </small>
       </fieldset>
       <div className="modal-actions">

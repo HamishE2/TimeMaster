@@ -221,14 +221,6 @@
   background: var(--surface);
   min-width: 0;
 }
-.fin-card::before {
-  content: '';
-  position: absolute;
-  inset: -1px auto -1px -1px;
-  width: 4px;
-  border-radius: var(--radius) 0 0 var(--radius);
-  background: var(--pc);
-}
 .fin-card > header {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -801,7 +793,6 @@
   align-items: center;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-left: 3px solid var(--info);
   border-radius: var(--radius);
   background: var(--surface);
 }

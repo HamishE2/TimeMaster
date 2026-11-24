@@ -77,8 +77,7 @@ export default function ProjectBudgetFields({
             {hoursHint(budget) ? (
               <b className="budget-effort">{hoursHint(budget)}</b>
             ) : null}{' '}
-            Optional. Logged time is costed at the project rate below
-            {rate == null ? ' once a rate is set' : ''}.
+            Optional.
           </small>
         )}
       </div>
@@ -107,9 +106,8 @@ export default function ProjectBudgetFields({
           <span className="field-error">{errors.hourlyRate}</span>
         ) : (
           <small className="help">
-            Optional. Use the rate your role is priced at on this project’s
-            quote (day rate ÷ {perDay}); blank uses the workspace rate
-            {hourlyRate == null ? '' : ` of ${formatMoney(hourlyRate)}/h`}.
+            Optional. Blank uses the workspace rate
+            {hourlyRate == null ? '' : ` (${formatMoney(hourlyRate)}/h)`}.
           </small>
         )}
       </div>
@@ -118,8 +116,7 @@ export default function ProjectBudgetFields({
         <div className="field budget-buckets">
           <span className="budget-subhead">Phase budgets</span>
           <small className="help">
-            Optional buckets. Time on General, or on a phase without a
-            bucket, draws from what is left of the total.
+            Optional. Other time draws from the total.
           </small>
           <ul>
             {phases.map((task) => {
@@ -170,10 +167,7 @@ export default function ProjectBudgetFields({
       <div className="field costings">
         <span className="budget-subhead">Costed activities</span>
         <small className="help">
-          Deliverables with their own costing, such as “Quick reference guides
-          (QRGs)” at $4,000 or 3 days. Time is matched from entry notes
-          (aliases help), can be picked or split by hand on any entry, and
-          anything else is charged to General.
+          Matched from entry notes. Aliases help.
         </small>
         {draft.activities.length > 0 && (
           <ul className="costing-list">
@@ -275,7 +269,7 @@ export default function ProjectBudgetFields({
                     aria-label={`Remove activity ${activity.name || index + 1}`}
                     title={
                       tagged
-                        ? `${tagged} tagged ${tagged === 1 ? 'entry' : 'entries'} will become untagged`
+                        ? `${tagged} tagged ${tagged === 1 ? 'entry' : 'entries'} go back to auto`
                         : 'Remove activity'
                     }
                     onClick={() =>
@@ -308,7 +302,7 @@ export default function ProjectBudgetFields({
                               ? `= ${formatMoney(activityDollars(activity))} ex GST`
                               : hoursHint(activityDollars(activity)))}
                           {tagged > 0 &&
-                            ` · ${tagged} ${tagged === 1 ? 'entry is' : 'entries are'} tagged here; removing it untags them.`}
+                            ` · ${tagged} tagged ${tagged === 1 ? 'entry' : 'entries'}`}
                         </>
                       )}
                     </small>

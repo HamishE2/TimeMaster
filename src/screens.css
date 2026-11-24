@@ -690,10 +690,6 @@
 .capacity-table .over {
   color: var(--danger);
 }
-.capacity-table tr.is-today td:first-child {
-  box-shadow: inset 3px 0 0 var(--accent);
-  padding-left: 9px;
-}
 .capacity-table tr.is-leave td {
   color: var(--muted);
   background: color-mix(in srgb, var(--surface-3) 55%, transparent);
@@ -2041,9 +2037,6 @@
   padding-bottom: 5px;
   background: color-mix(in srgb, var(--pc) 7%, var(--surface-2));
   border-top: 1px solid var(--border);
-}
-.app tr.project-header-row > th:first-child {
-  box-shadow: inset 3px 0 0 var(--pc);
 }
 .app tr.project-header-row .header-line {
   display: flex;

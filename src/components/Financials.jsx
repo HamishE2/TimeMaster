@@ -220,10 +220,10 @@ export default function Financials({
                 <b className={afterPlan < 0 ? 'fin-yellow-text' : ''}>
                   {formatMoney(afterPlan, { whole: true })}
                 </b>{' '}
-                left after the resourcing plan
+                after plan
               </>
             ) : (
-              'Budget minus logged cost'
+              'Budget minus spend'
             )}
           </p>
         </article>
@@ -277,11 +277,7 @@ export default function Financials({
             <span className="fin-empty-glyph" aria-hidden="true">$</span>
             <div>
               <h3>Set your hourly rate to see costs</h3>
-              <p>
-                Each logged hour costs your rate. Until it is set, every budget
-                shows as grey and costs read as a dash. Budgets and costings
-                you add are kept either way.
-              </p>
+              <p>Costs show once a rate is set.</p>
             </div>
             <button
               type="button"
@@ -298,12 +294,7 @@ export default function Financials({
             <span className="fin-empty-glyph" aria-hidden="true">◎</span>
             <div>
               <h3>No budgets yet</h3>
-              <p>
-                Open a project and fill in its <b>Budget</b> section: a total,
-                optional phase buckets, and costed activities such as “Quick
-                reference guides (QRGs) · $4,000”. Spend is logged hours × your
-                rate; the resourcing plan shows what is still to come.
-              </p>
+              <p>Add one in a project’s Budget section.</p>
             </div>
             {overview.projects[0] ? (
               <button
@@ -420,9 +411,8 @@ export default function Financials({
                         small
                         status={{ tone: 'yellow', label: 'Plan over' }}
                       />{' '}
-                      The resourcing plan alone would go{' '}
-                      {formatMoney(item.forecast.overBy, { whole: true })} over —
-                      a planning issue, not your logging.
+                      Plan goes{' '}
+                      {formatMoney(item.forecast.overBy, { whole: true })} over.
                     </p>
                   )}
                 {item.hasRate && (
@@ -483,14 +473,13 @@ export default function Financials({
                 )}
                 {item.bucketsExceedBudget && (
                   <p className="fin-warning">
-                    <b aria-hidden="true">!</b> Phase buckets add up to more
-                    than the total budget.
+                    <b aria-hidden="true">!</b> Phase budgets exceed the total.
                   </p>
                 )}
                 {item.leaveHours > 0 && (
                   <p className="fin-muted">
-                    {Math.round(item.leaveHours * 100) / 100}h on leave days is
-                    not costed.
+                    {Math.round(item.leaveHours * 100) / 100}h on leave, not
+                    costed.
                   </p>
                 )}
                 <button
@@ -575,8 +564,8 @@ export default function Financials({
                     ) : (
                       <small className="fin-muted">
                         {item.hasRate
-                          ? `${formatMoney(item.spent, { whole: true })} logged · add a budget`
-                          : 'Set a rate to cost this project'}
+                          ? `${formatMoney(item.spent, { whole: true })} logged`
+                          : 'No rate'}
                       </small>
                     )}
                   </button>

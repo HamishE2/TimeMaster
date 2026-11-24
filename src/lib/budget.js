@@ -550,34 +550,34 @@ export function budgetStatus({
     pct,
   });
   if (budgetCents === 0 && spentCents === 0)
-    return make('near', '$0 budget', 'This budget is $0, so any logged time goes over.');
+    return make('near', '$0 budget', 'Any logged time goes over.');
   if (remaining < 0)
     return make(
       'over',
       'Over budget',
-      `Your logged time is ${formatMoney(fromCents(-remaining))} over budget.`,
+      `${formatMoney(fromCents(-remaining))} over budget.`,
     );
   if (remaining === 0)
-    return make('at', 'At budget', 'Your logged time has used the whole budget.');
+    return make('at', 'At budget', 'Budget fully used.');
   if (burnCents > 0 && burnCents >= remaining)
     return make(
       'soon',
       'Runs out this week',
-      'At your current burn rate this budget runs out within a week.',
+      'Runs out within a week at this pace.',
     );
   if (pct >= near)
     return make(
       'near',
       'Approaching',
-      `${percentOf(pct)}% of the budget is spent.`,
+      `${percentOf(pct)}% spent.`,
     );
   if (flags.resourcingOver)
     return make(
       'resourcing',
       'Plan exceeds budget',
-      `The resourcing plan would spend ${formatMoney(fromCents(forecastCents - budgetCents))} more than the budget. That is a planning issue, not your logging.`,
+      `Plan goes ${formatMoney(fromCents(forecastCents - budgetCents))} over budget.`,
     );
-  return make('under', 'On track', `${percentOf(pct)}% of the budget is spent.`);
+  return make('under', 'On track', `${percentOf(pct)}% spent.`);
 }
 
 // Activities use the same scale against their costing: under / near / at / over.
@@ -930,7 +930,7 @@ export function projectFinance(project, settings = {}, week, options = {}) {
     },
     status,
     warning: status.flags.highBurn
-      ? "You're billing a lot of time — this budget may be suffering."
+      ? 'Spending faster than planned.'
       : null,
   };
 }

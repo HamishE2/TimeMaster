@@ -50,11 +50,7 @@ export default function FinancialsReview({ review, projects, onTag }) {
               <span className="fin-count">{toCheck.length}</span>
             )}
           </h3>
-          <span>
-            Time that went to General because the note was vague or fitted
-            several costings. Nothing is wrong; pick a costing if it belongs to
-            one.
-          </span>
+          <span>Vague or ambiguous notes, costed to General.</span>
         </div>
         {others > 0 && (
           <label className="switch-row">
@@ -74,8 +70,8 @@ export default function FinancialsReview({ review, projects, onTag }) {
             <h3>Nothing to check</h3>
             <p>
               {review.length
-                ? `No vague or ambiguous notes. ${others} other entr${others === 1 ? 'y is' : 'ies are'} costed to General; show them above to pick costings by hand.`
-                : 'Every entry on a costed project has a costing, picked or matched, or there are no costings yet.'}
+                ? 'No vague or ambiguous notes.'
+                : 'Every entry has a costing.'}
             </p>
           </div>
         </div>

@@ -97,7 +97,7 @@ export default function ActivityPicker({
       key: GENERAL_BUCKET,
       group: 'Costings',
       label: 'General',
-      hint: 'project budget, not a costing',
+      hint: 'project budget',
       run: () => onTag?.(GENERAL_BUCKET),
     },
   ]

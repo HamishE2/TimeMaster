@@ -191,15 +191,9 @@
 }
 .entry-popover-head {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: 1fr auto;
   align-items: center;
   gap: 8px;
-}
-.entry-popover-head > i {
-  width: 4px;
-  align-self: stretch;
-  border-radius: 2px;
-  background: var(--pc);
 }
 .entry-popover-head b {
   display: block;

@@ -230,7 +230,6 @@ export default function EntryPopover({
       onKeyDown={onKeyDown}
     >
       <div className="entry-popover-head">
-        <i aria-hidden="true" />
         <span>
           <b>{project.name}</b>
           <small>

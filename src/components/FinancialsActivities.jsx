@@ -94,12 +94,10 @@ export default function FinancialsActivities({ overview, onEditProject }) {
         <div>
           <h3 id="fin-activities-title">Costings</h3>
           <span>
-            Each costing vs the cost of time charged to it ·{' '}
-            <span className="costing-source source-picked">picked</span> by
-            hand, <span className="costing-source source-auto">auto</span> from
-            the note, or{' '}
-            <span className="costing-source source-default">default</span> to
-            General
+            Spend vs costing ·{' '}
+            <span className="costing-source source-picked">picked</span>{' '}
+            <span className="costing-source source-auto">auto</span>{' '}
+            <span className="costing-source source-default">default</span>
           </span>
         </div>
       </header>
@@ -108,13 +106,7 @@ export default function FinancialsActivities({ overview, onEditProject }) {
           <span className="fin-empty-glyph" aria-hidden="true">≡</span>
           <div>
             <h3>No costings yet</h3>
-            <p>
-              Break a budget into costed deliverables, such as “Quick reference
-              guides (QRGs) · $4,000” or “Training deck · 3 days”, in the
-              project’s Budget section. Notes like “drafted QRGs” are matched
-              automatically, you can pick or split by hand, and anything else
-              is charged to General.
-            </p>
+            <p>Add costed deliverables in a project’s Budget section.</p>
           </div>
           {overview.projects[0] && (
             <button

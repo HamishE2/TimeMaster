@@ -59,7 +59,7 @@ export default function FinancialsWeek({
       <header className="fin-section-head">
         <div>
           <h3 id="fin-week-title">Cost this week</h3>
-          <span>Logged hours × rate, by day</span>
+          <span>Hours × rate</span>
         </div>
         <div className="fin-segmented" role="radiogroup" aria-label="Rows">
           {[
@@ -83,10 +83,7 @@ export default function FinancialsWeek({
           <span className="fin-empty-glyph" aria-hidden="true">0</span>
           <div>
             <h3>Nothing logged this week</h3>
-            <p>
-              Costs appear here as you log time on the Timesheet. Use the week
-              arrows to look at another week.
-            </p>
+            <p>Log time to see costs here.</p>
           </div>
         </div>
       ) : (
