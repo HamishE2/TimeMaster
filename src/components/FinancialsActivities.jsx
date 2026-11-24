@@ -9,11 +9,13 @@ import { BudgetMeter, StatusChip } from './FinancialsParts.jsx';
 
 // Whether a costing's time was assigned by hand (manual) or by the app
 // (auto: matched from the note, or General by default). Only the final
-// assignment counts: a pick that overrode a match is just manual.
-function SourceBadges({ bySource }) {
+// assignment counts: a pick that overrode a match is just manual. Historical
+// usage entered by hand is badged "history".
+function SourceBadges({ bySource, historical = false }) {
   const shown = [
     bySource?.picked > 0 && 'manual',
     (bySource?.auto > 0 || bySource?.default > 0) && 'auto',
+    historical && 'history',
   ].filter(Boolean);
   if (!shown.length) return null;
   return (
@@ -37,7 +39,7 @@ function CostingRow({ row, item, perDay, isGeneral = false }) {
           {fmt(Math.round(row.hours * 100) / 100)}h · {row.entries}{' '}
           {row.entries === 1 ? 'entry' : 'entries'}
         </small>
-        <SourceBadges bySource={row.bySource} />
+        <SourceBadges bySource={row.bySource} historical={row.historical} />
       </th>
       <td className="fin-num">
         {row.amount == null ? '—' : formatMoney(row.amount, { whole: true })}
@@ -97,7 +99,9 @@ export default function FinancialsActivities({ overview, onEditProject }) {
       </header>
       {withActivities.length === 0 ? (
         <div className="fin-empty is-inline">
-          <span className="fin-empty-glyph" aria-hidden="true">≡</span>
+          <span className="fin-empty-glyph" aria-hidden="true">
+            ≡
+          </span>
           <div>
             <h3>No costings yet</h3>
             <p>Add costed deliverables in a project’s Budget section.</p>

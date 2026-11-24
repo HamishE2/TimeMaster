@@ -1522,3 +1522,342 @@ fieldset.activity-split {
   padding-top: 4px;
   padding-bottom: 4px;
 }
+
+/* Historical usage on a budget card. */
+.fin-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.fin-history-add {
+  min-height: 34px;
+  padding: 4px 14px;
+  font-size: 13px;
+  font-weight: 650;
+  margin-left: auto;
+  margin-right: 12px;
+}
+.fin-history {
+  border-top: 1px dashed var(--border);
+  padding-top: 8px;
+}
+.fin-history h4 {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+.fin-history ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.fin-history li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.fin-history li > span {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.fin-history li small {
+  color: var(--muted);
+}
+.fin-history li button {
+  min-height: 30px;
+  padding: 2px 10px;
+  font-size: 12.5px;
+}
+
+/* Configuration form: one screen, large buttons and fields, no steps. */
+.cfg-form {
+  display: grid;
+  gap: 22px;
+}
+.cfg-lead {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.cfg-section {
+  display: grid;
+  gap: 12px;
+}
+.cfg-section h3 {
+  margin: 0;
+  font-size: 17px;
+}
+.cfg-section > .help {
+  margin: -6px 0 0;
+}
+.cfg-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+}
+.cfg-choices.is-pair {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.cfg-choice {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 2px 10px;
+  min-height: 64px;
+  padding: 12px 16px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  text-align: left;
+  font-size: 16px;
+}
+.cfg-choice > b,
+.cfg-choice > small {
+  grid-column: 2;
+  overflow-wrap: anywhere;
+}
+.cfg-choice > .cfg-dot {
+  grid-row: span 2;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--pc);
+}
+.cfg-choice > small {
+  font-size: 13px;
+  color: var(--muted);
+}
+.cfg-choice:not(:has(.cfg-dot)) {
+  grid-template-columns: 1fr;
+}
+.cfg-choice:not(:has(.cfg-dot)) > b,
+.cfg-choice:not(:has(.cfg-dot)) > small {
+  grid-column: 1;
+}
+.cfg-choice:hover:not(:disabled) {
+  border-color: var(--rule-strong, var(--muted));
+}
+.cfg-choice[aria-checked='true'] {
+  border-color: var(--ink);
+  background: color-mix(in srgb, var(--accent) 22%, var(--surface));
+  box-shadow: inset 0 0 0 1px var(--ink);
+}
+.cfg-choice:disabled {
+  opacity: 0.45;
+}
+.cfg-field {
+  display: grid;
+  gap: 6px;
+}
+.modal .cfg-field label {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+}
+.cfg-input {
+  display: flex;
+  align-items: center;
+  min-height: 52px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.cfg-input:focus-within {
+  border-color: var(--ink);
+}
+.cfg-input.is-error {
+  border-color: var(--danger);
+}
+.modal .cfg-input input {
+  flex: 1;
+  min-width: 0;
+  height: 48px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  padding: 0 14px;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.cfg-input > span {
+  padding: 0 14px;
+  font-size: 15px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.cfg-input > span:first-child {
+  padding-right: 0;
+  font-size: 18px;
+}
+.cfg-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.cfg-rows {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cfg-rest {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  grid-column: 1 / -1;
+  min-height: 52px;
+  padding: 0 16px;
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  font-size: 15px;
+  color: var(--muted);
+}
+.cfg-rest b {
+  font-size: 18px;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.cfg-rest.is-over {
+  border-color: var(--danger);
+}
+.cfg-summary {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-size: 15px;
+  line-height: 1.5;
+}
+.cfg-actions {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 12px;
+}
+.cfg-button {
+  min-height: 54px;
+  border-radius: 10px;
+  font-size: 17px;
+  font-weight: 700;
+}
+@media (max-width: 560px) {
+  .cfg-pair,
+  .cfg-choices.is-pair {
+    grid-template-columns: 1fr;
+  }
+  .cfg-choices {
+    grid-template-columns: 1fr;
+  }
+}
+/* Phone toolbars hide secondary buttons; this one stays. */
+.fin-main .sheet-toolbar.fin-toolbar:not(.tools-open) > button.fin-history-add {
+  display: inline-flex;
+  align-items: center;
+}
+@media (max-width: 700px) {
+  .fin-history-add {
+    margin: 8px 0 0;
+    width: 100%;
+    justify-content: center;
+    min-height: 44px;
+  }
+}
+.cfg-pair {
+  align-items: start;
+}
+.cfg-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cfg-steps li {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px 5px 5px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.cfg-steps li > span {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  font-size: 12px;
+}
+.cfg-steps li[aria-current='step'] {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+.cfg-steps li[aria-current='step'] > span {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.cfg-steps li.is-done > span {
+  background: var(--ink);
+  color: var(--surface);
+}
+.cfg-count {
+  margin: -12px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.cfg-section > h3 {
+  font-size: 20px;
+  line-height: 1.3;
+}
+.cfg-review {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+}
+.cfg-review > div {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) 3fr;
+  gap: 12px;
+  padding: 12px 16px;
+  font-size: 15px;
+}
+.cfg-review > div + div {
+  border-top: 1px solid var(--border);
+}
+.cfg-review dt {
+  color: var(--muted);
+}
+.cfg-review dd {
+  margin: 0;
+  font-weight: 600;
+}
+@media (max-width: 560px) {
+  .cfg-steps li {
+    padding-right: 5px;
+    font-size: 0;
+  }
+  .cfg-steps li[aria-current='step'] {
+    padding-right: 12px;
+    font-size: 13px;
+  }
+  .cfg-review > div {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}

@@ -5,10 +5,13 @@
 // (each entry is costed once, rounded to the cent, then summed).
 import {
   EPSILON,
+  dateString,
   isVisible,
   monthlyPlan,
   projectMetrics,
   shiftWeek,
+  uuid,
+  weekKeyFor,
 } from './utils.js';
 import { isGeneralTask, phasesOf } from './tasks.js';
 import {
@@ -252,6 +255,12 @@ export function normaliseProjectFinance(project) {
     );
   if ('activities' in project)
     next.activities = normaliseActivities(project.activities);
+  if ('historicalUsage' in project)
+    next.historicalUsage = normaliseHistoricalUsage(
+      project.historicalUsage,
+      project,
+      next.activities ?? normaliseActivities(project.activities),
+    );
   if ('activityTags' in project) {
     const activityIds = new Set((next.activities || []).map((a) => a.id)),
       tags = {};
@@ -651,7 +660,7 @@ export function projectFinance(project, settings = {}, week, options = {}) {
     activities = normaliseActivities(project.activities),
     withActivities = { ...project, activities },
     cache = new Map();
-  const entries = projectEntries(project, { leaveWeeks }).map((entry) => ({
+  const logged = projectEntries(project, { leaveWeeks }).map((entry) => ({
     ...entry,
     cents: entryCents(entry.hours, rate),
     activity: entryActivity(
@@ -663,6 +672,10 @@ export function projectFinance(project, settings = {}, week, options = {}) {
       entry.hours,
     ),
   }));
+  // Historical usage (work done before it was logged here) counts towards
+  // spend, phase buckets and costings, but not burn, the week or the review.
+  const history = historicalUsageParts(project, activities, rate);
+  const entries = [...logged, ...history.entries];
   const leaveHours = projectEntries(project, { leaveWeeks, includeLeave: true })
     .filter((entry) => entry.onLeave)
     .reduce((sum, entry) => sum + entry.hours, 0);
@@ -728,7 +741,7 @@ export function projectFinance(project, settings = {}, week, options = {}) {
       hours,
       cents: cents[id] || 0,
     }));
-  });
+  }).concat(history.shares);
   const bySource = (list) =>
     list.reduce(
       (acc, share) => {
@@ -737,17 +750,20 @@ export function projectFinance(project, settings = {}, week, options = {}) {
             ? 'picked'
             : share.entry.activity.source === 'auto'
               ? 'auto'
-              : 'default';
+              : share.entry.activity.source === 'history'
+                ? 'history'
+                : 'default';
         acc[key] = Math.round((acc[key] + share.hours) * 100) / 100;
         return acc;
       },
-      { picked: 0, auto: 0, default: 0 },
+      { picked: 0, auto: 0, default: 0, history: 0 },
     );
   const costingRow = (activity, list, amountCents) => {
     const cents = sum(list, 'cents');
     return {
       ...activity,
-      entries: list.length,
+      entries: list.filter((share) => !share.entry.historical).length,
+      historical: list.some((share) => share.entry.historical),
       hours: sum(list, 'hours'),
       bySource: bySource(list),
       spent: fromCents(cents),
@@ -794,7 +810,7 @@ export function projectFinance(project, settings = {}, week, options = {}) {
     if (status === 'vague' || status === 'ambiguous') return status;
     return status === 'no-note' ? 'no-note' : 'none';
   };
-  const review = (activities.length ? entries : [])
+  const review = (activities.length ? logged : [])
     .map((entry) => ({ entry, reason: reviewReason(entry) }))
     .filter(({ reason }) => reason)
     .map(({ entry, reason }) => ({
@@ -828,7 +844,7 @@ export function projectFinance(project, settings = {}, week, options = {}) {
     weekSpentCents = 0;
   if (ref) {
     weekSpentCents = sum(
-      entries.filter((entry) => entry.week === ref),
+      logged.filter((entry) => entry.week === ref),
       'cents',
     );
     const window = new Set(
@@ -836,7 +852,7 @@ export function projectFinance(project, settings = {}, week, options = {}) {
     );
     burnCents = Math.round(
       sum(
-        entries.filter((entry) => window.has(entry.week)),
+        logged.filter((entry) => window.has(entry.week)),
         'cents',
       ) / BURN_WINDOW_WEEKS,
     );
@@ -875,7 +891,7 @@ export function projectFinance(project, settings = {}, week, options = {}) {
         ),
         weekSpent: fromCents(
           sum(
-            entries.filter((entry) => entry.week === key),
+            logged.filter((entry) => entry.week === key),
             'cents',
           ),
         ),
@@ -912,6 +928,11 @@ export function projectFinance(project, settings = {}, week, options = {}) {
       spent: activities.length ? fromCents(spentCents - linkedCents) : 0,
     },
     review,
+    history: {
+      records: history.records,
+      hours: sum(history.entries, 'hours'),
+      spent: fromCents(sum(history.entries, 'cents')),
+    },
     forecast: {
       ...forecast,
       remainingCost: fromCents(remainingPlanCents),
@@ -1171,3 +1192,298 @@ export function commitSplitRows(rows, total) {
   if (rest > 0) split[GENERAL_BUCKET] = round2((split[GENERAL_BUCKET] || 0) + rest);
   return { split, allocated: given, remainder: rest };
 }
+
+// ---------- Historical usage ----------
+// Work done on a project before it was logged here (or logged elsewhere),
+// entered as one total in hours or dollars and broken down by phase bucket
+// and by costing. Each breakdown adds up to the total: what is not given to
+// a phase sits in General, and what is not given to a costing sits in the
+// General costing bucket ('none'). Stored as project.historicalUsage:
+// [{ id, label, asOf, unit: 'hours' | 'money', total, phases, activities }].
+export const HISTORY_HOURS_MAX = 100_000;
+export const HISTORY_DEFAULT_LABEL = 'Before TimeMaster';
+
+// Amounts are kept to two decimals (cents or hundredths of an hour) and
+// summed as whole hundredths so the breakdowns always add up exactly.
+const hundredths = (raw) => {
+  const n = typeof raw === 'string' ? Number(raw.trim()) : raw;
+  return typeof n === 'number' && Number.isFinite(n) && n > 0 ? toCents(n) : 0;
+};
+
+const isDateKey = (value) =>
+  typeof value === 'string' &&
+  WEEK_KEY.test(value) &&
+  dateString(value) === value;
+
+export const usageMax = (unit) =>
+  unit === 'money' ? MONEY_MAX : HISTORY_HOURS_MAX;
+
+// "12.5h" or "$1,200.50".
+export const formatUsage = (value, unit) =>
+  value == null
+    ? '—'
+    : unit === 'money'
+      ? formatMoney(value)
+      : `${Math.round(Number(value) * 100) / 100}h`;
+
+// Folds a stored breakdown into valid keys (unknown ones go to `rest`) and
+// fills it up to the total with `rest`. Returns null when it adds up to more.
+function foldBreakdown(raw, isValid, rest, totalH) {
+  const out = {};
+  let given = 0;
+  for (const [key, value] of Object.entries(isPlainObject(raw) ? raw : {})) {
+    const h = hundredths(value);
+    if (!h) continue;
+    const target = isValid(key) ? key : rest;
+    out[target] = (out[target] || 0) + h;
+    given += h;
+  }
+  if (given > totalH) return null;
+  if (given < totalH) out[rest] = (out[rest] || 0) + totalH - given;
+  return Object.fromEntries(
+    Object.entries(out).map(([key, h]) => [key, fromCents(h)]),
+  );
+}
+
+export function normaliseHistoricalUsage(list, project, activities = []) {
+  if (!Array.isArray(list)) return [];
+  const phaseIds = nonGeneralTaskIds(project),
+    activityIds = new Set(activities.map((activity) => activity.id)),
+    seen = new Set();
+  return list.flatMap((item, index) => {
+    if (!isPlainObject(item)) return [];
+    const unit = item.unit === 'money' ? 'money' : 'hours';
+    // A deleted phase's share moves to General; the total is never smaller
+    // than what its phases add up to.
+    let phaseH = 0;
+    for (const value of Object.values(
+      isPlainObject(item.phases) ? item.phases : {},
+    ))
+      phaseH += hundredths(value);
+    const totalH = Math.max(hundredths(item.total), phaseH);
+    if (!totalH || totalH > toCents(usageMax(unit))) return [];
+    const phases = foldBreakdown(
+      item.phases,
+      (key) => key === GENERAL_NOTE_ID || phaseIds.has(key),
+      GENERAL_NOTE_ID,
+      totalH,
+    );
+    // A deleted costing's share moves to the General costing bucket, like a
+    // split; a breakdown that adds up to more than the total is dropped.
+    const activityBreakdown =
+      foldBreakdown(
+        item.activities,
+        (key) => key === NO_ACTIVITY_TAG || activityIds.has(key),
+        NO_ACTIVITY_TAG,
+        totalH,
+      ) || { [NO_ACTIVITY_TAG]: fromCents(totalH) };
+    let id = String(item.id ?? '').trim() || `history-${index + 1}`;
+    if (seen.has(id)) id = `${id}-${index + 1}`;
+    seen.add(id);
+    return [
+      {
+        id,
+        label:
+          String(item.label ?? '')
+            .trim()
+            .slice(0, 80) || HISTORY_DEFAULT_LABEL,
+        asOf: isDateKey(item.asOf) ? item.asOf : null,
+        unit,
+        total: fromCents(totalH),
+        phases,
+        activities: activityBreakdown,
+      },
+    ];
+  });
+}
+
+// Pseudo entries (one per phase share) and costing shares for the costing
+// in projectFinance. Hours are costed at the project's rate like logged time;
+// dollars are taken as given. Usage dated "up to" a day sits in that week on
+// the spend chart; undated usage comes before everything.
+function historicalUsageParts(project, activities, rate) {
+  const records = normaliseHistoricalUsage(
+    project.historicalUsage,
+    project,
+    activities,
+  );
+  const names = new Map(phasesOf(project).map((task) => [task.id, task.name]));
+  const entries = [],
+    shares = [],
+    summaries = [];
+  for (const record of records) {
+    const cents =
+        record.unit === 'money'
+          ? toCents(record.total)
+          : entryCents(record.total, rate),
+      hoursOf = (value) => (record.unit === 'hours' ? value : 0),
+      week = record.asOf ? weekKeyFor(record.asOf) : '',
+      phaseCents = shareCents(record.phases, record.total, cents),
+      activityCents = shareCents(record.activities, record.total, cents),
+      activity = { split: {}, source: 'history', status: 'history', parts: [] };
+    for (const [taskId, value] of Object.entries(record.phases))
+      entries.push({
+        taskId,
+        taskName:
+          taskId === GENERAL_NOTE_ID ? 'General' : names.get(taskId) || '',
+        week,
+        day: null,
+        hours: hoursOf(value),
+        onLeave: false,
+        historical: true,
+        recordId: record.id,
+        cents: phaseCents[taskId] || 0,
+        activity,
+      });
+    const entry = { historical: true, recordId: record.id, activity };
+    for (const [id, value] of Object.entries(record.activities))
+      shares.push({ entry, id, hours: hoursOf(value), cents: activityCents[id] || 0 });
+    summaries.push({
+      ...record,
+      cost: fromCents(cents),
+      hours: record.unit === 'hours' ? record.total : null,
+    });
+  }
+  return { entries, shares, records: summaries };
+}
+
+// Adds or replaces one record (by id) and re-normalises the project.
+export function setHistoricalUsageRecord(project, record) {
+  const list = Array.isArray(project.historicalUsage)
+    ? project.historicalUsage
+    : [];
+  const exists = list.some((item) => item.id === record.id);
+  return normaliseProjectFinance({
+    ...project,
+    historicalUsage: exists
+      ? list.map((item) => (item.id === record.id ? record : item))
+      : [...list, record],
+  });
+}
+
+export function removeHistoricalUsageRecord(project, recordId) {
+  return {
+    ...project,
+    historicalUsage: (project.historicalUsage || []).filter(
+      (item) => item.id !== recordId,
+    ),
+  };
+}
+
+// Editable text draft for the historical usage wizard. General and the
+// General costing bucket are not typed: they take whatever is left.
+export function historicalDraftOf(record = null) {
+  const text = (value) => (value == null ? '' : String(value));
+  const typed = (breakdown, rest) =>
+    Object.fromEntries(
+      Object.entries(breakdown || {})
+        .filter(([key]) => key !== rest)
+        .map(([key, value]) => [key, text(value)]),
+    );
+  return {
+    id: record?.id || null,
+    label: record?.label ?? HISTORY_DEFAULT_LABEL,
+    asOf: record?.asOf || '',
+    unit: record?.unit === 'money' ? 'money' : 'hours',
+    total: text(record?.total),
+    phases: typed(record?.phases, GENERAL_NOTE_ID),
+    activities: typed(record?.activities, NO_ACTIVITY_TAG),
+  };
+}
+
+// Typed hours ("12.5", "7:30") or dollars ("4,000.50") for historical usage.
+export function parseUsageAmount(value, unit, label = 'Amount') {
+  if (unit === 'money') return parseMoney(value, { label });
+  const s = String(value ?? '').trim();
+  if (!s) return { value: null };
+  if (/^-/.test(s)) return { error: `${label} cannot be negative.` };
+  if (!/^(\d+(\.\d{0,2})?|\.\d{1,2}|\d+:[0-5]\d)$/.test(s))
+    return {
+      error: /^\d*\.\d{3,}$/.test(s)
+        ? 'Use up to two decimals, like 12.25.'
+        : `${label} must be hours, like 12.5 or 7:30.`,
+    };
+  const [whole, mins] = s.split(':');
+  const hours =
+    mins != null ? Number(whole) + Number(mins) / 60 : Number(s);
+  if (hours > HISTORY_HOURS_MAX) return { error: `${label} is too large.` };
+  return { value: fromCents(toCents(hours)) };
+}
+
+// Validates the wizard's draft against a project. Errors are keyed by field
+// ('label', 'asOf', 'total', 'phase:<id>', 'phases', 'activity:<id>',
+// 'activities') so each step can check its own. `left` is what General and
+// the General costing bucket receive.
+export function validateHistoricalDraft(draft, project, { today = dateString(new Date()) } = {}) {
+  const errors = {},
+    unit = draft.unit === 'money' ? 'money' : 'hours',
+    label = String(draft.label ?? '').trim();
+  if (label.length > 80) errors.label = 'Keep the name under 80 characters.';
+  const asOf = String(draft.asOf ?? '').trim();
+  if (asOf && !isDateKey(asOf)) errors.asOf = 'Enter a valid date.';
+  else if (asOf && asOf > today)
+    errors.asOf = 'Historical usage can’t be dated in the future.';
+  const total = parseUsageAmount(draft.total, unit, 'Total');
+  if (total.error) errors.total = total.error;
+  else if (!total.value)
+    errors.total =
+      unit === 'money'
+        ? 'Enter the dollars used so far.'
+        : 'Enter the hours used so far.';
+  const totalH = toCents(total.value || 0);
+  const breakdown = (keys, typed, prefix, noun) => {
+    const out = {};
+    let given = 0;
+    for (const key of keys) {
+      const parsed = parseUsageAmount(typed?.[key], unit, noun);
+      if (parsed.error) errors[`${prefix}:${key}`] = parsed.error;
+      else if (parsed.value) {
+        out[key] = parsed.value;
+        given += toCents(parsed.value);
+      }
+    }
+    return { out, left: fromCents(totalH - given), given: fromCents(given) };
+  };
+  const phases = breakdown(
+      phasesOf(project).map((task) => task.id),
+      draft.phases,
+      'phase',
+      'Phase usage',
+    ),
+    activities = breakdown(
+      normaliseActivities(project?.activities).map((activity) => activity.id),
+      draft.activities,
+      'activity',
+      'Costing usage',
+    );
+  if (!errors.total && phases.left < 0)
+    errors.phases = `The phases add up to ${formatUsage(-phases.left, unit)} more than the ${formatUsage(total.value, unit)} total.`;
+  if (!errors.total && activities.left < 0)
+    errors.activities = `The costings add up to ${formatUsage(-activities.left, unit)} more than the ${formatUsage(total.value, unit)} total.`;
+  const record = Object.keys(errors).length
+    ? null
+    : {
+        id: draft.id || `history-${uuid()}`,
+        label: label || HISTORY_DEFAULT_LABEL,
+        asOf: asOf || null,
+        unit,
+        total: total.value,
+        phases: {
+          ...phases.out,
+          ...(phases.left > 0 ? { [GENERAL_NOTE_ID]: phases.left } : {}),
+        },
+        activities: {
+          ...activities.out,
+          ...(activities.left > 0 ? { [NO_ACTIVITY_TAG]: activities.left } : {}),
+        },
+      };
+  return {
+    errors,
+    unit,
+    total: total.value ?? null,
+    phases,
+    activities,
+    record,
+  };
+}
+
