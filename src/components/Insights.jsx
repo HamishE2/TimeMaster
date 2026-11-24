@@ -31,14 +31,21 @@ export default function Insights({ projects, week, leaveWeeks }) {
                 return (
                   <div className={`insight-item ${key}`} key={p.id}>
                     <div>
-                      <strong>
-                        <i
-                          className="project-ring"
-                          style={{ color: p.color }}
-                        />
-                        {p.name}
-                        <FrontloadWarning metrics={m} />
-                      </strong>
+                      <div className="insight-title">
+                        <strong>
+                          <i
+                            className="project-ring"
+                            style={{ color: p.color }}
+                          />
+                          {p.name}
+                          <FrontloadWarning metrics={m} />
+                        </strong>
+                        {p.client?.trim() && (
+                          <small className="insight-client">
+                            {p.client.trim()}
+                          </small>
+                        )}
+                      </div>
                       <span>
                         {m.remaining == null
                           ? `${fmt(m.logged)}h logged`
