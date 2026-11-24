@@ -440,7 +440,7 @@ export default function Financials({
                           ? '—'
                           : item.burn.runwayWeeks > 104
                             ? '2 yrs +'
-                            : `${Math.floor(item.burn.runwayWeeks)} wks`}
+                            : `${Math.floor(item.burn.runwayWeeks)} ${Math.floor(item.burn.runwayWeeks) === 1 ? 'wk' : 'wks'}`}
                       </dd>
                     </div>
                     <div>
@@ -558,7 +558,7 @@ export default function Financials({
                           ? `${formatPercent(item.pct)} · ${
                               item.remaining < 0
                                 ? `${formatMoney(-item.remaining, { whole: true })} over`
-                                : `${formatMoney(item.remaining, { whole: true })} left`
+                                : `${formatMoney(wholeRemaining(item.budget, item.spent), { whole: true })} left`
                             }`
                           : item.status.label}
                       </span>
