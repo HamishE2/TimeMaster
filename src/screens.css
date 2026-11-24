@@ -690,10 +690,6 @@
 .capacity-table .over {
   color: var(--danger);
 }
-.capacity-table tr.is-today td:first-child {
-  box-shadow: inset 3px 0 0 var(--accent);
-  padding-left: 9px;
-}
 .capacity-table tr.is-leave td {
   color: var(--muted);
   background: color-mix(in srgb, var(--surface-3) 55%, transparent);
@@ -2042,9 +2038,6 @@
   background: color-mix(in srgb, var(--pc) 7%, var(--surface-2));
   border-top: 1px solid var(--border);
 }
-.app tr.project-header-row > th:first-child {
-  box-shadow: inset 3px 0 0 var(--pc);
-}
 .app tr.project-header-row .header-line {
   display: flex;
   align-items: center;
@@ -2304,11 +2297,10 @@
   color: var(--danger);
 }
 
-/* The actions column has no heading: blend its header cell into the row. */
+/* The actions column has no visible heading, but its header cell keeps the
+   header band's background and rule so the band runs the full width. */
 .app .table-scroll thead th:last-child {
-  background: transparent;
   border-left-color: transparent;
-  box-shadow: none;
 }
 .app .table-scroll thead th:last-child > :not(.sr-only) {
   display: none;

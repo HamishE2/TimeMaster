@@ -1,5 +1,8 @@
 import {
+  DEFAULT_CAPACITY,
+  EPSILON,
   capacityFor,
+  hoursValue,
   projectMetrics,
   weekKeyFor,
   weeklyResourcedHours,
@@ -89,12 +92,51 @@ export function developmentEntryUpdates(
           taskHoursForDay(p, week, day),
         0,
       ),
-      space = Math.max(0, Number(settings.capacityByDay?.[day] || 0) - dayUsed),
-      add = Math.min(space, remaining);
-    if (add > 0) {
-      updates[day] = Number(pd.entries?.[week]?.[day] || 0) + add;
+      capacity = (settings.capacityByDay || DEFAULT_CAPACITY)[day],
+      space = Math.max(0, hoursValue(capacity) - dayUsed),
+      // Rounded so float noise (7.6 - 2.3 - 5.3) never writes a 0.0000001h
+      // entry or tips a full day over its capacity.
+      add = Math.round(Math.min(space, remaining) * 100) / 100;
+    if (add > EPSILON) {
+      updates[day] =
+        Math.round((hoursValue(pd.entries?.[week]?.[day]) + add) * 100) / 100;
       remaining -= add;
     }
   }
   return updates;
+}
+
+// Weekly flex: a long day that makes up for shorter days in the same week is
+// not "over". Each day's hours are compared with its own capacity, but the
+// running week balance (logged minus capacity, in day order) decides whether
+// the extra is genuinely surplus. A day is flagged only when it is above its
+// own capacity and the week stays above capacity from that day until the last
+// day with hours, so a 6h day followed by a 9.2h day (or the reverse) balances.
+// `logged` and `capacity` are indexed by day (0 = Monday); leave days count
+// as 0h with 0h capacity. Returns { [day]: { over, flex, overBy } }.
+export function dailyFlexStatus(days, logged, capacity, leave = []) {
+  const working = days.filter((day) => !leave.includes(day)),
+    hoursOf = (day) => Math.max(0, hoursValue(logged?.[day])),
+    capOf = (day) => Math.max(0, hoursValue(capacity?.[day])),
+    balances = [];
+  let running = 0,
+    lastLogged = -1;
+  working.forEach((day, i) => {
+    running += hoursOf(day) - capOf(day);
+    balances.push(running);
+    if (hoursOf(day) > EPSILON) lastLogged = i;
+  });
+  const result = {};
+  for (const day of days) result[day] = { over: false, flex: false, overBy: 0 };
+  working.forEach((day, i) => {
+    const cap = capOf(day);
+    if (cap <= 0 || hoursOf(day) <= cap + EPSILON) return;
+    const settled = Math.min(...balances.slice(i, Math.max(i, lastLogged) + 1)),
+      overBy =
+        Math.round(Math.min(hoursOf(day) - cap, Math.max(0, settled)) * 100) /
+        100;
+    if (overBy > EPSILON) result[day] = { over: true, flex: false, overBy };
+    else result[day] = { over: false, flex: true, overBy: 0 };
+  });
+  return result;
 }

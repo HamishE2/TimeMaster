@@ -29,6 +29,7 @@ export default function FilePanel({
   fileName,
   status,
   dirty,
+  needsAttention = false,
   supported,
   onClose,
   onOpen,
@@ -55,10 +56,36 @@ export default function FilePanel({
           Direct file access needs Chrome or Edge. Import and download still work.
         </p>
       )}
+      {attached && needsAttention && (
+        <p className="file-warning" role="status">
+          Your changes are kept in this browser. Try Save now, or choose
+          Reattach and save to pick the file again and write this workspace to
+          it. Choosing an existing JSON instead replaces this workspace with
+          the file&apos;s contents.
+        </p>
+      )}
       <div className="file-actions file-primary-actions">
-        <Action name="open" primary title="Choose existing JSON" onClick={onOpen} />
+        {attached && needsAttention && supported && (
+          <Action
+            name="save"
+            primary
+            title="Reattach and save"
+            onClick={onCreate}
+          />
+        )}
+        <Action
+          name="open"
+          primary={!(attached && needsAttention)}
+          title="Choose existing JSON"
+          onClick={onOpen}
+        />
         <Action name="create" title="Create new TimeMaster.json" onClick={onCreate} />
-        <Action name="save" title="Save now" onClick={onSaveNow} disabled={!attached || !dirty} />
+        <Action
+          name="save"
+          title="Save now"
+          onClick={onSaveNow}
+          disabled={!attached || !(dirty || needsAttention)}
+        />
         <Action name="refresh" title="Refresh from file" onClick={onRefresh} disabled={!attached} />
       </div>
       <h3 className="file-section-title">Copies</h3>

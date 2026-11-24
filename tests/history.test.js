@@ -31,4 +31,20 @@ describe('undo history', () => {
     s = reducer(s, { type: 'reset', value: 9 });
     expect(reducer(s, { type: 'undo' }).present).toBe(9);
   });
+
+  it('keeps a checkpointed burst as its own undo step', () => {
+    let s = set(start, 1, 1000);
+    s = set(s, 2, 1100); // typing, merged with the first edit
+    s = reducer(s, { type: 'checkpoint' });
+    s = set(s, 3, 1200); // quick entry, two ops in one burst
+    s = set(s, 4, 1210);
+    s = reducer(s, { type: 'checkpoint' });
+    s = set(s, 5, 1300); // the next edit starts a new step
+    s = reducer(s, { type: 'undo' });
+    expect(s.present).toBe(4);
+    s = reducer(s, { type: 'undo' });
+    expect(s.present).toBe(2);
+    s = reducer(s, { type: 'undo' });
+    expect(s.present).toBe(0);
+  });
 });

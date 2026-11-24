@@ -3,6 +3,7 @@ import {
   EPSILON,
   WEEKLY_RESOURCING_CAPACITY,
   fmt,
+  hoursValue,
   isVisible,
   projectMetrics,
   shiftWeek,
@@ -79,7 +80,8 @@ export default function CapacityModal({
           <tbody>
             {rows.length ? (
               rows.map(({ project, metrics }) => {
-                const adjustment = metrics.frontloadedIn - metrics.frontloadedOut;
+                const adjustment = metrics.frontloadedIn - metrics.frontloadedOut,
+                  shifted = Math.abs(adjustment) > EPSILON;
                 return (
                   <tr key={project.id}>
                     <td>
@@ -87,8 +89,8 @@ export default function CapacityModal({
                       {project.name}
                     </td>
                     <td>{fmt(metrics.plan)}h</td>
-                    <td className={adjustment ? 'shifted' : 'muted'}>
-                      {adjustment === 0
+                    <td className={shifted ? 'shifted' : 'muted'}>
+                      {!shifted
                         ? '—'
                         : `${adjustment > 0 ? '+' : ''}${fmt(adjustment)}h`}
                     </td>
@@ -168,7 +170,9 @@ export default function CapacityModal({
             <tbody>
               {settings.visibleDays.map((day) => {
                 const off = leave.includes(day);
-                const cap = off ? 0 : Number(settings.capacityByDay[day] || 0);
+                const cap = off
+                  ? 0
+                  : Math.max(0, hoursValue(settings.capacityByDay?.[day]));
                 const used = off
                   ? 0
                   : projects.reduce(
@@ -209,9 +213,9 @@ export default function CapacityModal({
                 <td>Week</td>
                 <td>{fmt(totals.capacity)}h</td>
                 <td>{fmt(totals.logged)}h</td>
-                <td className={totals.remaining < 0 ? 'over' : ''}>
+                <td className={totals.remaining < -EPSILON ? 'over' : ''}>
                   {fmt(Math.abs(totals.remaining))}h{' '}
-                  {totals.remaining < 0 ? 'over' : 'free'}
+                  {totals.remaining < -EPSILON ? 'over' : 'free'}
                 </td>
               </tr>
             </tfoot>
@@ -227,9 +231,9 @@ export default function CapacityModal({
             <span>
               <b>{fmt(nextHours)}h</b> resourced
             </span>
-            <span className={nextFree < 0 ? 'over' : ''}>
+            <span className={nextFree < -EPSILON ? 'over' : ''}>
               <b>{fmt(Math.abs(nextFree))}h</b>{' '}
-              {nextFree < 0 ? 'over capacity' : 'unresourced'}
+              {nextFree < -EPSILON ? 'over capacity' : 'unresourced'}
             </span>
           </div>
         </section>

@@ -59,7 +59,7 @@ export default function CounterRail({ totals, projects, onFill, onCapacity }) {
             <b className="over-text"> · {totals.over} over allocation</b>
           )}
         </span>
-        <button onClick={onFill} disabled={totals.remaining <= 0}>
+        <button onClick={onFill} disabled={totals.remaining <= EPSILON}>
           Fill remaining
         </button>
       </article>

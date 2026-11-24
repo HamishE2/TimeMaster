@@ -1,4 +1,8 @@
 import { taskEntrySources } from './taskLines.js';
+import {
+  normaliseFinanceSettings,
+  normaliseProjectFinance,
+} from './budget.js';
 
 export const SCHEMA_VERSION = 3;
 export const DAY_NAMES = [
@@ -19,12 +23,24 @@ export const EPSILON = 0.01;
 export const uuid = () =>
   crypto.randomUUID?.() ??
   `p-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+// A bare 'YYYY-MM-DD' string is parsed by `new Date` as UTC midnight, which is
+// the previous day anywhere west of Greenwich. Read date keys as local noon.
+const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/;
+const toDate = (date) =>
+  typeof date === 'string' && DATE_KEY.test(date)
+    ? new Date(`${date}T12:00:00`)
+    : new Date(date);
+// A stored number of hours, or 0 when it is missing or not a number.
+export const hoursValue = (value) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+};
 export function dateString(date) {
-  const d = new Date(date);
+  const d = toDate(date);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 export function mondayFor(date) {
-  const d = new Date(date);
+  const d = toDate(date);
   d.setHours(0, 0, 0, 0);
   d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
   return d;
@@ -50,7 +66,7 @@ export function dayDate(key, index) {
   return weekDates(key)[index];
 }
 export function monthKey(date) {
-  const d = new Date(date);
+  const d = toDate(date);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 export function weekLabel(key, days = DEFAULT_VISIBLE_DAYS) {
@@ -113,12 +129,14 @@ export function frontloadAmount(project, key) {
 export function frontloadLimit(project, key) {
   const source = shiftWeek(key, 1),
     plan = weeklyPlan(project, source);
-  if (plan == null || !Number.isFinite(Number(plan))) return null;
+  // A cleared plan ('') is unlimited, as in projectMetrics, not 0h.
+  if (plan == null || plan === '' || !Number.isFinite(Number(plan)))
+    return null;
   return Math.max(0, Number(plan) + frontloadAmount(project, source));
 }
 export function entryHours(project, key, day, includeLeave = true, leave = []) {
   return includeLeave || !leave.includes(day)
-    ? Number(project.entries?.[key]?.[day] || 0)
+    ? hoursValue(project.entries?.[key]?.[day])
     : 0;
 }
 
@@ -130,20 +148,31 @@ export function weeklyLogged(project, key, leave = []) {
     (total, entries) =>
       total +
       Array.from({ length: 7 }, (_, day) =>
-        leave.includes(day) ? 0 : Number(entries?.[key]?.[day] || 0),
+        leave.includes(day) ? 0 : hoursValue(entries?.[key]?.[day]),
       ).reduce((a, b) => a + b, 0),
     0,
   );
   return general + tasks;
 }
 export function adjustmentFor(project, month) {
-  return Number(
+  return hoursValue(
     project.monthlyAdjustments?.[month] ??
       (project.historicalMonthlyMonth === month
         ? project.historicalMonthlyHours
-        : 0) ??
-      0,
+        : 0),
   );
+}
+// The historical hours entered for the month a week's allowance belongs to
+// (the month of its Thursday), or '' when none were entered for that month.
+// Other months' adjustments must not be carried into this one.
+export function historicalHoursForWeek(project, key) {
+  const month = monthKey(dayDate(key, 3)),
+    value =
+      project?.monthlyAdjustments?.[month] ??
+      (project?.historicalMonthlyMonth === month
+        ? project.historicalMonthlyHours
+        : undefined);
+  return value == null ? '' : value;
 }
 export function monthlyLogged(project, month, leaveWeeks = {}) {
   let n = adjustmentFor(project, month);
@@ -155,12 +184,17 @@ export function monthlyLogged(project, month, leaveWeeks = {}) {
           !leaveWeeks[wk]?.includes(Number(d)) &&
           monthKey(dayDate(wk, Number(d))) === month
         )
-          n += Number(h) || 0;
+          n += hoursValue(h);
   return n;
 }
 export function monthlyAllowance(project, key, leaveWeeks = {}) {
   const allocation = monthlyPlan(project, key);
-  if (allocation == null) return null;
+  if (
+    allocation == null ||
+    allocation === '' ||
+    !Number.isFinite(Number(allocation))
+  )
+    return null;
   const month = monthKey(dayDate(key, 3));
   return Math.max(
     0,
@@ -170,7 +204,9 @@ export function monthlyAllowance(project, key, leaveWeeks = {}) {
   );
 }
 export function projectMetrics(project, key, leaveWeeks = {}) {
-  const plan = weeklyPlan(project, key),
+  const rawPlan = weeklyPlan(project, key),
+    // An empty string is a cleared field, not a zero-hour plan.
+    plan = rawPlan === '' ? null : rawPlan,
     logged = weeklyLogged(project, key, leaveWeeks[key] || []),
     monthly = monthlyAllowance(project, key, leaveWeeks),
     frontloadedIn = frontloadAmount(project, key),
@@ -225,26 +261,119 @@ export function capacityFor(key, settings) {
     visible = settings.visibleDays || DEFAULT_VISIBLE_DAYS,
     caps = settings.capacityByDay || DEFAULT_CAPACITY;
   return visible.reduce(
-    (n, d) => n + (leave.includes(d) ? 0 : Number(caps[d] || 0)),
+    (n, d) => n + (leave.includes(d) ? 0 : Math.max(0, hoursValue(caps[d]))),
     0,
   );
 }
+const isRecord = (value) =>
+  value != null && typeof value === 'object' && !Array.isArray(value);
+const dayIndex = (value) => {
+  const n = Number(value);
+  return value !== '' && Number.isInteger(n) && n >= 0 && n <= 6 ? n : null;
+};
+// null for a blank (unlimited) value, undefined for something unusable.
+const optionalHours = (value) => {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+};
+// { day: hours } with valid day indices and finite, non-negative hours.
+const cleanDays = (days) =>
+  Object.fromEntries(
+    Object.entries(isRecord(days) ? days : {}).flatMap(([day, value]) => {
+      const n = optionalHours(value);
+      return dayIndex(day) != null && n != null && n >= 0 ? [[day, n]] : [];
+    }),
+  );
+// { week: { day: hours } }, dropping weeks left empty.
+const cleanWeeks = (weeks) =>
+  Object.fromEntries(
+    Object.entries(isRecord(weeks) ? weeks : {}).flatMap(([week, days]) => {
+      const clean = cleanDays(days);
+      return Object.keys(clean).length ? [[week, clean]] : [];
+    }),
+  );
+// { key: hours | null }, where null keeps an explicit unlimited plan.
+const cleanPlans = (plans) =>
+  Object.fromEntries(
+    Object.entries(isRecord(plans) ? plans : {}).flatMap(([key, value]) => {
+      const n = optionalHours(value);
+      return n === undefined ? [] : [[key, n]];
+    }),
+  );
+const cleanNumbers = (values) =>
+  Object.fromEntries(
+    Object.entries(isRecord(values) ? values : {}).flatMap(([key, value]) => {
+      const n = optionalHours(value);
+      return n == null ? [] : [[key, n]];
+    }),
+  );
+const cleanDayList = (days) =>
+  [
+    ...new Set(
+      (Array.isArray(days) ? days : [])
+        .map(dayIndex)
+        .filter((day) => day != null),
+    ),
+  ].sort((a, b) => a - b);
+// notes[taskId][week][day] = text
+const cleanNotes = (notes) =>
+  Object.fromEntries(
+    Object.entries(notes).flatMap(([taskId, weeks]) => {
+      const kept = Object.fromEntries(
+        Object.entries(isRecord(weeks) ? weeks : {}).flatMap(
+          ([week, days]) => {
+            const text = Object.fromEntries(
+              Object.entries(isRecord(days) ? days : {}).filter(
+                ([day, value]) =>
+                  dayIndex(day) != null &&
+                  typeof value === 'string' &&
+                  value.trim(),
+              ),
+            );
+            return Object.keys(text).length ? [[week, text]] : [];
+          },
+        ),
+      );
+      return Object.keys(kept).length ? [[taskId, kept]] : [];
+    }),
+  );
+
+// Normalises a backup, browser session or older export into the current
+// workspace shape. Known fields are validated; fields this version does not
+// know about (on settings, projects and tasks) are carried through untouched
+// so a newer or extended workspace survives a round trip.
 export function migrateBackup(raw) {
   if (!raw || typeof raw !== 'object' || !Array.isArray(raw.projects))
     throw new Error('This backup does not contain a valid project list.');
+  const rawSettings = isRecord(raw.settings) ? raw.settings : {},
+    visibleDays = cleanDayList(rawSettings.visibleDays),
+    rawCapacity = Array.isArray(rawSettings.capacityByDay)
+      ? rawSettings.capacityByDay
+      : DEFAULT_CAPACITY;
   const settings = {
-    visibleDays: raw.settings?.visibleDays?.length
-      ? raw.settings.visibleDays
-      : DEFAULT_VISIBLE_DAYS,
-    leaveWeeks: raw.settings?.leaveWeeks || {},
-    capacityByDay: raw.settings?.capacityByDay || DEFAULT_CAPACITY,
-    theme: raw.settings?.theme || 'system',
+    ...rawSettings,
+    visibleDays: visibleDays.length ? visibleDays : DEFAULT_VISIBLE_DAYS,
+    leaveWeeks: Object.fromEntries(
+      Object.entries(
+        isRecord(rawSettings.leaveWeeks) ? rawSettings.leaveWeeks : {},
+      ).map(([week, days]) => [week, cleanDayList(days)]),
+    ),
+    capacityByDay: DEFAULT_CAPACITY.map((fallback, day) => {
+      const n = optionalHours(rawCapacity[day]);
+      return n == null || n < 0 ? fallback : n;
+    }),
+    theme:
+      typeof rawSettings.theme === 'string' && rawSettings.theme
+        ? rawSettings.theme
+        : 'system',
   };
   const legacyEntries = Array.isArray(raw.entries) ? raw.entries : [];
-  const projects = raw.projects.map((p, i) => {
+  const projects = raw.projects.filter(isRecord).map((p, i) => {
     const tasks =
-      Array.isArray(p.tasks) && p.tasks.length
-        ? p.tasks.map((task) => ({
+      Array.isArray(p.tasks) && p.tasks.some(isRecord)
+        ? p.tasks.filter(isRecord).map((task) => ({
+            ...task,
             id: task.id || uuid(),
             name: String(task.name || 'Untitled task').trim(),
           }))
@@ -255,24 +384,20 @@ export function migrateBackup(raw) {
         .filter((task) => task.name.toLowerCase() === 'general')
         .map((task) => task.id),
     );
-    const entries =
-      p.entries && typeof p.entries === 'object' && !Array.isArray(p.entries)
-        ? p.entries
-        : {};
-    const taskEntries =
-      p.taskEntries &&
-      typeof p.taskEntries === 'object' &&
-      !Array.isArray(p.taskEntries)
-        ? p.taskEntries
-        : {};
+    const entries = cleanWeeks(p.entries);
+    const taskEntries = Object.fromEntries(
+      Object.entries(isRecord(p.taskEntries) ? p.taskEntries : {}).map(
+        ([taskId, weeks]) => [taskId, cleanWeeks(weeks)],
+      ),
+    );
     for (const entry of legacyEntries.filter(
-      (item) => item.projectId === p.id,
+      (item) => item?.projectId === p.id,
     )) {
       const date = new Date(`${entry.date}T12:00:00`),
         key = weekKeyFor(date),
         day = (date.getDay() + 6) % 7,
         hours = Number(entry.hours) || 0;
-      if (!hours) continue;
+      if (!hours || Number.isNaN(date.getTime())) continue;
       if (generalIds.has(entry.taskId))
         entries[key] = { ...(entries[key] || {}), [day]: hours };
       else
@@ -281,61 +406,65 @@ export function migrateBackup(raw) {
           [key]: { ...(taskEntries[entry.taskId]?.[key] || {}), [day]: hours },
         };
     }
-    const taskRows =
-      p.taskRows && typeof p.taskRows === 'object' && !Array.isArray(p.taskRows)
-        ? p.taskRows
-        : {};
+    const taskRows = Object.fromEntries(
+      Object.entries(isRecord(p.taskRows) ? p.taskRows : {}).map(
+        ([key, ids]) => [
+          key,
+          (Array.isArray(ids) ? ids : []).filter(
+            (id) => typeof id === 'string',
+          ),
+        ],
+      ),
+    );
     for (const [key, rows] of Object.entries(raw.weekRows || {}))
       taskRows[key] = (Array.isArray(rows) ? rows : [])
-        .filter((row) => row.startsWith(`${p.id}::`))
+        .filter(
+          (row) => typeof row === 'string' && row.startsWith(`${p.id}::`),
+        )
         .map((row) => row.slice(p.id.length + 2));
     const frontloads = Object.fromEntries(
-      Object.entries(
-        p.frontloads &&
-          typeof p.frontloads === 'object' &&
-          !Array.isArray(p.frontloads)
-          ? p.frontloads
-          : {},
-      ).flatMap(([key, value]) => {
-        const amount = Math.round(Number(value) * 100) / 100,
-          valid =
-            /^\d{4}-\d{2}-\d{2}$/.test(key) &&
-            weekKeyFor(new Date(`${key}T12:00:00`)) === key &&
-            Number.isFinite(amount) &&
-            amount > 0;
-        return valid ? [[key, amount]] : [];
-      }),
+      Object.entries(isRecord(p.frontloads) ? p.frontloads : {}).flatMap(
+        ([key, value]) => {
+          const amount = Math.round(Number(value) * 100) / 100,
+            valid =
+              DATE_KEY.test(key) &&
+              weekKeyFor(new Date(`${key}T12:00:00`)) === key &&
+              Number.isFinite(amount) &&
+              amount > 0;
+          return valid ? [[key, amount]] : [];
+        },
+      ),
+    );
+    const resourcedHours = optionalHours(
+      p.resourcedHours ?? p.weeklyAllocation,
     );
     return {
       ...p,
       id: p.id || uuid(),
       name: String(p.name || `Untitled project ${i + 1}`).trim(),
       isBillable: p.isBillable !== false,
-      resourcedHours:
-        p.resourcedHours ??
-        (p.weeklyAllocation === '' || p.weeklyAllocation == null
-          ? null
-          : Number(p.weeklyAllocation)),
-      monthlyResourcedHours: p.monthlyResourcedHours ?? null,
-      monthlyAdjustments: p.monthlyAdjustments || {},
+      resourcedHours: resourcedHours ?? null,
+      monthlyResourcedHours: optionalHours(p.monthlyResourcedHours) ?? null,
+      monthlyAdjustments: cleanNumbers(p.monthlyAdjustments),
+      ...(p.historicalMonthlyHours !== undefined
+        ? { historicalMonthlyHours: hoursValue(p.historicalMonthlyHours) }
+        : {}),
       entries,
       tasks,
       taskEntries,
       taskRows,
-      weeklyOverrides:
-        p.weeklyOverrides &&
-        typeof p.weeklyOverrides === 'object' &&
-        !Array.isArray(p.weeklyOverrides)
-          ? p.weeklyOverrides
-          : {},
-      monthlyOverrides:
-        p.monthlyOverrides &&
-        typeof p.monthlyOverrides === 'object' &&
-        !Array.isArray(p.monthlyOverrides)
-          ? p.monthlyOverrides
-          : {},
+      // A malformed notes value ("oops", an array) is dropped, not kept.
+      ...(isRecord(p.notes)
+        ? { notes: cleanNotes(p.notes) }
+        : 'notes' in p
+          ? { notes: undefined }
+          : {}),
+      weeklyOverrides: cleanPlans(p.weeklyOverrides),
+      monthlyOverrides: cleanPlans(p.monthlyOverrides),
       frontloads,
-      hiddenWeeks: Array.isArray(p.hiddenWeeks) ? p.hiddenWeeks : [],
+      hiddenWeeks: Array.isArray(p.hiddenWeeks)
+        ? p.hiddenWeeks.filter((key) => typeof key === 'string')
+        : [],
       hiddenOnwardsFrom: p.hiddenOnwardsFrom || null,
       visibleOnwardsFrom: p.visibleOnwardsFrom || null,
       archived: !!p.archived,
@@ -344,7 +473,12 @@ export function migrateBackup(raw) {
       createdAt: p.createdAt || new Date().toISOString(),
     };
   });
-  return { schemaVersion: SCHEMA_VERSION, projects, settings };
+  // Budget, costing and rate fields are validated by the financials module.
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    projects: projects.map(normaliseProjectFinance),
+    settings: { ...settings, ...normaliseFinanceSettings(settings) },
+  };
 }
 
 // Compatibility helpers used by the original feature modules.

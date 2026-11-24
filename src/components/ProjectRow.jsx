@@ -2,7 +2,7 @@ import { DAY_NAMES, EPSILON, fmt } from '../lib/utils.js';
 import { hasPhases } from '../lib/tasks.js';
 import { projectSummary } from '../lib/projectSummary.js';
 import EntryFrontloadButton from './EntryFrontloadButton.jsx';
-import EntryNoteButton from './EntryNoteButton.jsx';
+import EntryCell from './EntryCell.jsx';
 import { entryNote } from '../lib/entryNotes.js';
 import FrontloadButton from './FrontloadButton.jsx';
 import FrontloadWarning from './FrontloadWarning.jsx';
@@ -18,7 +18,6 @@ export default function ProjectRow({
   hideClient,
   suggestion,
   onEntry,
-  onNote,
   onAddLine,
   onEdit,
   onFrontload,
@@ -154,26 +153,16 @@ export default function ProjectRow({
                         adjustment={suggestion.adjustment}
                       />
                     )}
-                  <input
-                    aria-label={`${p.name}, General, ${DAY_NAMES[d]}`}
-                    key={`${p.id}-${week}-${d}-${p.entries?.[week]?.[d] ?? ''}`}
-                    defaultValue={
-                      p.entries?.[week]?.[d] == null
-                        ? ''
-                        : fmt(p.entries[week][d])
-                    }
-                    onBlur={(e) => onEntry(p.id, week, d, e.target.value)}
-                    placeholder="—"
-                    inputMode="decimal"
+                  <EntryCell
+                    projectId={p.id}
+                    taskId={null}
+                    week={week}
+                    day={d}
+                    value={p.entries?.[week]?.[d]}
+                    note={entryNote(p, null, week, d)}
+                    label={`${p.name}, General, ${DAY_NAMES[d]}`}
+                    onCommit={(value) => onEntry(p.id, week, d, value)}
                   />
-                  {(p.entries?.[week]?.[d] != null ||
-                    entryNote(p, null, week, d)) && (
-                    <EntryNoteButton
-                      note={entryNote(p, null, week, d)}
-                      label={`${p.name}, General, ${DAY_NAMES[d]}`}
-                      onOpen={() => onNote(p.id, null, week, d)}
-                    />
-                  )}
                 </>
               )}
             </td>
@@ -199,7 +188,7 @@ export default function ProjectRow({
       </td>
       <td className={m.status}>
         {remainingLabel}
-        {m.effective > 0 && m.remaining > 0 && (
+        {m.effective > 0 && m.remaining > EPSILON && (
           <small>{Math.round((m.remaining / m.effective) * 100)}% left</small>
         )}
       </td>

@@ -11,6 +11,7 @@ export default function EntryNoteModal({
   note,
   onSave,
   onClose,
+  renderExtras,
 }) {
   const [text, setText] = useState(note || ''),
     field = useRef(null),
@@ -44,7 +45,7 @@ export default function EntryNoteModal({
     <Modal title={note ? 'Edit note' : 'Add a note'} onClose={close}>
       <p className="help entry-note-context">
         <b>{project.name}</b> · {taskName} · {DAY_NAMES[day]}{' '}
-        {date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+        {date.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}
         {hours != null && <> · {fmt(hours)}h</>}
       </p>
       <form
@@ -75,6 +76,9 @@ export default function EntryNoteModal({
         <small className="help">
           Enter saves · Shift+Enter adds a new line
         </small>
+        {renderExtras && (
+          <div className="entry-note-extras">{renderExtras(text)}</div>
+        )}
         <div className="modal-actions">
           {note && (
             <button

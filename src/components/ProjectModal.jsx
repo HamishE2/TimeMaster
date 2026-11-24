@@ -3,6 +3,7 @@ import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   fmt,
   getCategorizedProjects,
+  historicalHoursForWeek,
   monthlyPlan,
   uuid,
 } from '../lib/utils.js';
@@ -10,6 +11,12 @@ import { validateProjectDraft } from '../lib/projectOperations.js';
 import { isGeneralTask, phaseHours } from '../lib/tasks.js';
 import ScopePicker from './ScopePicker.jsx';
 import ModalBackdrop from './ModalBackdrop.jsx';
+import ProjectBudgetFields from './ProjectBudgetFields.jsx';
+import {
+  BUDGET_FOCUS,
+  financeDraftOf,
+  validateFinanceDraft,
+} from '../lib/budget.js';
 
 // Chronograph project palette (matches the --proj-* tokens in the mockups).
 const PROJECT_COLOURS = [
@@ -32,6 +39,8 @@ export default function ProjectModal({
   projects = [],
   visibleProjects = [],
   weekKey,
+  hourlyRate = null,
+  perDay = 7.6,
 }) {
   const [projectType, setProjectType] = useState('standard');
   const [durationPreset, setDurationPreset] = useState('1 week');
@@ -123,6 +132,7 @@ export default function ProjectModal({
   };
   const [newTask, setNewTask] = useState('');
   const [pendingTaskRemoval, setPendingTaskRemoval] = useState(null);
+  const [finance, setFinance] = useState(() => financeDraftOf(null));
   const [activeSection, setActiveSection] = useState('Identity');
   const bodyRef = useRef(null);
   const jumpingRef = useRef(false);
@@ -138,7 +148,7 @@ export default function ProjectModal({
         (nav
           ? nav.getBoundingClientRect().bottom
           : sheet.getBoundingClientRect().top) + 24;
-      const current = ['Identity', 'Allocation', 'Phases', 'Schedule']
+      const current = ['Identity', 'Allocation', 'Phases', 'Budget', 'Schedule']
         .filter((label) => {
           const el = document.getElementById(`edit-${label.toLowerCase()}`);
           return el && el.getBoundingClientRect().top <= top;
@@ -210,7 +220,9 @@ export default function ProjectModal({
       const isMonthlyUnlim =
         currentMonthly === null || currentMonthly === undefined;
       setMonthlyHours(isMonthlyUnlim ? '' : currentMonthly);
-      setHistoricalMonthly(initial?.historicalMonthlyHours ?? '');
+      setHistoricalMonthly(
+        initial ? historicalHoursForWeek(initial, weekKey) : '',
+      );
 
       setIsBillable(initial?.isBillable ?? true);
       setErrors({});
@@ -223,11 +235,17 @@ export default function ProjectModal({
       );
       setNewTask('');
       setPendingTaskRemoval(null);
+      setFinance(financeDraftOf(initial));
       setActiveSection('Identity');
-      const timer = setTimeout(
-        () => (phaseRef.current || nameRef.current)?.focus(),
-        50,
-      );
+      // "Edit budget" in Financials opens straight at the Budget section.
+      const timer = setTimeout(() => {
+        if (focusPhase === BUDGET_FOCUS) {
+          const section = document.getElementById('edit-budget');
+          setActiveSection('Budget');
+          section?.scrollIntoView({ block: 'start' });
+          section?.querySelector('input')?.focus({ preventScroll: true });
+        } else (phaseRef.current || nameRef.current)?.focus();
+      }, 50);
       return () => clearTimeout(timer);
     }
   }, [isOpen, initial, weekKey, focusPhase]);
@@ -283,7 +301,7 @@ export default function ProjectModal({
     const currentMonthly = monthlyPlan(project, weekKey),
       isMonthlyUnlim = currentMonthly === null || currentMonthly === undefined;
     setMonthlyHours(isMonthlyUnlim ? '' : currentMonthly);
-    setHistoricalMonthly(project.historicalMonthlyHours ?? '');
+    setHistoricalMonthly(historicalHoursForWeek(project, weekKey));
     setIsBillable(project.isBillable ?? true);
     setTasks(
       project.tasks?.length
@@ -291,6 +309,7 @@ export default function ProjectModal({
         : [{ id: 'general', name: 'General' }],
     );
     setNewTask('');
+    setFinance(financeDraftOf(project));
     setDropdownOpen(false);
   };
 
@@ -308,7 +327,11 @@ export default function ProjectModal({
       durationDays,
       remainderLimit,
     });
+    const financeErrors = validateFinanceDraft(finance, tasks, { settingsRate: hourlyRate, perDay }).errors;
+    Object.assign(e, financeErrors);
     setErrors(e);
+    if (Object.keys(financeErrors).length && Object.keys(e).length === Object.keys(financeErrors).length)
+      jumpTo('Budget');
     return Object.keys(e).length === 0;
   };
 
@@ -334,6 +357,7 @@ export default function ProjectModal({
         durationWeeks,
         durationDays,
         remainderLimit === '' ? null : Number(remainderLimit),
+        validateFinanceDraft(finance, tasks, { settingsRate: hourlyRate, perDay }).value,
       );
       if (saved !== false) onClose();
     }
@@ -356,6 +380,7 @@ export default function ProjectModal({
     'Identity',
     'Allocation',
     'Phases',
+    'Budget',
     ...(showSchedule ? ['Schedule'] : []),
   ];
   const scopeOptions = initial
@@ -1007,6 +1032,20 @@ export default function ProjectModal({
                 </button>
               </div>
             )}
+          </section>
+
+          <section id="edit-budget">
+            {heading('Budget')}
+            <ProjectBudgetFields
+              draft={finance}
+              onChange={setFinance}
+              tasks={tasks}
+              initial={initial}
+              errors={errors}
+              warnings={validateFinanceDraft(finance, tasks, { settingsRate: hourlyRate, perDay }).warnings}
+              hourlyRate={hourlyRate}
+              perDay={perDay}
+            />
           </section>
 
           {showSchedule && (
