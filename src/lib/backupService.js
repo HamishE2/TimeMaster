@@ -66,9 +66,36 @@ export function downloadBackup(data, name = 'TimeMaster-backup.json') {
   setTimeout(() => URL.revokeObjectURL(anchor.href), 500);
 }
 
-export async function readHandle(handle) {
-  const file = await handle.getFile();
-  const text = await file.text();
+export const FILE_UNRESPONSIVE_CODE = 'FILE_HANDLE_UNRESPONSIVE';
+export const FILE_TIMEOUT_MS = 10000;
+// A permission prompt waits on the person, so it gets longer than file I/O.
+export const PERMISSION_TIMEOUT_MS = 60000;
+
+export class FileUnresponsiveError extends Error {
+  constructor(name) {
+    super(
+      `The browser stopped responding while reaching ${name || 'the attached file'}. Open the file again from File to reattach it, or save a new copy.`,
+    );
+    this.name = 'FileUnresponsiveError';
+    this.code = FILE_UNRESPONSIVE_CODE;
+  }
+}
+
+// File handles restored from browser storage can stall forever (for example
+// when the browser loses track of the file), so every call is time-boxed.
+export function withTimeout(promise, ms, name) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new FileUnresponsiveError(name)), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+export async function readHandle(handle, timeoutMs = FILE_TIMEOUT_MS) {
+  const file = await withTimeout(handle.getFile(), timeoutMs, handle.name);
+  const text = await withTimeout(file.text(), timeoutMs, handle.name);
   return {
     handle,
     data: migrateBackup(JSON.parse(text)),
@@ -126,29 +153,43 @@ export async function chooseNewBackupHandle() {
   });
 }
 
-export async function writeHandle(handle, data, expectedRevision = null) {
+export async function writeHandle(
+  handle,
+  data,
+  expectedRevision = null,
+  { timeoutMs = FILE_TIMEOUT_MS, permissionTimeoutMs = PERMISSION_TIMEOUT_MS } = {},
+) {
+  const step = (promise, ms = timeoutMs) => withTimeout(promise, ms, handle.name);
   const permission = { mode: 'readwrite' };
   if (
     typeof handle.queryPermission === 'function' &&
-    (await handle.queryPermission(permission)) !== 'granted' &&
-    (await handle.requestPermission(permission)) !== 'granted'
+    (await step(handle.queryPermission(permission))) !== 'granted' &&
+    (await step(handle.requestPermission(permission), permissionTimeoutMs)) !==
+      'granted'
   ) {
     throw new Error('Permission to write the TimeMaster file was not granted.');
   }
 
   if (expectedRevision) {
-    const current = await handle.getFile();
-    const currentText = await current.text();
+    const current = await step(handle.getFile());
+    const currentText = await step(current.text());
     if (!revisionsMatch(expectedRevision, revisionFor(current, currentText))) {
       throw new ExternalFileChangedError();
     }
   }
 
-  const writable = await handle.createWritable();
-  await writable.write(JSON.stringify(data, null, 2));
-  await writable.close();
+  const writable = await step(handle.createWritable());
+  try {
+    await step(writable.write(JSON.stringify(data, null, 2)));
+    await step(writable.close());
+  } catch (error) {
+    Promise.resolve()
+      .then(() => writable.abort?.())
+      .catch(() => {});
+    throw error;
+  }
 
-  const saved = await handle.getFile();
-  const savedText = await saved.text();
+  const saved = await step(handle.getFile());
+  const savedText = await step(saved.text());
   return revisionFor(saved, savedText);
 }
