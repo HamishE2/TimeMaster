@@ -168,7 +168,13 @@ function rawScore(term, name) {
 function candidatesFor(projects, week) {
   const list = [];
   for (const project of projects) {
-    const projectText = [project.name, project.client, project.code];
+    // Codes are matched with and without punctuation ("ACM-101" ↔ "acm101").
+    const projectText = [
+      project.name,
+      project.client,
+      project.code,
+      String(project.code || '').replace(/[^\p{L}\p{N}]+/gu, ''),
+    ];
     if (hasPhases(project)) {
       const onSheet = new Set(taskLinesFor(project, week).map((t) => t.id));
       for (const task of phasesOf(project))
@@ -261,9 +267,12 @@ export function resolveQuickEntry(parsed, context) {
       (item) =>
         item.score.total === best.score.total &&
         item.score.taskHits === best.score.taskHits &&
-        Boolean(item.candidate.onSheet) === Boolean(best.candidate.onSheet) &&
-        Boolean(item.candidate.phased) === Boolean(best.candidate.phased) &&
-        item.candidate !== best.candidate,
+        item.candidate !== best.candidate &&
+        // Being pinned on the sheet only settles a tie between phases of the
+        // same project. Across two projects ("Acme Website" and "Acme
+        // Health") the person is asked, whatever their phases.
+        (item.candidate.project !== best.candidate.project ||
+          Boolean(item.candidate.onSheet) === Boolean(best.candidate.onSheet)),
     );
   if (tied.length)
     return {

@@ -197,8 +197,22 @@ const textSignature = (text) => {
 
 // Writes that timed out but may still be running, by handle. One that lands
 // after a later save would put the older workspace back in the file while
-// the app shows "Saved", so the next write to that handle waits for it.
-const unsettledWrites = new WeakMap();
+// the app shows "Saved", so the next write to that file waits for it — even
+// through a different handle object for the same file ("Reattach and save"
+// picks the file again and gets a new handle).
+const unsettledWrites = new Map();
+const sameFile = async (a, b) => {
+  if (a === b) return true;
+  try {
+    return typeof a.isSameEntry === 'function' && (await a.isSameEntry(b));
+  } catch {
+    return false;
+  }
+};
+async function waitForUnsettled(handle, step) {
+  for (const [other, settled] of [...unsettledWrites])
+    if (await sameFile(other, handle)) await step(settled);
+}
 
 // Writes the workspace to an attached file handle.
 // - `interactive` must only be true while handling a click: browsers refuse
@@ -234,8 +248,7 @@ export async function writeHandle(
       throw new Error('Permission to write the TimeMaster file was not granted.');
   }
 
-  const unsettled = unsettledWrites.get(handle);
-  if (unsettled) await step(unsettled);
+  await waitForUnsettled(handle, step);
 
   if (expectedRevision) {
     const current = await step(handle.getFile());

@@ -280,3 +280,11 @@ test('stored amounts with extra decimals are rounded, not wiped, and odd types a
 test('split hours reject hex and exponents, accept H:MM, and days take any decimals',()=>{assert.ok(B.commitSplitRows([{key:'a',hours:'0x1'}],5).error);assert.ok(B.commitSplitRows([{key:'a',hours:'1e1'}],5).error);assert.match(B.commitSplitRows([{key:'a',hours:'0.333'}],5).error,/two decimals/);assert.deepEqual(B.commitSplitRows([{key:'a',hours:'1:30'}],5).split,{a:1.5,none:3.5});const r=B.validateFinanceDraft({budget:'',phaseBudgets:{},activities:[{id:'a',name:'Q',amount:'1.234',unit:'days'}]},[],{settingsRate:100,perDay:7.6});assert.deepEqual(r.errors,{});assert.equal(r.value.activities[0].amount,937.84)});
 test('a malformed notes value is dropped on migration',()=>{assert.equal(U.migrateBackup({projects:[{id:'a',name:'A',notes:'oops'}]}).projects[0].notes,undefined)});
 }
+{
+const Q=await import('../src/lib/quickEntry.js');
+const W='2026-11-23',P=[{id:'a',name:'Acme Website',code:'ACM-101',entries:{},tasks:[{id:'general',name:'General'}]},{id:'b',name:'Acme Health',code:'AH-7',entries:{},taskEntries:{},tasks:[{id:'general',name:'General'},{id:'t',name:'Build'}]}];
+const ctx={projects:P,week:W,days:[0,1,2,3,4],leave:[],capacityByDay:[7.6,7.6,7.6,7.6,7.6]};
+const run=(t)=>Q.resolveQuickEntry(Q.parseQuickEntry(t),ctx);
+test('quick entry asks when a name matches two projects, phased or not',()=>{assert.match(run('2h acme tue').error,/Acme Website, Acme Health/)});
+test('quick entry finds projects by hyphenated codes',()=>{assert.equal(run('2h ACM-101 tue').ops[0].projectId,'a');assert.equal(run('2h AH-7 tue').ops[0].projectId,'b')});
+}

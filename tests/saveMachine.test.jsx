@@ -405,6 +405,36 @@ test('a timed-out write that lands after the next save cannot leave stale conten
   expect(fileData(handle).projects[0].entries[WEEK]).toEqual({ 0: 1, 1: 2 });
 });
 
+test('a write that timed out also holds back a new handle to the same file', async () => {
+  // "Reattach and save" picks the file again and gets a new handle object.
+  const handle = controlledHandle('TimeMaster.json');
+  const again = { ...handle, isSameEntry: async (other) => other === handle };
+  handle.isSameEntry = async (other) => other === again;
+  const one = baseWorkspace();
+  one.projects[0].entries = { [WEEK]: { 0: 1 } };
+  const two = baseWorkspace();
+  two.projects[0].entries = { [WEEK]: { 0: 1, 1: 2 } };
+  handle.state.hold = true;
+  await expect(
+    writeHandle(handle, backupPayload(one.projects, one.settings), null, {
+      timeoutMs: 50,
+    }),
+  ).rejects.toBeInstanceOf(FileUnresponsiveError);
+  handle.state.hold = false;
+  const pending = writeHandle(
+    again,
+    backupPayload(two.projects, two.settings),
+    null,
+    { timeoutMs: 1000 },
+  );
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  // The reattached write waits for the late one instead of racing it.
+  expect(handle.state.writes).toBe(0);
+  releaseHeld(handle);
+  await pending;
+  expect(fileData(handle).projects[0].entries[WEEK]).toEqual({ 0: 1, 1: 2 });
+});
+
 test('quota failures in the file and the browser copy settle as errors', async () => {
   const handle = controlledHandle('TimeMaster.json');
   const { container } = await renderAttached(handle);

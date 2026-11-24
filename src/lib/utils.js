@@ -129,7 +129,9 @@ export function frontloadAmount(project, key) {
 export function frontloadLimit(project, key) {
   const source = shiftWeek(key, 1),
     plan = weeklyPlan(project, source);
-  if (plan == null || !Number.isFinite(Number(plan))) return null;
+  // A cleared plan ('') is unlimited, as in projectMetrics, not 0h.
+  if (plan == null || plan === '' || !Number.isFinite(Number(plan)))
+    return null;
   return Math.max(0, Number(plan) + frontloadAmount(project, source));
 }
 export function entryHours(project, key, day, includeLeave = true, leave = []) {

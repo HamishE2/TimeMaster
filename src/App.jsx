@@ -1623,12 +1623,6 @@ export default function App() {
           onClose={closeNote}
         />
       )}
-      {confirm && (
-        <ConfirmAction
-          confirmation={confirm}
-          onClose={() => setConfirm(null)}
-        />
-      )}
       {capacityDetails && (
         <CapacityModal
           allProjects={data.projects}
@@ -1708,6 +1702,14 @@ export default function App() {
             });
           }}
           onManage={() => setPanel('manage')}
+        />
+      )}
+      {/* Last, so a confirmation asked from a panel (File → open another
+          file) sits above that panel rather than under its backdrop. */}
+      {confirm && (
+        <ConfirmAction
+          confirmation={confirm}
+          onClose={() => setConfirm(null)}
         />
       )}
     </div>
