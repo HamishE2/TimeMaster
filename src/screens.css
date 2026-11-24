@@ -2304,11 +2304,10 @@
   color: var(--danger);
 }
 
-/* The actions column has no heading: blend its header cell into the row. */
+/* The actions column has no visible heading, but its header cell keeps the
+   header band's background and rule so the band runs the full width. */
 .app .table-scroll thead th:last-child {
-  background: transparent;
   border-left-color: transparent;
-  box-shadow: none;
 }
 .app .table-scroll thead th:last-child > :not(.sr-only) {
   display: none;

@@ -165,7 +165,7 @@ export default function EntryPopover({
           <small>
             {taskName} ·{' '}
             {DAY_NAMES[day]}{' '}
-            {date.toLocaleDateString(undefined, {
+            {date.toLocaleDateString('en-AU', {
               day: 'numeric',
               month: 'short',
             })}

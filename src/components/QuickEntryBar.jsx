@@ -15,6 +15,7 @@ export default function QuickEntryBar({
   onTaskEntry,
   onSaveNote,
   onUndo,
+  onCheckpoint,
 }) {
   const [text, setText] = useState('');
   const [done, setDone] = useState(null);
@@ -56,6 +57,8 @@ export default function QuickEntryBar({
   }, [done]);
   const apply = () => {
     if (!result.ops) return;
+    // One quick entry is one undo step, separate from edits around it.
+    onCheckpoint?.();
     for (const op of result.ops) {
       const value = op.value == null ? '' : op.value;
       if (op.taskId) onTaskEntry(op.projectId, op.taskId, week, op.day, value);
@@ -63,6 +66,7 @@ export default function QuickEntryBar({
       if (result.note && op.value != null)
         onSaveNote?.(op.projectId, op.taskId, week, op.day, result.note);
     }
+    onCheckpoint?.();
     setDone(result.summary);
     setText('');
   };

@@ -46,6 +46,7 @@ export default function TimesheetTable({
   onNote,
   onSaveNote,
   onUndo,
+  onCheckpoint,
   renderNoteExtras,
   onAddLine,
   onRemoveTaskLine,
@@ -416,6 +417,7 @@ export default function TimesheetTable({
       onTaskEntry={onTaskEntry}
       onSaveNote={onSaveNote}
       onUndo={onUndo}
+      onCheckpoint={onCheckpoint}
     />
     <div className="table-scroll">
       <table

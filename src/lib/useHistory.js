@@ -4,6 +4,8 @@ import { useCallback, useReducer } from 'react';
 // (value or updater) and records history; `reset` replaces state without
 // history (loading a session or a file). Rapid edits, such as typing hours,
 // merge into one step so a single undo reverts the whole burst.
+// `checkpoint()` closes the current burst, so a deliberate action (a quick
+// entry, sample data) undoes on its own: call it before and after.
 const LIMIT = 100;
 const MERGE_MS = 800;
 
@@ -42,6 +44,8 @@ export function reducer(state, action) {
         lastAt: 0,
       };
     }
+    case 'checkpoint':
+      return state.lastAt ? { ...state, lastAt: 0 } : state;
     case 'reset':
       return { past: [], present: action.value, future: [], lastAt: 0 };
     default:
@@ -62,6 +66,7 @@ export default function useHistory(initial) {
   );
   const reset = useCallback((value) => dispatch({ type: 'reset', value }), []);
   const undo = useCallback(() => dispatch({ type: 'undo' }), []);
+  const checkpoint = useCallback(() => dispatch({ type: 'checkpoint' }), []);
   const redo = useCallback(() => dispatch({ type: 'redo' }), []);
   return {
     data: state.present,
@@ -69,6 +74,7 @@ export default function useHistory(initial) {
     resetData: reset,
     undo,
     redo,
+    checkpoint,
     canUndo: state.past.length > 0,
     canRedo: state.future.length > 0,
   };
