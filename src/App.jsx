@@ -156,6 +156,7 @@ export default function App() {
   const autoSaveTimer = useRef(),
     saveInFlight = useRef(false),
     saveBlocked = useRef(false),
+    lostHandleNotified = useRef(null),
     latestSignature = useRef(workspaceSignature(empty));
 
   useEffect(() => {
@@ -816,18 +817,22 @@ export default function App() {
     if (!ready) return;
     const payload = backupPayload(data.projects, data.settings),
       signature = workspaceSignature(payload);
-    saveSessionToIdb(
-      file,
-      week,
-      payload,
-      fileRevision,
-      savedFileSignature,
-    ).catch(() =>
-      setNotice({
-        type: 'error',
-        text: 'The browser copy could not be saved. Export a backup copy from File.',
-      }),
-    );
+    saveSessionToIdb(file, week, payload, fileRevision, savedFileSignature)
+      .then((result) => {
+        if (!file || result?.handleStored !== false) return;
+        if (lostHandleNotified.current === file) return;
+        lostHandleNotified.current = file;
+        setNotice({
+          type: 'error',
+          text: `The browser can no longer reach ${file.name || 'the attached file'}. Your work is still saved in this browser. Open the file again from File to reattach it.`,
+        });
+      })
+      .catch(() =>
+        setNotice({
+          type: 'error',
+          text: 'The browser copy could not be saved. Export a backup copy from File.',
+        }),
+      );
     clearTimeout(autoSaveTimer.current);
     if (file && signature !== savedFileSignature && !saveBlocked.current) {
       setFileStatus((current) => (current === 'saving' ? current : 'dirty'));
