@@ -14,6 +14,15 @@
 - `activityTags[taskId][week][day]` is a manual costing pick for one entry, with General under `general`: an activity ID, `'none'` (the project's General costing bucket), or a split `{ activityId | 'none': hours }` summing to the entry's hours. A pick beats note matching (`src/lib/activityMatch.js`); unpicked, unmatched time goes to General. Tags are cleared with their hours or note, pruned with their phase, and when an activity is deleted, a whole-entry pick of it is dropped (back to note matching) while its share of a split moves to `'none'`; use the helpers in `src/lib/entryNotes.js`.
 - Cost logic lives in `src/lib/budget.js` (pure functions of the workspace, so undo just works). `migrateBackup` calls its `normaliseProjectFinance` and `normaliseFinanceSettings`; fields that were never set stay absent. Leave-day hours are not costed, matching the timesheet totals.
 
+## Design workflow
+
+- The design source of truth is the Claude design canvas **TimeMaster Design**: https://claude.ai/artifact/JsBJ6rN7QJZdx4XSxmK39P
+- Its **Current design** page recreates the shipped UI as editable boards (foundations and tokens, Time view desktop and phone, Money view, empty states). The **Proposals** page holds designs awaiting approval.
+- Design before code. Any new feature, new screen or visual/UX change to an existing one is drawn on the Proposals page first. Don't write UI code for it until Hamish has approved the proposal on the canvas (an "approved" comment or an explicit approval in chat). Bug fixes that restore the approved design and pure domain logic in `src/lib/` with no UI change don't need a proposal.
+- Build to the approved board. If the implementation has to deviate, update the proposal and get it re-approved rather than drifting silently.
+- After the PR merges, update the matching boards on the Current design page so the canvas keeps matching what ships, and mark the proposal Built.
+- Boards are recreated markup using the tokens in `src/index.css` (not screenshots). Keep colours, type and spacing in step with that file.
+
 ## Delivery
 
 Run `npm test && npm run lint && npm run build` before opening any PR. Every task ends with its PR merged into `main`.
