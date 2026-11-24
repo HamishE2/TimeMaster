@@ -6,6 +6,7 @@ import {
   financialsOverview,
   formatMoney,
   formatPercent,
+  formatUsage,
   wholeRemaining,
   toCents,
   weekCostRows,
@@ -22,6 +23,7 @@ import {
 import FinancialsWeek from './FinancialsWeek.jsx';
 import FinancialsActivities from './FinancialsActivities.jsx';
 import FinancialsReview from './FinancialsReview.jsx';
+import HistoricalUsageForm from './HistoricalUsageForm.jsx';
 
 // Sidebar groups, most urgent first. Each has a text label so the colour is
 // never the only signal.
@@ -48,8 +50,12 @@ export default function Financials({
   onEditProject,
   onNewProject,
   onTag,
+  onSaveHistory,
+  onRemoveHistory,
 }) {
   const [includeArchived, setIncludeArchived] = useState(false);
+  // null, or { projectId, record } for the historical usage form.
+  const [historyForm, setHistoryForm] = useState(null);
   const overview = useMemo(
     () => financialsOverview(projects, settings, week, { includeArchived }),
     [projects, settings, week, includeArchived],
@@ -105,7 +111,9 @@ export default function Financials({
     usedPct = budgetTotal > 0 ? budgetSpent / budgetTotal : null,
     remainingTotal = sumMoney(budgeted, (item) => item.remaining),
     afterPlan = sumMoney(budgeted, (item) =>
-      item.forecast.planKnown ? item.budget - item.forecast.total : item.remaining,
+      item.forecast.planKnown
+        ? item.budget - item.forecast.total
+        : item.remaining,
     ),
     portfolioStatus = budgetStatus({
       hasRate,
@@ -116,7 +124,11 @@ export default function Financials({
   overview.projects.forEach((item) => grouped[item.status.tone].push(item));
   const atRisk = grouped.red.length + grouped.amber.length;
   const tracked = overview.projects.filter(
-    (item) => item.hasBudget || item.activities.length,
+    (item) =>
+      item.hasBudget || item.activities.length || item.history.records.length,
+  );
+  const listed = projects.filter(
+    (project) => includeArchived || !project.archived,
   );
 
   return (
@@ -185,7 +197,9 @@ export default function Financials({
           <p className="readout-note">
             {budgeted.length ? (
               <>
-                <b>{hasRate ? formatMoney(budgetSpent, { whole: true }) : '—'}</b>{' '}
+                <b>
+                  {hasRate ? formatMoney(budgetSpent, { whole: true }) : '—'}
+                </b>{' '}
                 of {formatMoney(budgetTotal, { whole: true })} ·{' '}
                 {budgeted.length} budget{budgeted.length === 1 ? '' : 's'}
               </>
@@ -262,6 +276,19 @@ export default function Financials({
               {hasRate && ` · ${rateText} · ex GST`}
             </span>
           </div>
+          <button
+            type="button"
+            className="fin-history-add"
+            disabled={!listed.length}
+            onClick={() =>
+              setHistoryForm({
+                projectId: tracked[0]?.id || null,
+                record: null,
+              })
+            }
+          >
+            + Add historical usage data
+          </button>
           <label className="switch-row">
             <input
               type="checkbox"
@@ -274,7 +301,9 @@ export default function Financials({
 
         {!hasRate && (
           <div className="fin-empty fin-callout" role="note">
-            <span className="fin-empty-glyph" aria-hidden="true">$</span>
+            <span className="fin-empty-glyph" aria-hidden="true">
+              $
+            </span>
             <div>
               <h3>Set your hourly rate to see costs</h3>
               <p>Costs show once a rate is set.</p>
@@ -291,7 +320,9 @@ export default function Financials({
 
         {tracked.length === 0 ? (
           <div className="fin-empty">
-            <span className="fin-empty-glyph" aria-hidden="true">◎</span>
+            <span className="fin-empty-glyph" aria-hidden="true">
+              ◎
+            </span>
             <div>
               <h3>No budgets yet</h3>
               <p>Add one in a project’s Budget section.</p>
@@ -299,9 +330,7 @@ export default function Financials({
             {overview.projects[0] ? (
               <button
                 type="button"
-                onClick={() =>
-                  onEditProject(byId.get(overview.projects[0].id))
-                }
+                onClick={() => onEditProject(byId.get(overview.projects[0].id))}
               >
                 Add a budget to {overview.projects[0].name}
               </button>
@@ -351,7 +380,11 @@ export default function Financials({
                   </div>
                   <div>
                     <dt>Spent</dt>
-                    <dd>{item.hasRate ? formatMoney(item.spent, { whole: true }) : '—'}</dd>
+                    <dd>
+                      {item.hasRate
+                        ? formatMoney(item.spent, { whole: true })
+                        : '—'}
+                    </dd>
                   </div>
                   <div>
                     <dt>Remaining</dt>
@@ -370,7 +403,9 @@ export default function Financials({
                     <dt>Forecast</dt>
                     <dd
                       className={
-                        item.status.flags.resourcingOver ? 'fin-yellow-text' : ''
+                        item.status.flags.resourcingOver
+                          ? 'fin-yellow-text'
+                          : ''
                       }
                     >
                       {item.hasRate && item.forecast.planKnown
@@ -391,10 +426,22 @@ export default function Financials({
                       near={BUDGET_NEAR}
                     />
                     <p className="fin-meter-legend" aria-hidden="true">
-                      <span><i className="key-spent" />Spent</span>
-                      <span><i className="key-plan" />+ plan{item.forecast.openEnded ? ' (12 wks)' : ''}</span>
-                      <span><i className="key-tick" />75%</span>
-                      <span><i className="key-limit" />Budget</span>
+                      <span>
+                        <i className="key-spent" />
+                        Spent
+                      </span>
+                      <span>
+                        <i className="key-plan" />+ plan
+                        {item.forecast.openEnded ? ' (12 wks)' : ''}
+                      </span>
+                      <span>
+                        <i className="key-tick" />
+                        75%
+                      </span>
+                      <span>
+                        <i className="key-limit" />
+                        Budget
+                      </span>
                     </p>
                   </>
                 )}
@@ -419,7 +466,9 @@ export default function Financials({
                   <dl className="fin-small">
                     <div>
                       <dt>Burn</dt>
-                      <dd>{formatMoney(item.burn.weekly, { whole: true })}/wk</dd>
+                      <dd>
+                        {formatMoney(item.burn.weekly, { whole: true })}/wk
+                      </dd>
                     </div>
                     <div>
                       <dt>Runway</dt>
@@ -427,10 +476,10 @@ export default function Financials({
                         {item.remaining != null && item.remaining <= 0
                           ? 'None left'
                           : item.burn.runwayWeeks == null
-                          ? '—'
-                          : item.burn.runwayWeeks > 104
-                            ? '2 yrs +'
-                            : `${Math.floor(item.burn.runwayWeeks)} ${Math.floor(item.burn.runwayWeeks) === 1 ? 'wk' : 'wks'}`}
+                            ? '—'
+                            : item.burn.runwayWeeks > 104
+                              ? '2 yrs +'
+                              : `${Math.floor(item.burn.runwayWeeks)} ${Math.floor(item.burn.runwayWeeks) === 1 ? 'wk' : 'wks'}`}
                       </dd>
                     </div>
                     <div>
@@ -482,13 +531,74 @@ export default function Financials({
                     costed.
                   </p>
                 )}
-                <button
-                  type="button"
-                  className="fin-edit"
-                  onClick={() => onEditProject(byId.get(item.id))}
-                >
-                  Edit budget
-                </button>
+                {item.history.records.length > 0 && (
+                  <section
+                    className="fin-history"
+                    aria-label={`${item.name} historical usage`}
+                  >
+                    <h4>
+                      Historical usage
+                      <span className="fin-num">
+                        {item.hasRate ||
+                        item.history.records.every((r) => r.unit === 'money')
+                          ? formatMoney(item.history.spent, { whole: true })
+                          : '—'}
+                      </span>
+                    </h4>
+                    <ul>
+                      {item.history.records.map((entry) => (
+                        <li key={entry.id}>
+                          <span>
+                            <b>{entry.label}</b>
+                            <small>
+                              {formatUsage(entry.total, entry.unit)}
+                              {entry.asOf &&
+                                ` · to ${new Date(`${entry.asOf}T12:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}`}
+                            </small>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setHistoryForm({
+                                projectId: item.id,
+                                record: (
+                                  byId.get(item.id).historicalUsage || []
+                                ).find((stored) => stored.id === entry.id),
+                              })
+                            }
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Remove ${entry.label}`}
+                            onClick={() => onRemoveHistory(item.id, entry.id)}
+                          >
+                            Remove
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+                <div className="fin-card-actions">
+                  <button
+                    type="button"
+                    className="fin-edit"
+                    onClick={() => onEditProject(byId.get(item.id))}
+                  >
+                    Edit budget
+                  </button>
+                  <button
+                    type="button"
+                    className="fin-edit"
+                    onClick={() =>
+                      setHistoryForm({ projectId: item.id, record: null })
+                    }
+                  >
+                    Add history
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
@@ -515,14 +625,21 @@ export default function Financials({
         />
       </div>
 
-      <aside className="insights fin-side" id="fin-status" aria-label="Budget status">
+      <aside
+        className="insights fin-side"
+        id="fin-status"
+        aria-label="Budget status"
+      >
         <div>
           <h2>Budget status</h2>
         </div>
         {GROUPS.map(
           ([tone, label]) =>
             grouped[tone].length > 0 && (
-              <section className={`insight-group fin-group tone-${tone}`} key={tone}>
+              <section
+                className={`insight-group fin-group tone-${tone}`}
+                key={tone}
+              >
                 <h3>
                   {label}
                   <span>{grouped[tone].length}</span>
@@ -584,6 +701,20 @@ export default function Financials({
           <StatusChip small status={{ tone: 'neutral', label: 'No budget' }} />
         </p>
       </aside>
+      {historyForm && (
+        <HistoricalUsageForm
+          projects={listed}
+          settings={settings}
+          week={week}
+          projectId={historyForm.projectId}
+          record={historyForm.record}
+          onClose={() => setHistoryForm(null)}
+          onSave={(projectId, record) => {
+            onSaveHistory(projectId, record);
+            setHistoryForm(null);
+          }}
+        />
+      )}
     </section>
   );
 }

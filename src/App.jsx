@@ -78,6 +78,8 @@ import ActivityPicker from './components/ActivityPicker.jsx';
 import { setActivityTagRecord } from './lib/entryNotes.js';
 import {
   applyProjectFinance,
+  removeHistoricalUsageRecord,
+  setHistoricalUsageRecord,
   hourlyRateOf,
   hoursPerDay,
   BUDGET_FOCUS,
@@ -325,6 +327,24 @@ export default function App() {
           : p,
       ),
     }));
+  const updateProjectById = (projectId, change) =>
+    setData((d) => ({
+      ...d,
+      projects: d.projects.map((p) => (p.id === projectId ? change(p) : p)),
+    }));
+  const saveHistoricalUsage = (projectId, record) => {
+    updateProjectById(projectId, (p) => setHistoricalUsageRecord(p, record));
+    setNotice({ type: 'success', text: 'Historical usage saved.' });
+  };
+  const removeHistoricalUsage = (projectId, recordId) => {
+    updateProjectById(projectId, (p) =>
+      removeHistoricalUsageRecord(p, recordId),
+    );
+    setNotice({
+      type: 'success',
+      text: 'Historical usage removed. Undo with Ctrl+Z.',
+    });
+  };
   const openSettings = (focus = null) => {
     setSettingsFocus(focus);
     setPanel('settings');
@@ -1231,6 +1251,8 @@ export default function App() {
               setPanel('project');
             }}
             onTag={tagEntryActivity}
+            onSaveHistory={saveHistoricalUsage}
+            onRemoveHistory={removeHistoricalUsage}
           />
         ) : (
         <section
