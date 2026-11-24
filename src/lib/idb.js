@@ -48,6 +48,20 @@ const settle = (tx, resolve, reject) => {
     reject(tx.error || new Error('The browser storage write was aborted.'));
 };
 
+// Chrome cannot store a file handle again once it loses track of the file
+// ("DataError: Failed to write blobs"). The workspace must still be kept, so
+// a failed write is retried without the handle.
+export async function writeSessionRecord(put, record) {
+  try {
+    await put(record);
+    return { handleStored: Boolean(record.fileHandle) };
+  } catch (error) {
+    if (!record.fileHandle) throw error;
+    await put({ ...record, fileHandle: null });
+    return { handleStored: false };
+  }
+}
+
 export async function saveSessionToIdb(
   fileHandle,
   weekKey,
@@ -56,14 +70,18 @@ export async function saveSessionToIdb(
   savedSignature = null,
 ) {
   const db = await getDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const store = tx.objectStore(STORE_NAME);
-    store.put(
-      { fileHandle, weekKey, data, fileRevision, savedSignature },
-      'currentSession',
-    );
-    settle(tx, resolve, reject);
+  const put = (record) =>
+    new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      tx.objectStore(STORE_NAME).put(record, 'currentSession');
+      settle(tx, resolve, reject);
+    });
+  return writeSessionRecord(put, {
+    fileHandle,
+    weekKey,
+    data,
+    fileRevision,
+    savedSignature,
   });
 }
 
