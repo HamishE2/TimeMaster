@@ -1,8 +1,11 @@
 import {
   activityTagCounts,
+  daysToMoney,
+  formatEffort,
   formatMoney,
   fromCents,
   parseMoney,
+  parseRate,
   toCents,
 } from '../lib/budget.js';
 import { isGeneralTask } from '../lib/tasks.js';
@@ -18,7 +21,10 @@ export default function ProjectBudgetFields({
   errors = {},
   warnings = [],
   hourlyRate = null,
+  perDay = 7.6,
 }) {
+  const ownRate = parseRate(draft.hourlyRate ?? '').value ?? null,
+    rate = ownRate ?? hourlyRate;
   const phases = tasks.filter((task) => !isGeneralTask(task));
   const set = (patch) => onChange({ ...draft, ...patch });
   const budget = parseMoney(draft.budget).value ?? null;
@@ -35,9 +41,18 @@ export default function ProjectBudgetFields({
       ),
     });
   const hoursHint = (amount) =>
-    hourlyRate > 0 && amount != null
-      ? `≈ ${Math.round((amount / hourlyRate) * 10) / 10}h at ${formatMoney(hourlyRate)}/h`
-      : null;
+    rate > 0 && amount != null ? formatEffort(amount, rate, perDay) : null;
+  const activityDollars = (activity) => {
+    const typed = parseMoney(activity.amount).value;
+    if (typed == null) return null;
+    if (
+      activity.unit === 'days' &&
+      activity.fromDollars != null &&
+      activity.amount === activity.daysText
+    )
+      return Number(activity.fromDollars);
+    return activity.unit === 'days' ? daysToMoney(typed, rate, perDay) : typed;
+  };
 
   return (
     <div className="budget-fields">
@@ -53,15 +68,48 @@ export default function ProjectBudgetFields({
             aria-invalid={!!errors.budget}
             onChange={(event) => set({ budget: event.target.value })}
           />
-          <span>AUD</span>
+          <span>AUD ex GST</span>
         </span>
         {errors.budget ? (
           <span className="field-error">{errors.budget}</span>
         ) : (
           <small className="help">
-            Optional. Logged time is costed at your hourly rate
-            {hourlyRate == null ? ' once you set one in Settings' : ''}.
-            {hoursHint(budget) && <> {hoursHint(budget)}.</>}
+            {hoursHint(budget) ? (
+              <b className="budget-effort">{hoursHint(budget)}</b>
+            ) : null}{' '}
+            Optional. Logged time is costed at the project rate below
+            {rate == null ? ' once a rate is set' : ''}.
+          </small>
+        )}
+      </div>
+
+      <div className="field">
+        <label htmlFor="project-rate">Project hourly rate</label>
+        <span
+          className={`unit-input ${errors.hourlyRate ? 'input-error' : ''}`}
+        >
+          <span aria-hidden="true">$</span>
+          <input
+            id="project-rate"
+            inputMode="decimal"
+            placeholder={
+              hourlyRate == null
+                ? 'Not set'
+                : `${hourlyRate} (workspace rate)`
+            }
+            value={draft.hourlyRate ?? ''}
+            aria-invalid={!!errors.hourlyRate}
+            onChange={(event) => set({ hourlyRate: event.target.value })}
+          />
+          <span>AUD ex GST / h</span>
+        </span>
+        {errors.hourlyRate ? (
+          <span className="field-error">{errors.hourlyRate}</span>
+        ) : (
+          <small className="help">
+            Optional. Use the rate your role is priced at on this project’s
+            quote (day rate ÷ {perDay}); blank uses the workspace rate
+            {hourlyRate == null ? '' : ` of ${formatMoney(hourlyRate)}/h`}.
           </small>
         )}
       </div>
@@ -123,8 +171,9 @@ export default function ProjectBudgetFields({
         <span className="budget-subhead">Costed activities</span>
         <small className="help">
           Deliverables with their own costing, such as “Quick reference guides
-          (QRGs)” at $4,000. Time is linked through entry notes, or by choosing
-          the activity when a note is unclear. Aliases help matching.
+          (QRGs)” at $4,000 or 3 days. Time is matched from entry notes
+          (aliases help), can be picked or split by hand on any entry, and
+          anything else is charged to General.
         </small>
         {draft.activities.length > 0 && (
           <ul className="costing-list">
@@ -142,10 +191,12 @@ export default function ProjectBudgetFields({
                       setActivity(activity.id, { name: event.target.value })
                     }
                   />
-                  <span className="unit-input">
-                    <span aria-hidden="true">$</span>
+                  <span className="unit-input costing-amount">
+                    {activity.unit !== 'days' && (
+                      <span aria-hidden="true">$</span>
+                    )}
                     <input
-                      aria-label={`Activity ${index + 1} costing`}
+                      aria-label={`Activity ${index + 1} costing in ${activity.unit === 'days' ? 'days' : 'dollars ex GST'}`}
                       inputMode="decimal"
                       placeholder="0"
                       value={activity.amount}
@@ -153,6 +204,70 @@ export default function ProjectBudgetFields({
                         setActivity(activity.id, { amount: event.target.value })
                       }
                     />
+                    <span
+                      className="costing-unit"
+                      role="radiogroup"
+                      aria-label={`Activity ${index + 1} unit`}
+                    >
+                      {[
+                        ['$', '$'],
+                        ['days', 'days'],
+                      ].map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          role="radio"
+                          aria-checked={(activity.unit || '$') === value}
+                          disabled={value === 'days' && !(rate > 0)}
+                          title={
+                            value === 'days' && !(rate > 0)
+                              ? 'Set an hourly rate to enter days'
+                              : value === 'days'
+                                ? `Days of ${perDay}h at ${formatMoney(rate)}/h`
+                                : 'Dollars ex GST'
+                          }
+                          onClick={() => {
+                            if ((activity.unit || '$') === value) return;
+                            const dollars = activityDollars(activity),
+                              amount =
+                                dollars == null
+                                  ? activity.amount
+                                  : value === 'days'
+                                    ? String(
+                                        Math.round(
+                                          (dollars / (rate * perDay)) * 100,
+                                        ) / 100,
+                                      )
+                                    : String(dollars);
+                            // Remember the exact dollars so switching to days
+                            // and back (or saving unchanged) is lossless.
+                            setActivity(
+                              activity.id,
+                              value === 'days'
+                                ? {
+                                    unit: value,
+                                    amount,
+                                    fromDollars:
+                                      dollars == null ? null : String(dollars),
+                                    daysText: amount,
+                                  }
+                                : {
+                                    unit: value,
+                                    amount:
+                                      activity.fromDollars != null &&
+                                      activity.amount === activity.daysText
+                                        ? activity.fromDollars
+                                        : amount,
+                                    fromDollars: null,
+                                    daysText: null,
+                                  },
+                            );
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </span>
                   </span>
                   <button
                     type="button"
@@ -182,12 +297,20 @@ export default function ProjectBudgetFields({
                       setActivity(activity.id, { aliases: event.target.value })
                     }
                   />
-                  {(errors[key] || tagged > 0) && (
+                  {(errors[key] || tagged > 0 || activityDollars(activity) != null) && (
                     <small
                       className={errors[key] ? 'field-error' : 'help'}
                     >
-                      {errors[key] ||
-                        `${tagged} ${tagged === 1 ? 'entry is' : 'entries are'} tagged to this activity; removing it untags them.`}
+                      {errors[key] || (
+                        <>
+                          {activityDollars(activity) != null &&
+                            (activity.unit === 'days'
+                              ? `= ${formatMoney(activityDollars(activity))} ex GST`
+                              : hoursHint(activityDollars(activity)))}
+                          {tagged > 0 &&
+                            ` · ${tagged} ${tagged === 1 ? 'entry is' : 'entries are'} tagged here; removing it untags them.`}
+                        </>
+                      )}
                     </small>
                   )}
                 </li>
@@ -202,7 +325,7 @@ export default function ProjectBudgetFields({
             set({
               activities: [
                 ...draft.activities,
-                { id: uuid(), name: '', amount: '', aliases: '' },
+                { id: uuid(), name: '', amount: '', aliases: '', unit: '$' },
               ],
             })
           }

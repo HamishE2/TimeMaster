@@ -4,108 +4,133 @@ import { DAY_SHORT, dayDate, fmt } from '../lib/utils.js';
 import ActivityPicker from './ActivityPicker.jsx';
 
 const REASONS = {
-  ambiguous: 'Fits several',
-  vague: 'Too vague',
-  none: 'No match',
+  ambiguous: 'Fits several costings',
+  vague: 'Vague note',
+  partial: 'Part matched',
+  none: 'No costing matched',
   'no-note': 'No note',
 };
-const PAGE = 10;
+const PAGE = 8;
 
-// Entries on projects with costings whose activity is still unknown. Picking
-// an activity stores an explicit tag, which overrides note matching.
+const shortDate = (item) =>
+  `${DAY_SHORT[item.day]} ${dayDate(item.week, item.day).toLocaleDateString(
+    'en-AU',
+    { day: 'numeric', month: 'short' },
+  )}`;
+
+// Entries whose time went to General because the note was vague, fitted
+// several costings or only partly matched. Nothing is wrong: the person can
+// pick a costing (or split) by hand, which is stored as an explicit tag.
+// Entries with the same project, line and note are grouped so one pick
+// covers them all.
 export default function FinancialsReview({ review, projects, onTag }) {
-  const [showNoNote, setShowNoNote] = useState(false),
+  const [showAll, setShowAll] = useState(false),
     [limit, setLimit] = useState(PAGE);
-  const withNotes = review.filter((item) => item.status !== 'no-note'),
-    list = showNoNote ? review : withNotes,
-    noNote = review.length - withNotes.length;
+  const toCheck = review.filter((item) => item.check),
+    list = showAll ? review : toCheck,
+    others = review.length - toCheck.length;
+  const groups = [];
+  const byKey = new Map();
+  for (const item of list) {
+    const key = `${item.projectId}|${item.taskId}|${item.note.trim().toLowerCase()}|${item.status}`;
+    if (!byKey.has(key)) {
+      const group = { key, items: [] };
+      byKey.set(key, group);
+      groups.push(group);
+    }
+    byKey.get(key).items.push(item);
+  }
   return (
     <section className="fin-section" aria-labelledby="fin-review-title">
       <header className="fin-section-head">
         <div>
           <h3 id="fin-review-title">
-            Review queue{' '}
-            {list.length > 0 && <span className="fin-count">{list.length}</span>}
+            Check costings{' '}
+            {toCheck.length > 0 && (
+              <span className="fin-count">{toCheck.length}</span>
+            )}
           </h3>
-          <span>Which activity is each of these for?</span>
+          <span>
+            Time that went to General because the note was vague or fitted
+            several costings. Nothing is wrong; pick a costing if it belongs to
+            one.
+          </span>
         </div>
-        {noNote > 0 && (
+        {others > 0 && (
           <label className="switch-row">
             <input
               type="checkbox"
-              checked={showNoNote}
-              onChange={(event) => setShowNoNote(event.target.checked)}
+              checked={showAll}
+              onChange={(event) => setShowAll(event.target.checked)}
             />
-            <span>Include {noNote} without notes</span>
+            <span>Show {others} other General entries</span>
           </label>
         )}
       </header>
-      {list.length === 0 ? (
+      {groups.length === 0 ? (
         <div className="fin-empty is-inline is-good">
           <span className="fin-empty-glyph" aria-hidden="true">✓</span>
           <div>
-            <h3>Nothing to review</h3>
+            <h3>Nothing to check</h3>
             <p>
               {review.length
-                ? `Every note is linked. ${noNote} entr${noNote === 1 ? 'y has' : 'ies have'} no note; include them above to tag them too.`
-                : 'Every entry on a costed project is linked to an activity, tagged as not costed, or there are no costings yet.'}
+                ? `No vague or ambiguous notes. ${others} other entr${others === 1 ? 'y is' : 'ies are'} costed to General; show them above to pick costings by hand.`
+                : 'Every entry on a costed project has a costing, picked or matched, or there are no costings yet.'}
             </p>
           </div>
         </div>
       ) : (
         <>
           <ul className="fin-review">
-            {list.slice(0, limit).map((item) => {
-              const project = projects.get(item.projectId),
-                date = dayDate(item.week, item.day);
+            {groups.slice(0, limit).map(({ key, items }) => {
+              const [first] = items,
+                project = projects.get(first.projectId),
+                hours = items.reduce((sum, item) => sum + item.hours, 0),
+                cost = items.reduce((sum, item) => sum + item.cost, 0);
               return (
-                <li
-                  key={`${item.projectId}|${item.taskId}|${item.week}|${item.day}`}
-                >
-                  <div className="fin-review-meta">
-                    <span className="fin-review-date">
-                      {DAY_SHORT[item.day]}{' '}
-                      <b>
-                        {date.toLocaleDateString('en-AU', {
-                          day: 'numeric',
-                          month: 'short',
-                        })}
-                      </b>
-                    </span>
-                    <span>
-                      <strong>{item.projectName}</strong> · {item.taskName}
-                    </span>
-                    <span className="fin-num">
-                      {fmt(item.hours)}h · {formatMoney(item.cost)}
-                    </span>
-                    <span className={`fin-reason reason-${item.status}`}>
-                      {REASONS[item.status] || 'Unlinked'}
+                <li key={key}>
+                  <div className="fin-review-what">
+                    <q className="fin-review-note">{first.note || 'No note'}</q>
+                    <span className="fin-review-meta">
+                      <strong>{first.projectName}</strong> · {first.taskName} ·{' '}
+                      {items.length === 1
+                        ? shortDate(first)
+                        : `${items.length} entries, latest ${shortDate(first)}`}
                     </span>
                   </div>
-                  {item.note && <q className="fin-review-note">{item.note}</q>}
+                  <span className="fin-review-amount fin-num">
+                    {fmt(Math.round(hours * 100) / 100)}h
+                    <small>{first.hasRate ? formatMoney(cost) : '—'}</small>
+                  </span>
+                  <span className={`fin-reason reason-${first.status}`}>
+                    {REASONS[first.status] || 'General'}
+                  </span>
                   {project && (
-                    <ActivityPicker
-                      project={project}
-                      taskId={item.taskId}
-                      week={item.week}
-                      day={item.day}
-                      note={item.note}
-                      hours={item.hours}
-                      onTag={(activityId) => onTag(item, activityId)}
-                    />
+                    <div className="fin-review-pick">
+                      <ActivityPicker
+                        project={project}
+                        taskId={first.taskId}
+                        week={first.week}
+                        day={first.day}
+                        note={first.note}
+                        hours={first.hours}
+                        compact
+                        hint={false}
+                        onTag={(tag) => items.forEach((item) => onTag(item, tag))}
+                      />
+                    </div>
                   )}
                 </li>
               );
             })}
           </ul>
-          {list.length > limit && (
+          {groups.length > limit && (
             <button
               type="button"
               className="fin-more"
               onClick={() => setLimit(limit + PAGE)}
             >
-              Show {Math.min(PAGE, list.length - limit)} more of{' '}
-              {list.length - limit}
+              Show {Math.min(PAGE, groups.length - limit)} more
             </button>
           )}
         </>

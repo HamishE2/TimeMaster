@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { parseQuickEntry, resolveQuickEntry } from '../lib/quickEntry.js';
+import {
+  parseQuickEntry,
+  quickEntryExamples,
+  resolveQuickEntry,
+} from '../lib/quickEntry.js';
 import { weekKeyFor } from '../lib/utils.js';
 
-const EXAMPLES = ['3h training tue', 'fill audit', '=2 build mon-wed', '1:30 discovery "kickoff"'];
+const FALLBACK = ['3h training tue', 'fill audit', '=2 build mon-wed', '1:30 discovery "kickoff"'];
 
 // Type-to-log command line. Press "/" anywhere on the timesheet to focus it.
 export default function QuickEntryBar({
@@ -20,6 +24,9 @@ export default function QuickEntryBar({
   const [text, setText] = useState('');
   const [done, setDone] = useState(null);
   const field = useRef(null);
+  // Projects as they were straight after the last quick entry. Any later
+  // change means "Undo" would revert something else, so the link goes.
+  const applied = useRef(null);
   const now = new Date();
   const todayIndex = weekKeyFor(now) === week ? (now.getDay() + 6) % 7 : null;
   const result = useMemo(
@@ -34,6 +41,18 @@ export default function QuickEntryBar({
       }),
     [text, projects, week, days, leave, todayIndex, capacityByDay],
   );
+  const examples = useMemo(() => {
+    const own = quickEntryExamples({ projects, week, days, leave, capacityByDay });
+    return own.length ? own : FALLBACK;
+  }, [projects, week, days, leave, capacityByDay]);
+  useEffect(() => {
+    if (applied.current === 'pending') applied.current = projects;
+    else if (applied.current && applied.current !== projects) {
+      applied.current = null;
+      const timer = setTimeout(() => setDone(null), 0);
+      return () => clearTimeout(timer);
+    }
+  }, [projects]);
   useEffect(() => {
     const onKey = (event) => {
       if (
@@ -67,6 +86,7 @@ export default function QuickEntryBar({
         onSaveNote?.(op.projectId, op.taskId, week, op.day, result.note);
     }
     onCheckpoint?.();
+    applied.current = 'pending';
     setDone(result.summary);
     setText('');
   };
@@ -94,7 +114,7 @@ export default function QuickEntryBar({
               apply();
             } else if (event.key === 'Escape') setText('');
           }}
-          placeholder={`Quick entry — try “${EXAMPLES[0]}” or “${EXAMPLES[1]}”`}
+          placeholder={`Quick entry — try “${examples[0]}”`}
           aria-describedby="quick-entry-preview"
           autoComplete="off"
           spellCheck={false}
@@ -122,6 +142,7 @@ export default function QuickEntryBar({
                 type="button"
                 className="link-button"
                 onClick={() => {
+                  applied.current = null;
                   onUndo?.();
                   setDone(null);
                 }}
@@ -131,7 +152,7 @@ export default function QuickEntryBar({
             </span>
           ) : (
             <span className="quick-entry-tips">
-              {EXAMPLES.map((example) => (
+              {examples.map((example) => (
                 <button
                   key={example}
                   type="button"

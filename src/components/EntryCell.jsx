@@ -19,6 +19,8 @@ export default function EntryCell({
     <span className={`entry-cell${note ? ' has-note' : ''}`}>
       <input
         aria-label={label}
+        aria-haspopup="dialog"
+        aria-keyshortcuts="ArrowDown Alt+N"
         aria-description={note ? `Note: ${note}` : undefined}
         title={note || undefined}
         key={`${projectId}-${taskId ?? 'general'}-${week}-${day}-${value ?? ''}`}
@@ -28,6 +30,12 @@ export default function EntryCell({
           const raw = event.target.value;
           if (raw.trim() === shown) return;
           const parsed = parseHours(raw);
+          // Zero clears the cell (and its note), like deleting the number.
+          if (parsed.value === 0) {
+            event.target.value = '';
+            onCommit('');
+            return;
+          }
           onCommit(
             parsed.error || parsed.value == null ? raw : parsed.value,
           );

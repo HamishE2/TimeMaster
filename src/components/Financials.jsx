@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import {
   BUDGET_NEAR,
   budgetStatus,
+  formatEffort,
   financialsOverview,
   formatMoney,
   formatPercent,
@@ -68,7 +69,11 @@ export default function Financials({
     [projects, settings, week, includeArchived],
   );
   const byId = new Map(projects.map((project) => [project.id, project]));
-  const { hasRate, rate } = overview;
+  const { hasRate, rate, perDay } = overview;
+  const effort = (item, dollars) => formatEffort(dollars, item.rate, perDay);
+  const rateText = overview.mixedRates
+    ? 'project rates'
+    : `${formatMoney(rate ?? overview.projects.find((item) => item.hasRate)?.rate)}/h`;
 
   // Headline numbers.
   const weekCost = sumMoney(
@@ -78,13 +83,11 @@ export default function Financials({
     weekHours = weekProjects
       .flatMap(({ rows }) => rows)
       .reduce((sum, row) => sum + row.hours, 0),
-    weekPlanCost = hasRate
-      ? sumMoney(overview.projects, (item) =>
-          isVisible(byId.get(item.id), week)
-            ? (item.forecast.thisWeekHours || 0) * rate
-            : 0,
-        )
-      : 0;
+    weekPlanCost = sumMoney(overview.projects, (item) =>
+      item.hasRate && isVisible(byId.get(item.id), week)
+        ? (item.forecast.thisWeekHours || 0) * item.rate
+        : 0,
+    );
   const budgeted = overview.projects.filter((item) => item.hasBudget),
     budgetTotal = overview.totals.budget,
     budgetSpent = overview.totals.budgetedSpent,
@@ -112,7 +115,9 @@ export default function Financials({
     >
       <div className="week-readouts fin-readouts">
         <article>
-          <p className="readout-label">Cost this week</p>
+          <p className="readout-label">
+            Cost this week <span className="fin-gst">ex GST</span>
+          </p>
           <strong className="readout-value">
             {hasRate ? <TickMoney value={weekCost} /> : '—'}
           </strong>
@@ -137,8 +142,7 @@ export default function Financials({
               </button>
             ) : (
               <>
-                <b>{Math.round(weekHours * 100) / 100}h</b> ×{' '}
-                {formatMoney(rate)}/h
+                <b>{Math.round(weekHours * 100) / 100}h</b> × {rateText}
                 {weekPlanCost > 0 &&
                   ` · plan ${formatMoney(weekPlanCost, { whole: true })}`}
               </>
@@ -180,7 +184,9 @@ export default function Financials({
           </p>
         </article>
         <article>
-          <p className="readout-label">Remaining budget</p>
+          <p className="readout-label">
+            Remaining budget <span className="fin-gst">ex GST</span>
+          </p>
           <strong
             className={`readout-value ${remainingTotal < 0 ? 'over-text' : ''}`}
           >
@@ -193,7 +199,7 @@ export default function Financials({
           <div className="readout-meter fin-plan-meter" aria-hidden="true">
             <i
               style={{
-                width: `${budgetTotal > 0 ? Math.max(0, Math.min(100, (remainingTotal / budgetTotal) * 100)) : 0}%`,
+                width: `${hasRate && budgetTotal > 0 ? Math.max(0, Math.min(100, (remainingTotal / budgetTotal) * 100)) : 0}%`,
               }}
             />
           </div>
@@ -242,7 +248,7 @@ export default function Financials({
             <h2 id="financials-title">Budgets</h2>
             <span>
               {tracked.length} of {overview.projects.length} projects tracked
-              {hasRate && ` · ${formatMoney(rate)}/h`}
+              {hasRate && ` · ${rateText} · ex GST`}
             </span>
           </div>
           <label className="switch-row">
@@ -313,7 +319,7 @@ export default function Financials({
               >
                 <header>
                   <UsageRing
-                    pct={hasRate ? item.pct : null}
+                    pct={item.hasRate ? item.pct : null}
                     tone={item.status.tone}
                   />
                   <span className="fin-card-title">
@@ -326,7 +332,7 @@ export default function Financials({
                     <StatusChip status={item.status} />
                   </span>
                   <SpendSparkline
-                    series={hasRate ? item.series : null}
+                    series={item.hasRate ? item.series : null}
                     budget={item.budget}
                     tone={item.status.tone}
                   />
@@ -334,18 +340,26 @@ export default function Financials({
                 <dl className="fin-figures">
                   <div>
                     <dt>Budget</dt>
-                    <dd>{formatMoney(item.budget, { whole: true })}</dd>
+                    <dd>
+                      {formatMoney(item.budget, { whole: true })}
+                      {item.hasBudget && effort(item, item.budget) && (
+                        <small>{effort(item, item.budget)}</small>
+                      )}
+                    </dd>
                   </div>
                   <div>
                     <dt>Spent</dt>
-                    <dd>{hasRate ? formatMoney(item.spent, { whole: true }) : '—'}</dd>
+                    <dd>{item.hasRate ? formatMoney(item.spent, { whole: true }) : '—'}</dd>
                   </div>
                   <div>
                     <dt>Remaining</dt>
                     <dd className={item.remaining < 0 ? 'over-text' : ''}>
-                      {hasRate && item.hasBudget
+                      {item.hasRate && item.hasBudget
                         ? formatMoney(item.remaining, { whole: true })
                         : '—'}
+                      {item.hasBudget && effort(item, item.remaining) && (
+                        <small>{effort(item, item.remaining)}</small>
+                      )}
                     </dd>
                   </div>
                   <div>
@@ -355,13 +369,13 @@ export default function Financials({
                         item.status.flags.resourcingOver ? 'fin-yellow-text' : ''
                       }
                     >
-                      {hasRate && item.forecast.planKnown
+                      {item.hasRate && item.forecast.planKnown
                         ? formatMoney(item.forecast.total, { whole: true })
                         : '—'}
                     </dd>
                   </div>
                 </dl>
-                {hasRate && item.hasBudget && (
+                {item.hasRate && item.hasBudget && (
                   <>
                     <BudgetMeter
                       spent={item.spent}
@@ -398,7 +412,7 @@ export default function Financials({
                       a planning issue, not your logging.
                     </p>
                   )}
-                {hasRate && (
+                {item.hasRate && (
                   <dl className="fin-small">
                     <div>
                       <dt>Burn</dt>
@@ -407,7 +421,9 @@ export default function Financials({
                     <div>
                       <dt>Runway</dt>
                       <dd>
-                        {item.burn.runwayWeeks == null
+                        {item.remaining != null && item.remaining <= 0
+                          ? 'None left'
+                          : item.burn.runwayWeeks == null
                           ? '—'
                           : item.burn.runwayWeeks > 104
                             ? '2 yrs +'
@@ -420,7 +436,7 @@ export default function Financials({
                     </div>
                   </dl>
                 )}
-                {hasRate && item.spent > 0 && (
+                {item.hasRate && item.spent > 0 && (
                   <StackedBar
                     label={`${item.name} cost by phase`}
                     segments={item.byPhase.map((line) => ({
@@ -439,7 +455,7 @@ export default function Financials({
                       <li key={phase.id}>
                         <span>{phase.name}</span>
                         <span className="fin-num">
-                          {hasRate
+                          {item.hasRate
                             ? formatMoney(phase.spent, { whole: true })
                             : '—'}{' '}
                           /{' '}
@@ -525,12 +541,12 @@ export default function Financials({
                         {item.name}
                       </strong>
                       <span className="fin-num">
-                        {item.hasBudget && hasRate
+                        {item.hasBudget && item.hasRate
                           ? `${formatPercent(item.pct)} · ${formatMoney(item.remaining, { whole: true })} left`
                           : item.status.label}
                       </span>
                     </span>
-                    {hasRate && item.hasBudget ? (
+                    {item.hasRate && item.hasBudget ? (
                       <BudgetMeter
                         spent={item.spent}
                         budget={item.budget}
@@ -541,7 +557,7 @@ export default function Financials({
                       />
                     ) : (
                       <small className="fin-muted">
-                        {hasRate
+                        {item.hasRate
                           ? `${formatMoney(item.spent, { whole: true })} logged · add a budget`
                           : 'Set a rate to cost this project'}
                       </small>

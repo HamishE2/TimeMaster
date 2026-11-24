@@ -62,6 +62,7 @@ function parseDays(token) {
       to = dayIndex(range[2]);
     if (from >= 0 && to >= from)
       return Array.from({ length: to - from + 1 }, (_, i) => from + i);
+    if (from >= 0 && to >= 0) return 'backwards';
   }
   if (token.includes(',')) {
     const list = token.split(',').filter(Boolean).map(dayIndex);
@@ -113,6 +114,10 @@ export function parseQuickEntry(text) {
       }
     }
     const days = parseDays(token);
+    if (days === 'backwards') {
+      result.backwards = token;
+      continue;
+    }
     if (days) {
       if (typeof days === 'string') result.days = days;
       else
@@ -125,7 +130,9 @@ export function parseQuickEntry(text) {
     result.terms.push(lower.replace(/[^\p{L}\p{N}&]+/gu, ''));
   }
   result.terms = result.terms.filter(Boolean);
-  if (result.kind !== 'fill' && result.kind !== 'clear' && result.hours == null)
+  if (result.backwards)
+    result.error = `Write day ranges forwards, like “mon-wed” (not “${result.backwards}”).`;
+  else if (result.kind !== 'fill' && result.kind !== 'clear' && result.hours == null)
     result.error = 'Add an amount, like 2h, 1:30 or 45m.';
   else if (result.hours != null && result.hours > 24)
     result.error = 'A day cannot exceed 24 hours.';
@@ -322,4 +329,56 @@ export function resolveQuickEntry(parsed, context) {
     note: parsed.kind === 'clear' ? '' : parsed.note,
     summary: `${label}: ${change}`,
   };
+}
+
+// Example commands built from the workspace itself, so suggestion chips name
+// real projects and phases. Each pairs a verb with a word that names exactly one
+// project or phase on the visible week. Empty when nothing fits.
+export function quickEntryExamples(context) {
+  const { projects = [], week, days = [], leave = [] } = context;
+  const open = days.filter((day) => !leave.includes(day));
+  if (!open.length) return [];
+  const DAY = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+  const one = DAY[open[Math.min(1, open.length - 1)]],
+    first = open.slice(0, 3),
+    // A range must not cross a leave day, so list split days instead.
+    range =
+      first.length < 2
+        ? DAY[first[0]]
+        : first.at(-1) - first[0] === first.length - 1
+          ? `${DAY[first[0]]}-${DAY[first.at(-1)]}`
+          : first.map((day) => DAY[day]).join(',');
+  const named = [];
+  for (const candidate of candidatesFor(projects, week)) {
+    if (candidate.phased) continue;
+    const name = candidate.task ? candidate.task.name : candidate.project.name;
+    const word = words(name).find(
+      (part) =>
+        part.length >= 3 &&
+        !FILLER.has(part) &&
+        dayIndex(part) < 0 &&
+        !/^\d/.test(part) &&
+        !['fill', 'top', 'clear', 'remove', 'delete', 'set', 'today'].includes(part),
+    );
+    if (!word) continue;
+    const check = resolveQuickEntry(parseQuickEntry(`=1 ${word} ${one}`), {
+      ...context,
+      todayIndex: null,
+    });
+    if (
+      check.ops &&
+      check.project.id === candidate.project.id &&
+      (check.task?.id ?? null) === (candidate.task?.id ?? null)
+    )
+      named.push({ word, onSheet: candidate.onSheet || !candidate.task });
+  }
+  named.sort((a, b) => Number(b.onSheet) - Number(a.onSheet));
+  if (!named.length) return [];
+  const pick = (i) => named[i % named.length].word;
+  return [
+    `3h ${pick(0)} ${one}`,
+    `fill ${pick(1)}`,
+    `=2 ${pick(2)} ${range}`,
+    `1:30 ${pick(3)} "kickoff"`,
+  ].filter((example, i, all) => all.indexOf(example) === i);
 }

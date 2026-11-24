@@ -202,3 +202,83 @@ test('the entry popover saves hours and a note together', async () => {
   const cleared = saveSessionToIdb.mock.lastCall[2].projects[0];
   expect(cleared.notes?.general?.[week]?.[0]).toBeUndefined();
 });
+
+const auditWeek = '2026-11-16';
+const loadAudit = (project = {}) =>
+  loadSessionFromIdb.mockResolvedValue({
+    weekKey: auditWeek,
+    data: {
+      schemaVersion: 3,
+      projects: [
+        { id: 'audit', name: 'Audit', resourcedHours: 8, ...project },
+      ],
+      settings: {},
+    },
+  });
+const cell = (table, day) =>
+  within(table).getByRole('textbox', { name: `Audit, General, ${day}` });
+
+test('Tab from an hours cell always moves to the next cell, never into the note', async () => {
+  loadAudit();
+  render(<App />);
+  const table = await screen.findByRole('table');
+  const monday = cell(table, 'Monday');
+  monday.focus();
+  await screen.findByRole('dialog', { name: /Note for Audit, General, Monday/ });
+  // A click used to send Tab into the note, swallowing the next number.
+  fireEvent.pointerDown(monday);
+  fireEvent.keyDown(monday, { key: 'Tab' });
+  expect(document.activeElement).toBe(cell(table, 'Tuesday'));
+  expect(monday.getAttribute('aria-expanded')).toBeNull();
+  expect(cell(table, 'Tuesday').getAttribute('aria-expanded')).toBe('true');
+});
+
+test('ArrowDown reopens a closed entry card straight on its note', async () => {
+  loadAudit({ entries: { [auditWeek]: { 0: 2 } } });
+  render(<App />);
+  const table = await screen.findByRole('table');
+  const monday = cell(table, 'Monday');
+  monday.focus();
+  await screen.findByRole('dialog', { name: /Note for Audit, General, Monday/ });
+  // Enter saves and closes the card but leaves focus on the cell.
+  fireEvent.keyDown(monday, { key: 'Enter' });
+  expect(screen.queryByRole('dialog')).toBeNull();
+  fireEvent.keyDown(cell(table, 'Monday'), { key: 'ArrowDown' });
+  const dialog = await screen.findByRole('dialog', {
+    name: /Note for Audit, General, Monday/,
+  });
+  expect(document.activeElement).toBe(
+    within(dialog).getByRole('textbox', { name: 'Entry note' }),
+  );
+});
+
+test('a note typed before any hours is kept with a prompt, not dropped', async () => {
+  loadAudit();
+  render(<App />);
+  const table = await screen.findByRole('table');
+  cell(table, 'Monday').focus();
+  const dialog = await screen.findByRole('dialog', {
+    name: /Note for Audit, General, Monday/,
+  });
+  const note = within(dialog).getByRole('textbox', { name: 'Entry note' });
+  fireEvent.change(note, { target: { value: 'Planning' } });
+  fireEvent.keyDown(note, { key: 'Enter' });
+  expect(within(dialog).getByRole('alert').textContent).toMatch(/Log hours/);
+  expect(note.value).toBe('Planning');
+  expect(screen.getByRole('dialog')).toBe(dialog);
+});
+
+test('typing 0 in a cell clears its hours and note', async () => {
+  loadAudit({
+    entries: { [auditWeek]: { 0: 2 } },
+    notes: { general: { [auditWeek]: { 0: 'Walkthrough' } } },
+  });
+  render(<App />);
+  const table = await screen.findByRole('table');
+  expect(cell(table, 'Monday').getAttribute('title')).toBe('Walkthrough');
+  fireEvent.blur(cell(table, 'Monday'), { target: { value: '0' } });
+  const saved = saveSessionToIdb.mock.lastCall[2].projects[0];
+  expect(saved.entries?.[auditWeek]?.[0]).toBeUndefined();
+  expect(saved.notes?.general?.[auditWeek]?.[0]).toBeUndefined();
+  expect(cell(table, 'Monday').value).toBe('');
+});

@@ -1,6 +1,6 @@
 # TimeMaster repository guide
 
-- `index.html` loads `src/main.jsx`, which mounts `src/App.jsx`. App owns workspace state, persistence coordination, and layout. React UI lives in `src/components/`, with styles in `src/index.css` and `src/filePersistence.css`.
+- `index.html` loads `src/main.jsx`, which mounts `src/App.jsx`. App owns workspace state, persistence coordination, and layout. React UI lives in `src/components/`, with styles in `src/index.css` and `src/filePersistence.css` (the Financials view, budget editor and costing picker use `src/financials.css`).
 - Put domain logic in `src/lib/` and cover it in `tests/run-tests.mjs`. The jsdom App smoke test lives in `tests/App.test.jsx`.
 - Vite builds the offline app into `dist/index.html`. Vercel serves `dist/` and `electron/main.cjs` loads the same HTML for the desktop build. The workspace stays local through IndexedDB and optional JSON file attachment.
 
@@ -10,6 +10,9 @@
 - `entries[week][day]` stores General hours. `taskEntries[taskId][week][day]` stores phase hours. `taskRows[week]` is the list of pinned task IDs and can include phases with no hours. Week keys are Monday dates in `YYYY-MM-DD` form and day indices run from Monday (0) to Sunday (6).
 - `notes[taskId][week][day]` stores a text note for one time entry, with General notes under `general`. Notes are cleared with their hours; use the helpers in `src/lib/entryNotes.js`.
 - The General task has the reserved ID `general`. Phase detection also treats a case-insensitive name of `General` as General for older workspaces. Use the phase helpers in `src/lib/tasks.js`.
+- Financials (all optional; money is AUD ex GST, rounded to cents). `settings.hourlyRate` is the default cost of one logged hour (`null` = costing off). A project may add `hourlyRate` (its own rate, falling back to the workspace one), `budget` (total), `phaseBudgets[taskId]` (buckets for non-General phases; General and phases without a bucket share what is left of the total), and `activities` (costings: `{ id, name, amount, aliases? }`).
+- `activityTags[taskId][week][day]` is a manual costing pick for one entry, with General under `general`: an activity ID, `'none'` (the project's General costing bucket), or a split `{ activityId | 'none': hours }` summing to the entry's hours. A pick beats note matching (`src/lib/activityMatch.js`); unpicked, unmatched time goes to General. Tags are cleared with their hours or note, pruned with their phase, and a deleted activity's share moves to `'none'`; use the helpers in `src/lib/entryNotes.js`.
+- Cost logic lives in `src/lib/budget.js` (pure functions of the workspace, so undo just works). `migrateBackup` calls its `normaliseProjectFinance` and `normaliseFinanceSettings`; fields that were never set stay absent. Leave-day hours are not costed, matching the timesheet totals.
 
 ## Delivery
 

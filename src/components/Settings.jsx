@@ -125,7 +125,7 @@ export default function Settings({ settings, focus, onClose, onSave }) {
               else if (rate.value != null) setRateText(String(rate.value));
             }}
           />
-          <span>AUD / h</span>
+          <span>AUD ex GST / h</span>
         </span>
         <small
           id="settings-hourly-rate-help"
@@ -133,7 +133,7 @@ export default function Settings({ settings, focus, onClose, onSave }) {
           role={rateError ? 'alert' : undefined}
         >
           {rateError ||
-            'Every logged hour costs this much on the Financials screen. Leave blank to turn costing off.'}
+            'Use the rate your time is costed at on the project’s quote (e.g. day rate ÷ 7.6). Each logged hour costs this much on the Money screen; projects can override it. Leave blank to turn costing off.'}
         </small>
       </fieldset>
       <div className="modal-actions">

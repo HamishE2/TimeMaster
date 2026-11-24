@@ -1,30 +1,119 @@
-import { ACTIVITY_NEAR, formatMoney, formatPercent } from '../lib/budget.js';
+import {
+  ACTIVITY_NEAR,
+  formatEffort,
+  formatMoney,
+  formatPercent,
+} from '../lib/budget.js';
+import { fmt } from '../lib/utils.js';
 import { BudgetMeter, StatusChip } from './FinancialsParts.jsx';
 
-// Costed activities versus what has been logged against them.
+const SOURCES = [
+  ['picked', 'picked', 'Chosen by hand'],
+  ['auto', 'auto', 'Matched from the note'],
+  ['default', 'default', 'Went to General by default'],
+];
+
+// How the hours of a costing were assigned: by hand, by inference, by default.
+function SourceBadges({ bySource }) {
+  const shown = SOURCES.filter(([key]) => bySource?.[key] > 0);
+  if (!shown.length) return null;
+  return (
+    <span className="costing-sources">
+      {shown.map(([key, label, title]) => (
+        <span key={key} className={`costing-source source-${key}`} title={title}>
+          {label} {fmt(bySource[key])}h
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function CostingRow({ row, item, perDay, isGeneral = false }) {
+  return (
+    <tr className={isGeneral ? 'is-general' : ''}>
+      <th scope="row" className="fin-line">
+        {row.name}
+        {isGeneral && <small>Budget left after the costings</small>}
+        <small>
+          {fmt(Math.round(row.hours * 100) / 100)}h · {row.entries}{' '}
+          {row.entries === 1 ? 'entry' : 'entries'}
+        </small>
+        <SourceBadges bySource={row.bySource} />
+      </th>
+      <td className="fin-num">
+        {row.amount == null ? '—' : formatMoney(row.amount, { whole: true })}
+        {row.amount != null && item.hasRate && (
+          <small>{formatEffort(row.amount, item.rate, perDay)}</small>
+        )}
+      </td>
+      <td className="fin-num">{item.hasRate ? formatMoney(row.spent) : '—'}</td>
+      <td>
+        {item.hasRate && row.variance != null ? (
+          <span
+            className={`fin-variance ${row.variance < 0 ? 'is-over' : 'is-under'}`}
+          >
+            {row.variance < 0
+              ? `${formatMoney(-row.variance, { whole: true })} over`
+              : `${formatMoney(row.variance, { whole: true })} left`}
+          </span>
+        ) : (
+          '—'
+        )}
+      </td>
+      <td className="fin-bar-col">
+        {item.hasRate && row.amount != null ? (
+          <span className="fin-bar-cell">
+            <BudgetMeter
+              spent={row.spent}
+              budget={row.amount}
+              tone={row.status.tone}
+              near={ACTIVITY_NEAR}
+            />
+            <small>{formatPercent(row.pct)}</small>
+          </span>
+        ) : (
+          '—'
+        )}
+      </td>
+      <td>
+        <StatusChip small status={row.status} />
+      </td>
+    </tr>
+  );
+}
+
+// Costed activities, plus the General bucket, versus the cost of the time
+// charged to each (picked by hand, matched from notes, or General by default).
 export default function FinancialsActivities({ overview, onEditProject }) {
   const withActivities = overview.projects.filter(
     (item) => item.activities.length,
   );
-  const { hasRate } = overview;
   return (
     <section className="fin-section" aria-labelledby="fin-activities-title">
       <header className="fin-section-head">
         <div>
-          <h3 id="fin-activities-title">Costed activities</h3>
-          <span>Costing vs the cost of time linked through notes and tags</span>
+          <h3 id="fin-activities-title">Costings</h3>
+          <span>
+            Each costing vs the cost of time charged to it ·{' '}
+            <span className="costing-source source-picked">picked</span> by
+            hand, <span className="costing-source source-auto">auto</span> from
+            the note, or{' '}
+            <span className="costing-source source-default">default</span> to
+            General
+          </span>
         </div>
       </header>
       {withActivities.length === 0 ? (
         <div className="fin-empty is-inline">
           <span className="fin-empty-glyph" aria-hidden="true">≡</span>
           <div>
-            <h3>No costed activities</h3>
+            <h3>No costings yet</h3>
             <p>
-              Break a budget into deliverables, such as “Quick reference guides
-              (QRGs) · $4,000” or “Training deck · $2,500”, in the project’s
-              Budget section. Notes like “drafted QRGs” are then linked
-              automatically, and you’re asked when a note is unclear.
+              Break a budget into costed deliverables, such as “Quick reference
+              guides (QRGs) · $4,000” or “Training deck · 3 days”, in the
+              project’s Budget section. Notes like “drafted QRGs” are matched
+              automatically, you can pick or split by hand, and anything else
+              is charged to General.
             </p>
           </div>
           {overview.projects[0] && (
@@ -41,8 +130,8 @@ export default function FinancialsActivities({ overview, onEditProject }) {
           <table className="fin-activities">
             <thead>
               <tr>
-                <th scope="col">Activity</th>
                 <th scope="col">Costing</th>
+                <th scope="col">Amount ex GST</th>
                 <th scope="col">Actual</th>
                 <th scope="col">Variance</th>
                 <th scope="col" className="fin-bar-col">
@@ -69,72 +158,20 @@ export default function FinancialsActivities({ overview, onEditProject }) {
                   </th>
                 </tr>
                 {item.activities.map((activity) => (
-                  <tr key={activity.id}>
-                    <th scope="row" className="fin-line">
-                      {activity.name}
-                      <small>
-                        {Math.round(activity.hours * 100) / 100}h ·{' '}
-                        {activity.entries}{' '}
-                        {activity.entries === 1 ? 'entry' : 'entries'}
-                      </small>
-                    </th>
-                    <td className="fin-num">
-                      {formatMoney(activity.amount, { whole: true })}
-                    </td>
-                    <td className="fin-num">
-                      {hasRate ? formatMoney(activity.spent) : '—'}
-                    </td>
-                    <td>
-                      {hasRate && activity.variance != null ? (
-                        <span
-                          className={`fin-variance ${activity.variance < 0 ? 'is-over' : 'is-under'}`}
-                        >
-                          {activity.variance < 0
-                            ? `${formatMoney(-activity.variance, { whole: true })} over`
-                            : `${formatMoney(activity.variance, { whole: true })} left`}
-                        </span>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                    <td className="fin-bar-col">
-                      {hasRate && activity.amount != null ? (
-                        <span className="fin-bar-cell">
-                          <BudgetMeter
-                            spent={activity.spent}
-                            budget={activity.amount}
-                            tone={activity.status.tone}
-                            near={ACTIVITY_NEAR}
-                          />
-                          <small>{formatPercent(activity.pct)}</small>
-                        </span>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                    <td>
-                      <StatusChip small status={activity.status} />
-                    </td>
-                  </tr>
+                  <CostingRow
+                    key={activity.id}
+                    row={activity}
+                    item={item}
+                    perDay={overview.perDay}
+                  />
                 ))}
-                {item.unlinked.entries > 0 && (
-                  <tr className="is-unlinked">
-                    <th scope="row" className="fin-line">
-                      Not linked to an activity
-                      <small>
-                        {Math.round(item.unlinked.hours * 100) / 100}h ·{' '}
-                        {item.unlinked.entries}{' '}
-                        {item.unlinked.entries === 1 ? 'entry' : 'entries'}
-                      </small>
-                    </th>
-                    <td className="fin-num">—</td>
-                    <td className="fin-num">
-                      {hasRate ? formatMoney(item.unlinked.spent) : '—'}
-                    </td>
-                    <td colSpan={3} className="fin-muted">
-                      General time, “not costed” tags and notes still to review
-                    </td>
-                  </tr>
+                {item.generalCosting && (
+                  <CostingRow
+                    row={item.generalCosting}
+                    item={item}
+                    perDay={overview.perDay}
+                    isGeneral
+                  />
                 )}
               </tbody>
             ))}

@@ -67,7 +67,15 @@ export function entryActivityTag(project, taskId, week, day) {
 
 export function setActivityTagRecord(project, taskId, week, day, activityId) {
   const id = noteTaskId(taskId),
-    value = activityId == null ? '' : String(activityId),
+    // A tag is an activity ID, 'none', or a split { activityId: hours }.
+    value =
+      activityId == null
+        ? ''
+        : typeof activityId === 'object'
+          ? Object.keys(activityId).length
+            ? { ...activityId }
+            : ''
+          : String(activityId),
     tags = { ...(project.activityTags || {}) },
     weeks = { ...(tags[id] || {}) },
     days = { ...(weeks[week] || {}) };

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { DAY_NAMES, dayDate, fmt } from '../lib/utils.js';
 import { entryNote } from '../lib/entryNotes.js';
 import { hoursIn } from '../lib/quickEntry.js';
@@ -7,9 +7,9 @@ const WIDTH = 300;
 
 // Anchored note popover for the focused hours cell. The cell input stays the
 // hours field; this card holds the note, quick-pick hours and the extras slot.
-// Keys in the cell: ArrowDown or Alt+N jumps to the note (Tab too when the
-// cell was clicked); Enter saves; Esc reverts. In the note: Enter saves,
-// Shift+Enter adds a line, Esc discards, Tab off the end moves to the next cell.
+// Keys in the cell: ArrowDown or Alt+N jumps to the note; Tab moves to the
+// next cell; Enter saves; Esc reverts. In the note: Enter saves, Shift+Enter
+// adds a line, Esc discards, Tab off the end moves to the next cell.
 export default function EntryPopover({
   target,
   project,
@@ -28,6 +28,9 @@ export default function EntryPopover({
     hours = hoursIn(project, taskId, week, day);
   const [draft, setDraft] = useState(saved);
   const [pos, setPos] = useState(null);
+  const [needsHours, setNeedsHours] = useState(false);
+  const side = useRef(null);
+  const id = useId();
   const card = useRef(null),
     draftRef = useRef(draft);
   const anchor = () =>
@@ -42,13 +45,26 @@ export default function EntryPopover({
       const cell = anchor()?.closest('td');
       if (!cell) return;
       const r = cell.getBoundingClientRect(),
+        // The sticky app bar covers the top of the page; a cell under it or
+        // off screen hides the card instead of leaving it floating.
+        top = document.querySelector('.topbar')?.getBoundingClientRect().bottom || 0,
+        hidden =
+          r.height > 0 && (r.bottom < top + 4 || r.top > window.innerHeight - 4),
         h = card.current?.offsetHeight || 180,
-        below = window.innerHeight - r.bottom > h + 12 || r.top < h + 12,
+        room = window.innerHeight - r.bottom,
+        // Stay on the current side while it still fits, so the card does not
+        // jump when it grows (a fill chip or the "log hours first" line).
+        below =
+          (side.current === 'below' && room >= h + 8) ||
+          room > h + 12 ||
+          r.top - top < h + 12,
         left = Math.min(
           Math.max(8, r.left + r.width / 2 - WIDTH / 2),
           window.innerWidth - WIDTH - 8,
         );
+      side.current = below ? 'below' : 'above';
       setPos({
+        hidden,
         left,
         top: below ? r.bottom + 8 : r.top - h - 8,
         below,
@@ -60,24 +76,44 @@ export default function EntryPopover({
       frame = requestAnimationFrame(place);
     };
     place();
+    // The card grows (fill chip, warning) after it is placed above a cell.
+    const resize =
+      typeof ResizeObserver === 'function' && new ResizeObserver(schedule);
+    if (resize && card.current) resize.observe(card.current);
     window.addEventListener('scroll', schedule, true);
     window.addEventListener('resize', schedule);
     return () => {
       cancelAnimationFrame(frame);
+      if (resize) resize.disconnect();
       window.removeEventListener('scroll', schedule, true);
       window.removeEventListener('resize', schedule);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, taskId, day, week]);
 
+  // Tie the cell to this card for assistive tech. The cell re-mounts when its
+  // value changes, so this runs after every render.
+  useLayoutEffect(() => {
+    const cell = anchor();
+    cell?.setAttribute('aria-expanded', 'true');
+    cell?.setAttribute('aria-controls', id);
+    return () => {
+      cell?.removeAttribute('aria-expanded');
+      cell?.removeAttribute('aria-controls');
+    };
+  });
+
   const lastSaved = useRef(saved);
+  // Returns false when the note cannot be kept yet (no hours logged).
   const commitNote = () => {
     const text = draftRef.current.trim();
-    if (text === lastSaved.current.trim()) return;
+    if (text === lastSaved.current.trim()) return true;
     // A note belongs to logged hours; without hours only clearing is allowed.
-    if (text && hoursIn(project, taskId, week, day) == null && !saved) return;
+    if (text && hoursIn(project, taskId, week, day) == null && !saved)
+      return false;
     lastSaved.current = text;
     onSaveNote(projectId, taskId, week, day, text);
+    return true;
   };
   const commitRef = useRef(commitNote);
   useLayoutEffect(() => {
@@ -106,6 +142,14 @@ export default function EntryPopover({
   }, [onClose, rootRef]);
   // Moving to another cell saves this cell's draft.
   useEffect(() => () => commitRef.current(), []);
+  // ArrowDown / Alt+N on a cell whose card was closed reopens it on the note.
+  useEffect(() => {
+    if (!target.focusNote) return;
+    const field = card.current?.querySelector('.entry-popover-note');
+    if (!field) return;
+    field.focus();
+    field.setSelectionRange(field.value.length, field.value.length);
+  }, [target.focusNote]);
 
   const focusCell = () => anchor()?.focus();
   const nextCell = (direction) => {
@@ -134,7 +178,7 @@ export default function EntryPopover({
     ].filter((node) => !node.disabled);
     if (!event.shiftKey && document.activeElement === items.at(-1)) {
       event.preventDefault();
-      commitNote();
+      if (!commitNote()) return setNeedsHours(true);
       nextCell(1);
     } else if (event.shiftKey && document.activeElement === items[0]) {
       event.preventDefault();
@@ -146,8 +190,10 @@ export default function EntryPopover({
   return (
     <div
       ref={card}
+      id={id}
       className={`entry-popover${pos?.below === false ? ' is-above' : ''}`}
       role="dialog"
+      hidden={pos?.hidden || undefined}
       aria-label={`Note for ${project.name}, ${taskName}, ${DAY_NAMES[day]}`}
       style={{
         left: pos?.left ?? -9999,
@@ -171,8 +217,10 @@ export default function EntryPopover({
             })}
           </small>
         </span>
-        <output className="entry-popover-hours">
-          {hours == null ? '—' : `${fmt(hours)}h`}
+        <output
+          className={`entry-popover-hours${hours == null ? ' is-empty' : ''}`}
+        >
+          {hours == null ? 'No time' : `${fmt(hours)}h`}
         </output>
       </div>
       <div className="entry-popover-picks" aria-label="Quick hours">
@@ -210,15 +258,26 @@ export default function EntryPopover({
             ? 'Log hours first, then add a note'
             : 'What did you work on?'
         }
-        onChange={(event) => setDraft(event.target.value)}
+        aria-invalid={needsHours || undefined}
+        aria-describedby={needsHours ? `${id}-needs` : undefined}
+        onChange={(event) => {
+          setDraft(event.target.value);
+          setNeedsHours(false);
+        }}
         onKeyDown={(event) => {
           if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault();
-            commitNote();
+            // Without hours, keep the draft and say why instead of dropping it.
+            if (!commitNote()) return setNeedsHours(true);
             onFinish();
           }
         }}
       />
+      {needsHours && (
+        <p id={`${id}-needs`} className="entry-popover-needs" role="alert">
+          Log hours in the cell first to keep this note.
+        </p>
+      )}
       {renderNoteExtras && (
         <div className="entry-popover-extras">
           {renderNoteExtras({

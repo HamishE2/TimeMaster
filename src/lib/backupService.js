@@ -195,6 +195,11 @@ const textSignature = (text) => {
   }
 };
 
+// Writes that timed out but may still be running, by handle. One that lands
+// after a later save would put the older workspace back in the file while
+// the app shows "Saved", so the next write to that handle waits for it.
+const unsettledWrites = new WeakMap();
+
 // Writes the workspace to an attached file handle.
 // - `interactive` must only be true while handling a click: browsers refuse
 //   (or silently ignore) permission prompts without a user gesture, so an
@@ -229,6 +234,9 @@ export async function writeHandle(
       throw new Error('Permission to write the TimeMaster file was not granted.');
   }
 
+  const unsettled = unsettledWrites.get(handle);
+  if (unsettled) await step(unsettled);
+
   if (expectedRevision) {
     const current = await step(handle.getFile());
     const currentText = await step(current.text());
@@ -243,10 +251,24 @@ export async function writeHandle(
   }
 
   const writable = await step(handle.createWritable());
+  const writing = Promise.resolve()
+    .then(() => writable.write(JSON.stringify(data, null, 2)))
+    .then(() => writable.close());
   try {
-    await step(writable.write(JSON.stringify(data, null, 2)));
-    await step(writable.close());
+    await step(writing, timeoutMs * 2);
   } catch (error) {
+    if (error instanceof FileUnresponsiveError) {
+      const settled = writing
+        .then(
+          () => {},
+          () => {},
+        )
+        .finally(() => {
+          if (unsettledWrites.get(handle) === settled)
+            unsettledWrites.delete(handle);
+        });
+      unsettledWrites.set(handle, settled);
+    }
     Promise.resolve()
       .then(() => writable.abort?.())
       .catch(() => {});

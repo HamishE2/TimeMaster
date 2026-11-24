@@ -31,6 +31,13 @@ import TickNumber from './TickNumber.jsx';
 import WeekCelebration from './WeekCelebration.jsx';
 import { weekIsComplete } from '../lib/weekGoal.js';
 
+// Put the caret after any existing note text so typing appends to it.
+const focusEnd = (field) => {
+  field.focus();
+  const end = field.value.length;
+  field.setSelectionRange?.(end, end);
+};
+
 export default function TimesheetTable({
   projects,
   allProjects,
@@ -88,11 +95,10 @@ export default function TimesheetTable({
   const widths = columns.map(([id, , initial]) => sizing.widths[id] || initial);
 
   // ---- Entry popover ----
-  // Opens on focus of any hours cell. `via` remembers whether a click or the
-  // keyboard got there: after a click, Tab goes to the note; while tabbing
-  // through cells, Tab keeps moving cell to cell.
+  // Opens on focus of any hours cell. Tab always hops cell to cell, so fast
+  // keyboard entry never lands in the note; ArrowDown or Alt+N opens the note
+  // (reopening the card if Enter or Esc closed it).
   const [entryTarget, setEntryTarget] = useState(null);
-  const pointerFocus = useRef(false);
   const quietFocus = useRef(null);
   const closeEntry = () => setEntryTarget(null);
   const entryFrom = (node) => {
@@ -106,21 +112,24 @@ export default function TimesheetTable({
       quietFocus.current = null;
       return;
     }
-    const next = entryFrom(node);
-    setEntryTarget({ ...next, via: pointerFocus.current ? 'pointer' : 'keyboard' });
-    pointerFocus.current = false;
+    setEntryTarget(entryFrom(node));
   };
+  // Focus a cell (found again after a re-render) without reopening the card.
+  const refocusFrame = useRef(0);
   const refocusEntry = (key) => {
     quietFocus.current = key;
-    requestAnimationFrame(() =>
-      tbodyRef.current?.querySelector(`input[data-entry="${key}"]`)?.focus(),
-    );
+    cancelAnimationFrame(refocusFrame.current);
+    refocusFrame.current = requestAnimationFrame(() => {
+      const cell = tbodyRef.current?.querySelector(
+        `input[data-entry="${key}"]`,
+      );
+      if (cell && document.activeElement !== cell) cell.focus();
+      else quietFocus.current = null;
+    });
   };
   const onCellKeyDown = (event) => {
     const node = event.target;
     if (!node.matches?.('input[data-entry]')) return;
-    const note = () =>
-      document.querySelector('.entry-popover .entry-popover-note');
     if (event.key === 'Escape') {
       node.value = node.defaultValue;
       setEntryTarget(null);
@@ -130,11 +139,7 @@ export default function TimesheetTable({
       const key = node.dataset.entry;
       node.blur();
       refocusEntry(key);
-    } else if (
-      event.key === 'Tab' &&
-      !event.altKey &&
-      (event.shiftKey || entryTarget?.via !== 'pointer')
-    ) {
+    } else if (event.key === 'Tab' && !event.altKey) {
       // Hop straight between hours cells, skipping grips and row menus.
       const cells = [
           ...(tbodyRef.current?.querySelectorAll('input[data-entry]') || []),
@@ -145,13 +150,16 @@ export default function TimesheetTable({
         next.focus();
       }
     } else if (
-      entryTarget &&
-      (event.key === 'ArrowDown' ||
-        (event.altKey && event.key.toLowerCase() === 'n') ||
-        (event.key === 'Tab' && !event.shiftKey && entryTarget.via === 'pointer'))
+      event.key === 'ArrowDown' ||
+      (event.altKey && (event.key.toLowerCase() === 'n' || event.code === 'KeyN'))
     ) {
       event.preventDefault();
-      note()?.focus();
+      const note = document.querySelector('.entry-popover .entry-popover-note');
+      // A pending refocus of the cell would pull focus back out of the note.
+      cancelAnimationFrame(refocusFrame.current);
+      quietFocus.current = null;
+      if (note) focusEnd(note);
+      else setEntryTarget({ ...entryFrom(node), focusNote: true });
     }
   };
   const entryProject =
@@ -161,6 +169,8 @@ export default function TimesheetTable({
     const { projectId, taskId, day } = entryTarget;
     if (taskId) onTaskEntry(projectId, taskId, week, day, value);
     else onEntry(projectId, week, day, value);
+    // Keep typing in the cell (it re-renders with the picked value).
+    refocusEntry(`${projectId}|${taskId ?? ''}|${day}`);
   };
 
   // ---- Row menu ----
@@ -503,10 +513,6 @@ export default function TimesheetTable({
         <tbody
           ref={tbodyRef}
           className={dragging ? 'is-reordering' : undefined}
-          onPointerDown={() => {
-            pointerFocus.current = true;
-            setTimeout(() => (pointerFocus.current = false), 0);
-          }}
           onFocus={onCellFocus}
           onKeyDown={onCellKeyDown}
         >

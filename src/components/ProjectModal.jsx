@@ -36,6 +36,7 @@ export default function ProjectModal({
   visibleProjects = [],
   weekKey,
   hourlyRate = null,
+  perDay = 7.6,
 }) {
   const [projectType, setProjectType] = useState('standard');
   const [durationPreset, setDurationPreset] = useState('1 week');
@@ -317,7 +318,7 @@ export default function ProjectModal({
       durationDays,
       remainderLimit,
     });
-    const financeErrors = validateFinanceDraft(finance, tasks).errors;
+    const financeErrors = validateFinanceDraft(finance, tasks, { settingsRate: hourlyRate, perDay }).errors;
     Object.assign(e, financeErrors);
     setErrors(e);
     if (Object.keys(financeErrors).length && Object.keys(e).length === Object.keys(financeErrors).length)
@@ -347,7 +348,7 @@ export default function ProjectModal({
         durationWeeks,
         durationDays,
         remainderLimit === '' ? null : Number(remainderLimit),
-        validateFinanceDraft(finance, tasks).value,
+        validateFinanceDraft(finance, tasks, { settingsRate: hourlyRate, perDay }).value,
       );
       if (saved !== false) onClose();
     }
@@ -1032,8 +1033,9 @@ export default function ProjectModal({
               tasks={tasks}
               initial={initial}
               errors={errors}
-              warnings={validateFinanceDraft(finance, tasks).warnings}
+              warnings={validateFinanceDraft(finance, tasks, { settingsRate: hourlyRate, perDay }).warnings}
               hourlyRate={hourlyRate}
+              perDay={perDay}
             />
           </section>
 

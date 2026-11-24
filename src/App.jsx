@@ -73,6 +73,14 @@ import Settings from './components/Settings.jsx';
 import TimesheetTable from './components/TimesheetTable.jsx';
 import useHistory from './lib/useHistory.js';
 import EntryNoteModal from './components/EntryNoteModal.jsx';
+import Financials from './components/Financials.jsx';
+import ActivityPicker from './components/ActivityPicker.jsx';
+import { setActivityTagRecord } from './lib/entryNotes.js';
+import {
+  applyProjectFinance,
+  hourlyRateOf,
+  hoursPerDay,
+} from './lib/budget.js';
 import { entryNote, setEntryNoteRecord } from './lib/entryNotes.js';
 
 const empty = {
@@ -93,8 +101,16 @@ const icon = (d) => (
 );
 
 export default function App() {
-  const { data, setData, resetData, undo, redo, canUndo, canRedo } =
-    useHistory(empty);
+  const {
+    data,
+    setData,
+    resetData,
+    undo,
+    redo,
+    checkpoint,
+    canUndo,
+    canRedo,
+  } = useHistory(empty);
   const [ready, setReady] = useState(false),
     [week, setWeek] = useState(weekKeyFor(new Date())),
     [panel, setPanel] = useState(null),
@@ -119,7 +135,18 @@ export default function App() {
     }),
     [notice, setNotice] = useState(null),
     [file, setFile] = useState(null),
-    [mobileView, setMobileView] = useState('projects');
+    [mobileView, setMobileView] = useState('projects'),
+    // Timesheet (time) or Financials (money); a view preference per browser.
+    [view, setView] = useState(() => {
+      try {
+        return localStorage.getItem('timemaster.view') === 'financials'
+          ? 'financials'
+          : 'timesheet';
+      } catch {
+        return 'timesheet';
+      }
+    }),
+    [settingsFocus, setSettingsFocus] = useState(null);
   const [fileName, setFileName] = useState(null),
     [fileRevision, setFileRevision] = useState(null),
     [fileStatus, setFileStatus] = useState('local'),
@@ -154,6 +181,13 @@ export default function App() {
       /* storage unavailable: grouping just resets next visit */
     }
   }, [category]);
+  useEffect(() => {
+    try {
+      localStorage.setItem('timemaster.view', view);
+    } catch {
+      /* storage unavailable: the view resets next visit */
+    }
+  }, [view]);
   const autoSaveTimer = useRef(),
     saveInFlight = useRef(false),
     saveBlocked = useRef(false),
@@ -162,7 +196,8 @@ export default function App() {
     // Bumped whenever a different file is attached, so a save still writing
     // to the previous file cannot overwrite the new file's saved state.
     fileGeneration = useRef(0),
-    // Signatures this tab tried to write since the last confirmed save. A
+    // Signatures this tab tried to write since (and including) the last
+    // confirmed save. A
     // write that timed out may still land; its content is ours, not a
     // change made elsewhere.
     attemptedSignatures = useRef([]),
@@ -176,7 +211,16 @@ export default function App() {
         const restored = session?.data ? migrateBackup(session.data) : empty,
           signature = workspaceSignature(restored),
           handle = session?.fileHandle || null,
-          saved = session?.savedSignature || (handle ? signature : '');
+          // Migration can fill defaults the stored copy lacks (archived:
+          // false, sorted days), so a copy that matched the file still counts
+          // as saved, and the file's own content stays recognised as ours.
+          matchedFile =
+            !!session?.savedSignature &&
+            session.savedSignature === workspaceSignature(session.data),
+          saved = matchedFile
+            ? signature
+            : session?.savedSignature || (handle ? signature : '');
+        if (matchedFile) attemptedSignatures.current = [session.savedSignature];
         resetData(restored);
         latestSignature.current = signature;
         setSavedFileSignature(saved);
@@ -270,6 +314,20 @@ export default function App() {
         p.id === projectId ? setEntryNoteRecord(p, taskId, wk, day, text) : p,
       ),
     }));
+  // An explicit "which activity is this?" choice; null returns to matching.
+  const tagEntryActivity = ({ projectId, taskId, week: wk, day }, activityId) =>
+    setData((d) => ({
+      ...d,
+      projects: d.projects.map((p) =>
+        p.id === projectId
+          ? setActivityTagRecord(p, taskId, wk, day, activityId)
+          : p,
+      ),
+    }));
+  const openSettings = (focus = null) => {
+    setSettingsFocus(focus);
+    setPanel('settings');
+  };
   const setTaskEntry = (projectId, taskId, targetWeek, day, value) => {
     const parsed = typeof value === 'number' ? { value } : parseHours(value);
     if (parsed.error) {
@@ -420,6 +478,7 @@ export default function App() {
     durationWeeks = 0,
     durationDays = 0,
     remainderLimit = null,
+    finance = null,
   ) => {
     const fields = {
       name,
@@ -457,19 +516,33 @@ export default function App() {
           ...d,
           projects: d.projects.map((p) =>
             p.id === selectedExistingId
-              ? restoreProjectRecord(p, fields, scope, week)
+              ? applyProjectFinance(
+                  restoreProjectRecord(p, fields, scope, week),
+                  finance,
+                )
               : p,
           ),
         };
       if (!edit)
         return {
           ...d,
-          projects: [...d.projects, createProjectRecord(fields, scope, week)],
+          projects: [
+            ...d.projects,
+            applyProjectFinance(
+              createProjectRecord(fields, scope, week),
+              finance,
+            ),
+          ],
         };
       return {
         ...d,
         projects: d.projects.map((p) =>
-          p.id === edit.id ? editProjectRecord(p, fields, scope, week) : p,
+          p.id === edit.id
+            ? applyProjectFinance(
+                editProjectRecord(p, fields, scope, week),
+                finance,
+              )
+            : p,
         ),
       };
     });
@@ -673,7 +746,9 @@ export default function App() {
         project.taskEntries[task] = { [week]: hours };
       return project;
     });
+    checkpoint();
     setData((d) => ({ ...d, projects: [...d.projects, ...sample] }));
+    checkpoint();
     setNotice({ type: 'success', text: 'Sample workspace added.' });
   };
   const attachLoadedFile = useCallback(
@@ -796,7 +871,9 @@ export default function App() {
         });
         // Another file was attached while this one was writing.
         if (generation !== fileGeneration.current) return false;
-        attemptedSignatures.current = [];
+        // Kept as ours: a save already queued before React applies this
+        // result still holds the old revision and must not see a conflict.
+        attemptedSignatures.current = [signature];
         setSavedFileSignature(signature);
         saveBlocked.current = false;
         setFileRevision(revision);
@@ -975,6 +1052,20 @@ export default function App() {
             Time <span>Master</span>
           </b>
         </a>
+        <nav className="view-switch" aria-label="View">
+          {[
+            ['timesheet', 'Time'],
+            ['financials', 'Money'],
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              aria-current={view === value ? 'page' : undefined}
+              onClick={() => setView(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
         <button
           className={`file-status file-status-${fileStatus === 'permission' ? 'error' : fileStatus}`}
           onClick={() => setPanel('file')}
@@ -1025,8 +1116,18 @@ export default function App() {
                 ],
               ],
               [
+                'Views',
+                [
+                  ['Timesheet', () => setView('timesheet')],
+                  ['Financials', () => setView('financials')],
+                ],
+              ],
+              [
                 'Application settings',
-                [['Workspace settings', () => setPanel('settings')]],
+                [
+                  ['Workspace settings', () => setPanel('settings')],
+                  ['Hourly rate', () => openSettings('rate')],
+                ],
               ],
             ]}
           />
@@ -1107,6 +1208,26 @@ export default function App() {
             </button>
           </div>
         </section>
+        {view === 'financials' ? (
+          <Financials
+            projects={data.projects}
+            settings={data.settings}
+            week={week}
+            days={days}
+            onOpenSettings={openSettings}
+            onEditProject={(project) => {
+              if (!project) return;
+              setFocusPhase(null);
+              setEdit(project);
+              setPanel('project');
+            }}
+            onNewProject={() => {
+              setEdit(null);
+              setPanel('project');
+            }}
+            onTag={tagEntryActivity}
+          />
+        ) : (
         <section
           className={`workspace ${mobileView === 'days' ? 'day-mode' : ''}`}
         >
@@ -1246,6 +1367,19 @@ export default function App() {
                     saveEntryNote({ projectId, taskId, week: wk, day }, text)
                   }
                   onUndo={undo}
+                  onCheckpoint={checkpoint}
+                  renderNoteExtras={(entry) => (
+                    <ActivityPicker
+                      {...entry}
+                      compact
+                      onTag={(activityId) =>
+                        tagEntryActivity(
+                          { ...entry, projectId: entry.project.id },
+                          activityId,
+                        )
+                      }
+                    />
+                  )}
                   onNote={(projectId, taskId, wk, day) =>
                     setNoteTarget({ projectId, taskId, week: wk, day })
                   }
@@ -1329,6 +1463,7 @@ export default function App() {
             leaveWeeks={data.settings.leaveWeeks}
           />
         </section>
+        )}
         <nav className="phone-dock" aria-label="Mobile workspace">
           <button
             onClick={() =>
@@ -1341,6 +1476,13 @@ export default function App() {
             onClick={() => document.querySelector('.insights').scrollIntoView()}
           >
             Usage
+          </button>
+          <button
+            onClick={() =>
+              setView(view === 'financials' ? 'timesheet' : 'financials')
+            }
+          >
+            {view === 'financials' ? 'Time' : 'Money'}
           </button>
           <button onClick={() => setPanel('manage')}>Projects</button>
           <button onClick={() => setPanel('file')}>File</button>
@@ -1376,6 +1518,8 @@ export default function App() {
         projects={data.projects}
         visibleProjects={visible}
         weekKey={week}
+        hourlyRate={hourlyRateOf(data.settings)}
+        perDay={hoursPerDay(data.settings)}
       />
       <ImportModal
         isOpen={panel === 'import'}
@@ -1420,10 +1564,15 @@ export default function App() {
       {panel === 'settings' && (
         <Settings
           settings={data.settings}
-          onClose={() => setPanel(null)}
+          focus={settingsFocus}
+          onClose={() => {
+            setPanel(null);
+            setSettingsFocus(null);
+          }}
           onSave={(settings) => {
             setData((d) => ({ ...d, settings }));
             setPanel(null);
+            setSettingsFocus(null);
           }}
         />
       )}
@@ -1453,6 +1602,16 @@ export default function App() {
             noteTarget.day,
           )}
           onSave={(text) => saveEntryNote(noteTarget, text)}
+          renderExtras={(note) => (
+            <ActivityPicker
+              project={noteProject}
+              taskId={noteTarget.taskId}
+              week={noteTarget.week}
+              day={noteTarget.day}
+              note={note}
+              onTag={(activityId) => tagEntryActivity(noteTarget, activityId)}
+            />
+          )}
           onClose={closeNote}
         />
       )}
