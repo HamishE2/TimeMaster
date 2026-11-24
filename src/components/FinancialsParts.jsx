@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { formatMoney } from '../lib/budget.js';
+import { formatMoney, percentOf } from '../lib/budget.js';
 
 // Shape + text, not colour alone: each tone has its own glyph.
 const GLYPHS = {
@@ -68,7 +68,7 @@ export function UsageRing({ pct, tone = 'neutral', size = 58, label }) {
     c = 2 * Math.PI * r,
     shown = pct == null ? 0 : Math.min(1, Math.max(0, pct)),
     text =
-      pct == null ? '—' : pct === Infinity ? '!' : `${Math.round(pct * 100)}`;
+      pct == null ? '—' : pct === Infinity ? '!' : `${percentOf(pct)}`;
   return (
     <svg
       className={`fin-ring tone-${tone}`}

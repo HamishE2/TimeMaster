@@ -65,6 +65,7 @@ export default function TimesheetTable({
   onRemove,
   onPlace,
   onPlaceTask,
+  onRestoreTag,
 }) {
   const dayTotal = (day) =>
       projects.reduce(
@@ -108,6 +109,7 @@ export default function TimesheetTable({
   // (reopening the card if Enter or Esc closed it).
   const [entryTarget, setEntryTarget] = useState(null);
   const quietFocus = useRef(null);
+  const cancelEntry = useRef(null);
   const closeEntry = () => setEntryTarget(null);
   const entryFrom = (node) => {
     const [projectId, taskId, day] = node.dataset.entry.split('|');
@@ -140,6 +142,9 @@ export default function TimesheetTable({
     if (!node.matches?.('input[data-entry]')) return;
     if (event.key === 'Escape') {
       node.value = node.defaultValue;
+      // Drop the card's unsaved note and costing pick before it closes
+      // (closing otherwise saves the note).
+      cancelEntry.current?.();
       setEntryTarget(null);
     } else if (event.key === 'Enter') {
       event.preventDefault();
@@ -703,10 +708,17 @@ export default function TimesheetTable({
               : 'General'
           }
           week={week}
+          // The whole day's hours, not just the rows a search or filter shows.
           gap={Math.max(
             0,
             Number(capacityByDay?.[entryTarget.day] || 0) -
-              dayTotal(entryTarget.day),
+              allProjects.reduce(
+                (sum, p) =>
+                  sum +
+                  Number(p.entries?.[week]?.[entryTarget.day] || 0) +
+                  taskHoursForDay(p, week, entryTarget.day),
+                0,
+              ),
           )}
           rootRef={tbodyRef}
           onSaveNote={(projectId, taskId, wk, day, text) =>
@@ -715,6 +727,8 @@ export default function TimesheetTable({
               : onNote?.(projectId, taskId, wk, day)
           }
           onSetHours={setEntryHours}
+          onRestoreTag={onRestoreTag}
+          cancelRef={cancelEntry}
           onClose={closeEntry}
           onFinish={() => {
             const key = `${entryTarget.projectId}|${entryTarget.taskId ?? ''}|${entryTarget.day}`;

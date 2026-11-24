@@ -6,6 +6,7 @@ import {
   financialsOverview,
   formatMoney,
   formatPercent,
+  wholeRemaining,
   toCents,
   weekCostRows,
 } from '../lib/budget.js';
@@ -29,7 +30,7 @@ const GROUPS = [
   ['amber', 'Approaching budget'],
   ['yellow', 'Resourcing exceeds budget'],
   ['green', 'Under budget'],
-  ['neutral', 'No budget'],
+  ['neutral', 'No budget or rate'],
 ];
 
 const sumMoney = (list, pick) =>
@@ -69,6 +70,9 @@ export default function Financials({
     [projects, settings, week, includeArchived],
   );
   const byId = new Map(projects.map((project) => [project.id, project]));
+  const rated = new Set(
+    overview.projects.filter((item) => item.hasRate).map((item) => item.id),
+  );
   const { hasRate, rate, perDay } = overview;
   const effort = (item, dollars) => formatEffort(dollars, item.rate, perDay);
   const rateText = overview.mixedRates
@@ -80,7 +84,10 @@ export default function Financials({
       weekProjects.flatMap(({ rows }) => rows),
       (row) => row.cost,
     ),
+    // Only hours on projects with a rate are costed, so only they are
+    // counted in "Xh × rate".
     weekHours = weekProjects
+      .filter(({ project }) => rated.has(project.id))
       .flatMap(({ rows }) => rows)
       .reduce((sum, row) => sum + row.hours, 0),
     weekPlanCost = sumMoney(overview.projects, (item) =>
@@ -88,9 +95,13 @@ export default function Financials({
         ? (item.forecast.thisWeekHours || 0) * item.rate
         : 0,
     );
-  const budgeted = overview.projects.filter((item) => item.hasBudget),
-    budgetTotal = overview.totals.budget,
-    budgetSpent = overview.totals.budgetedSpent,
+  // Portfolio budget figures only cover projects that can be costed: a
+  // budget on a project with no rate would count as $0 spent.
+  const budgeted = overview.projects.filter(
+      (item) => item.hasBudget && item.hasRate,
+    ),
+    budgetTotal = sumMoney(budgeted, (item) => item.budget),
+    budgetSpent = sumMoney(budgeted, (item) => item.spent),
     usedPct = budgetTotal > 0 ? budgetSpent / budgetTotal : null,
     remainingTotal = sumMoney(budgeted, (item) => item.remaining),
     afterPlan = sumMoney(budgeted, (item) =>
@@ -355,7 +366,9 @@ export default function Financials({
                     <dt>Remaining</dt>
                     <dd className={item.remaining < 0 ? 'over-text' : ''}>
                       {item.hasRate && item.hasBudget
-                        ? formatMoney(item.remaining, { whole: true })
+                        ? formatMoney(wholeRemaining(item.budget, item.spent), {
+                            whole: true,
+                          })
                         : '—'}
                       {item.hasBudget && effort(item, item.remaining) && (
                         <small>{effort(item, item.remaining)}</small>
@@ -542,7 +555,11 @@ export default function Financials({
                       </strong>
                       <span className="fin-num">
                         {item.hasBudget && item.hasRate
-                          ? `${formatPercent(item.pct)} · ${formatMoney(item.remaining, { whole: true })} left`
+                          ? `${formatPercent(item.pct)} · ${
+                              item.remaining < 0
+                                ? `${formatMoney(-item.remaining, { whole: true })} over`
+                                : `${formatMoney(item.remaining, { whole: true })} left`
+                            }`
                           : item.status.label}
                       </span>
                     </span>

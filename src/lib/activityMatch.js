@@ -768,19 +768,34 @@ export function normaliseSplit(split, hours, activities) {
     const id = key === NOT_COSTED || ids.has(key) ? key : NOT_COSTED;
     clean[id] = round2((clean[id] || 0) + share);
   }
+  // Shares that round to nothing carry no hours (and would divide by zero).
+  for (const key of Object.keys(clean)) if (clean[key] <= 0) delete clean[key];
   const keys = Object.keys(clean);
   if (!keys.length) return null;
   const sum = keys.reduce((n, k) => n + clean[k], 0);
   if (Math.abs(sum - total) <= 0.01) return clean;
-  const scaled = {};
-  let given = 0;
-  for (const key of keys) {
-    scaled[key] = round2((clean[key] * total) / sum);
-    given += scaled[key];
-  }
-  const largest = keys.reduce((a, b) => (scaled[a] >= scaled[b] ? a : b));
-  scaled[largest] = round2(scaled[largest] + total - given);
-  return scaled;
+  // Rescale to the edited hours in whole hundredths so every share stays
+  // positive and the shares add up; too few hundredths for every share
+  // leaves the hours with the largest one.
+  const target = round2(total),
+    largest = keys.reduce((a, b) => (clean[a] >= clean[b] ? a : b));
+  return (
+    (target > 0 && allocate(target, new Map(Object.entries(clean)), 0.01)) || {
+      [largest]: target > 0 ? target : total,
+    }
+  );
+}
+
+// Makes a split add up to the entry's exact hours (an H:MM entry such as
+// 0:20 is 0.333…h), putting the sub-cent residue on the largest share, so
+// costing hours always agree with the project's hours.
+function exactShares(split, total) {
+  const keys = Object.keys(split);
+  if (!keys.length) return split;
+  const residue = total - keys.reduce((n, k) => n + split[k], 0);
+  if (!residue) return split;
+  const largest = keys.reduce((a, b) => (split[a] >= split[b] ? a : b));
+  return { ...split, [largest]: split[largest] + residue };
 }
 
 // One call for budgets and the UI: the entry's hours by activity, always
@@ -794,21 +809,26 @@ export function resolveEntryActivities(note, activities, tag, hours) {
   if (!Number.isFinite(total) || total <= 0) return none;
   if (tag === NOT_COSTED)
     return {
-      split: { [NOT_COSTED]: round2(total) },
+      split: { [NOT_COSTED]: total },
       source: 'tag',
       status: 'none',
       parts: [],
     };
   if (typeof tag === 'string' && list.some((a) => a?.id === tag))
     return {
-      split: { [tag]: round2(total) },
+      split: { [tag]: total },
       source: 'tag',
       status: 'match',
       parts: [],
     };
   const stored = normaliseSplit(tag, total, list);
   if (stored)
-    return { split: stored, source: 'tag', status: 'match', parts: [] };
+    return {
+      split: exactShares(stored, total),
+      source: 'tag',
+      status: 'match',
+      parts: [],
+    };
   const result = matchActivities(note, list);
   const resolved = result.parts.some((p) => p.activityId);
   // Nothing picked and nothing matched ("meeting", "int call", no note):
@@ -816,8 +836,8 @@ export function resolveEntryActivities(note, activities, tag, hours) {
   // UI can offer a manual pick.
   return {
     split: resolved
-      ? suggestSplit(total, result.parts)
-      : { [GENERAL_BUCKET]: round2(total) },
+      ? exactShares(suggestSplit(total, result.parts), total)
+      : { [GENERAL_BUCKET]: total },
     source: resolved ? 'auto' : 'default',
     status: result.status,
     parts: result.parts,

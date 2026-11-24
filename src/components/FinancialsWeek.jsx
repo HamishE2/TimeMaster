@@ -1,5 +1,10 @@
 import { useState } from 'react';
-import { formatMoney, toCents, weekCostRows } from '../lib/budget.js';
+import {
+  formatMoney,
+  projectRateOf,
+  toCents,
+  weekCostRows,
+} from '../lib/budget.js';
 import { DAY_SHORT, fmt, weekDates } from '../lib/utils.js';
 
 const money = (cents) => formatMoney(cents / 100, { whole: false });
@@ -28,6 +33,8 @@ export default function FinancialsWeek({
     );
     return {
       project,
+      // A project with no rate (and no workspace rate) shows dashes, not $0.
+      rated: hasRate && projectRateOf(project, settings) != null,
       lines: lines.filter((row) => row.hours > 0 || Object.keys(row.days).length),
       dayCents,
       totalCents: lines.reduce((sum, row) => sum + toCents(row.cost), 0),
@@ -36,10 +43,10 @@ export default function FinancialsWeek({
   });
   const logged = blocks.filter((block) => block.hours > 0);
   const totalCents = logged.reduce((sum, block) => sum + block.totalCents, 0);
-  const cell = (cost, hours, onLeave) =>
+  const cell = (cost, hours, onLeave, rated = hasRate) =>
     hours ? (
       <>
-        <span className="fin-cost">{hasRate ? money(toCents(cost)) : '—'}</span>
+        <span className="fin-cost">{rated ? money(toCents(cost)) : '—'}</span>
         <small>{onLeave ? 'leave' : `${fmt(hours)}h`}</small>
       </>
     ) : (
@@ -114,11 +121,17 @@ export default function FinancialsWeek({
                   </th>
                   {days.map((day) => (
                     <td key={day}>
-                      {block.dayCents[day] ? (hasRate ? money(block.dayCents[day]) : '—') : ''}
+                      {block.rated
+                        ? block.dayCents[day]
+                          ? money(block.dayCents[day])
+                          : ''
+                        : block.lines.some((row) => row.days[day]?.hours)
+                          ? '—'
+                          : ''}
                     </td>
                   ))}
                   <td className="fin-total">
-                    {hasRate ? money(block.totalCents) : '—'}
+                    {block.rated ? money(block.totalCents) : '—'}
                   </td>
                 </tr>
                 {block.lines.map((row) => (
@@ -132,11 +145,12 @@ export default function FinancialsWeek({
                           row.days[day]?.cost,
                           row.days[day]?.hours,
                           row.days[day]?.onLeave,
+                          block.rated,
                         )}
                       </td>
                     ))}
                     <td className="fin-total">
-                      {cell(row.cost, row.hours)}
+                      {cell(row.cost, row.hours, false, block.rated)}
                     </td>
                   </tr>
                 ))}

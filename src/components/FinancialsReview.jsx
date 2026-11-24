@@ -114,6 +114,7 @@ export default function FinancialsReview({ review, projects, onTag }) {
                         day={first.day}
                         note={first.note}
                         hours={first.hours}
+                        canSplit={items.length === 1}
                         compact
                         hint={false}
                         onTag={(tag) => items.forEach((item) => onTag(item, tag))}

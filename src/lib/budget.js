@@ -65,10 +65,23 @@ const formatter = (digits) => {
 export function formatMoney(dollars, { whole = false } = {}) {
   if (dollars == null || !Number.isFinite(Number(dollars))) return '—';
   const cents = toCents(dollars);
+  // Whole dollars round half away from zero (−$1.50 is −$2, like $1.50 is
+  // $2) and never show "−$0".
+  const value = whole
+    ? Math.sign(cents) * Math.round(Math.abs(cents) / 100) || 0
+    : cents / 100 || 0;
   return formatter(whole || cents % 100 === 0 ? 0 : 2)
-    .format(whole ? Math.round(cents / 100) : cents / 100)
+    .format(value)
     .replace(/^-/, '−');
 }
+
+// Remaining budget in whole dollars, worked out from the rounded budget and
+// spend so the three figures shown side by side always add up.
+export const wholeRemaining = (budget, spent) =>
+  budget == null || spent == null
+    ? null
+    : Math.sign(budget) * Math.round(Math.abs(budget)) -
+      Math.sign(spent) * Math.round(Math.abs(spent));
 
 // Parses a typed dollar amount. Blank means "not set".
 export function parseMoney(value, { max = MONEY_MAX, label = 'Amount' } = {}) {
@@ -98,21 +111,35 @@ export const parseRate = (value) =>
   parseMoney(value, { max: RATE_MAX, label: 'Hourly rate' });
 
 // Stored amounts: a finite, non-negative number rounded to cents, else null.
+// Stored strings are rounded like stored numbers ("212.505" is $212.51);
+// only typed input is held to two decimals. Booleans, arrays and objects are
+// not amounts.
 export function normaliseMoney(raw, max = MONEY_MAX) {
   if (raw == null || raw === '') return null;
-  const parsed = parseMoney(typeof raw === 'string' ? raw : Number(raw), {
-    max,
-  });
+  let value = raw;
+  if (typeof raw === 'string') {
+    const plain = raw
+      .trim()
+      .replace(/^(aud|a\$|\$)\s*/i, '')
+      .replace(/[,\s]/g, '');
+    if (/^(\d+(\.\d*)?|\.\d+)$/.test(plain)) value = Number(plain);
+  } else if (typeof raw !== 'number') return null;
+  const parsed = parseMoney(value, { max });
   return parsed.error ? null : parsed.value;
 }
 
-export const hourlyRateOf = (settings) =>
-  normaliseMoney(settings?.hourlyRate, RATE_MAX);
+// A rate of $0 costs nothing and would show every budget as "On track 0%",
+// so it means "no rate", the same as leaving it blank.
+const positiveRate = (raw) => normaliseMoney(raw, RATE_MAX) || null;
+export const hourlyRateOf = (settings) => positiveRate(settings?.hourlyRate);
 
 // A project's own rate (people are priced at different levels on different
 // quotes) falls back to the workspace rate.
 export const projectRateOf = (project, settings) =>
-  normaliseMoney(project?.hourlyRate, RATE_MAX) ?? hourlyRateOf(settings);
+  positiveRate(project?.hourlyRate) ?? hourlyRateOf(settings);
+
+// Passed as the project editor's focus to open it at the Budget section.
+export const BUDGET_FOCUS = '__budget';
 
 export const DEFAULT_HOURS_PER_DAY = 7.6;
 // Budgets are sold in consultant days: hours per day is the average non-zero
@@ -243,15 +270,15 @@ export function normaliseProjectFinance(project) {
           const hours = entryHoursAt(project, taskId, week, index);
           if (!Number.isInteger(index) || index < 0 || index > 6 || hours <= 0)
             continue;
-          // A whole-entry tag for a deleted activity moves its hours to the
-          // General bucket.
+          // A whole-entry tag for a deleted activity is dropped, so the
+          // entry goes back to automatic matching on its note (as the editor
+          // warns: "will become untagged"). A deleted share of a split goes
+          // to the General bucket.
           const tag =
             typeof activityId === 'string'
               ? activityId === NO_ACTIVITY_TAG || activityIds.has(activityId)
                 ? activityId
-                : activityId
-                  ? { [NO_ACTIVITY_TAG]: hours }
-                  : null
+                : null
               : normaliseSplit(activityId, hours, next.activities || []);
           if (tag) ((tags[taskId] ||= {})[week] ||= {})[index] = tag;
         }
@@ -274,6 +301,15 @@ export function applyProjectFinance(project, finance) {
     activities: finance.activities || [],
     activityTags: project.activityTags || {},
   });
+}
+
+// Typed days ("2.5", "1.25"): a non-negative number of days, any decimals.
+function parseDays(value) {
+  const s = String(value ?? '').trim();
+  if (!s) return { value: null };
+  if (!/^(\d+(\.\d*)?|\.\d+)$/.test(s))
+    return { error: 'Days must be a number, like 2.5.' };
+  return { value: Number(s) };
 }
 
 // Validation for the project editor. Returns { errors, warnings, value }.
@@ -306,9 +342,9 @@ export function validateFinanceDraft(
   (draft.activities || []).forEach((activity) => {
     const name = String(activity.name ?? '').trim(),
       inDays = activity.unit === 'days',
-      typed = parseMoney(activity.amount, {
-        label: inDays ? 'Days' : 'Costing',
-      }),
+      typed = inDays
+        ? parseDays(activity.amount)
+        : parseMoney(activity.amount, { label: 'Costing' }),
       unchangedDays =
         inDays &&
         activity.fromDollars != null &&
@@ -533,7 +569,7 @@ export function budgetStatus({
     return make(
       'near',
       'Approaching',
-      `${Math.round(pct * 100)}% of the budget is spent.`,
+      `${percentOf(pct)}% of the budget is spent.`,
     );
   if (flags.resourcingOver)
     return make(
@@ -541,7 +577,7 @@ export function budgetStatus({
       'Plan exceeds budget',
       `The resourcing plan would spend ${formatMoney(fromCents(forecastCents - budgetCents))} more than the budget. That is a planning issue, not your logging.`,
     );
-  return make('under', 'On track', `${Math.round(pct * 100)}% of the budget is spent.`);
+  return make('under', 'On track', `${percentOf(pct)}% of the budget is spent.`);
 }
 
 // Activities use the same scale against their costing: under / near / at / over.
@@ -1042,17 +1078,26 @@ export function activityTagCounts(project) {
   const counts = {};
   for (const weeks of Object.values(project?.activityTags || {}))
     for (const days of Object.values(weeks || {}))
-      for (const id of Object.values(days || {}))
-        counts[id] = (counts[id] || 0) + 1;
+      for (const tag of Object.values(days || {}))
+        // A split counts once for every activity it charges.
+        for (const id of isPlainObject(tag) ? Object.keys(tag) : [tag])
+          counts[id] = (counts[id] || 0) + 1;
   return counts;
 }
 
+// Percent of a budget used. Rounding never crosses a status line: 74.6%
+// reads 74% (still green), 99.6% reads 99% and 100.1% reads 101%.
+export const percentOf = (value) => {
+  const pct = value * 100;
+  if (Math.abs(pct - Math.round(pct)) < 1e-9) return Math.round(pct);
+  return pct < 100 ? Math.floor(pct) : Math.ceil(pct);
+};
 export const formatPercent = (value) =>
   value == null
     ? '—'
     : value === Infinity
       ? 'over'
-      : `${Math.round(value * 100)}%`;
+      : `${percentOf(value)}%`;
 
 // ---------- Manual split editor ----------
 const round2 = (n) => Math.round(n * 100) / 100;
@@ -1091,7 +1136,22 @@ export function commitSplitRows(rows, total) {
   for (const [index, row] of rows.entries()) {
     const text = String(row.hours ?? '').trim();
     if (!row.key && !text) continue;
-    const hours = text === '' ? 0 : Number(text);
+    // Plain decimals or H:MM only ("0x1" and "1e1" are not hours), and no
+    // more than two decimals so nothing is rounded without saying so.
+    if (text !== '' && !/^(\d+(\.\d{0,2})?|\.\d{1,2}|\d+:[0-5]\d)$/.test(text))
+      return {
+        error: /^\d*\.\d{3,}$/.test(text)
+          ? 'Use up to two decimals, like 1.25.'
+          : 'Enter hours as a number, like 1.5 or 1:30.',
+        row: index,
+      };
+    const [whole, mins] = text.split(':');
+    const hours =
+      text === ''
+        ? 0
+        : mins != null
+          ? round2(Number(whole) + Number(mins) / 60)
+          : Number(text);
     if (!Number.isFinite(hours) || hours < 0)
       return { error: 'Enter hours as a number, like 1.5.', row: index };
     if (!row.key) {

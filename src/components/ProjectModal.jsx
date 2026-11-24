@@ -12,7 +12,11 @@ import { isGeneralTask, phaseHours } from '../lib/tasks.js';
 import ScopePicker from './ScopePicker.jsx';
 import ModalBackdrop from './ModalBackdrop.jsx';
 import ProjectBudgetFields from './ProjectBudgetFields.jsx';
-import { financeDraftOf, validateFinanceDraft } from '../lib/budget.js';
+import {
+  BUDGET_FOCUS,
+  financeDraftOf,
+  validateFinanceDraft,
+} from '../lib/budget.js';
 
 // Chronograph project palette (matches the --proj-* tokens in the mockups).
 const PROJECT_COLOURS = [
@@ -233,10 +237,15 @@ export default function ProjectModal({
       setPendingTaskRemoval(null);
       setFinance(financeDraftOf(initial));
       setActiveSection('Identity');
-      const timer = setTimeout(
-        () => (phaseRef.current || nameRef.current)?.focus(),
-        50,
-      );
+      // "Edit budget" in Financials opens straight at the Budget section.
+      const timer = setTimeout(() => {
+        if (focusPhase === BUDGET_FOCUS) {
+          const section = document.getElementById('edit-budget');
+          setActiveSection('Budget');
+          section?.scrollIntoView({ block: 'start' });
+          section?.querySelector('input')?.focus({ preventScroll: true });
+        } else (phaseRef.current || nameRef.current)?.focus();
+      }, 50);
       return () => clearTimeout(timer);
     }
   }, [isOpen, initial, weekKey, focusPhase]);

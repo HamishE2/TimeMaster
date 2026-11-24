@@ -80,6 +80,7 @@ import {
   applyProjectFinance,
   hourlyRateOf,
   hoursPerDay,
+  BUDGET_FOCUS,
 } from './lib/budget.js';
 import { entryNote, setEntryNoteRecord } from './lib/entryNotes.js';
 
@@ -245,7 +246,7 @@ export default function App() {
         sessionUnreadable.current = true;
         setNotice({
           type: 'error',
-          text: 'The workspace saved in this browser could not be opened. Open your TimeMaster file from File, or import a backup copy.',
+          text: 'The workspace saved in this browser could not be opened, so it is being kept as it is. Open your TimeMaster file from File, or import a backup copy. Until then, changes here are not saved in this browser.',
         });
         setReady(true);
       });
@@ -760,6 +761,7 @@ export default function App() {
       setSavedFileSignature(signature);
       latestSignature.current = signature;
       saveBlocked.current = false;
+      sessionUnreadable.current = false;
       resetData(result.data);
       setFile(result.handle);
       setFileName(result.name);
@@ -948,7 +950,10 @@ export default function App() {
     if (!ready) return;
     const payload = backupPayload(data.projects, data.settings),
       signature = workspaceSignature(payload);
-    if (!(sessionUnreadable.current && data === empty))
+    // An unreadable browser copy is never overwritten by autosave, even
+    // after edits: a transient IndexedDB failure must not replace real work.
+    // Opening or importing a file lifts the guard.
+    if (!sessionUnreadable.current)
       saveSessionToIdb(
         file,
         week,
@@ -1217,7 +1222,7 @@ export default function App() {
             onOpenSettings={openSettings}
             onEditProject={(project) => {
               if (!project) return;
-              setFocusPhase(null);
+              setFocusPhase(BUDGET_FOCUS);
               setEdit(project);
               setPanel('project');
             }}
@@ -1368,6 +1373,9 @@ export default function App() {
                   }
                   onUndo={undo}
                   onCheckpoint={checkpoint}
+                  onRestoreTag={(projectId, taskId, wk, day, tag) =>
+                    tagEntryActivity({ projectId, taskId, week: wk, day }, tag)
+                  }
                   renderNoteExtras={(entry) => (
                     <ActivityPicker
                       {...entry}

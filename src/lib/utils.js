@@ -451,7 +451,12 @@ export function migrateBackup(raw) {
       tasks,
       taskEntries,
       taskRows,
-      ...(isRecord(p.notes) ? { notes: cleanNotes(p.notes) } : {}),
+      // A malformed notes value ("oops", an array) is dropped, not kept.
+      ...(isRecord(p.notes)
+        ? { notes: cleanNotes(p.notes) }
+        : 'notes' in p
+          ? { notes: undefined }
+          : {}),
       weeklyOverrides: cleanPlans(p.weeklyOverrides),
       monthlyOverrides: cleanPlans(p.monthlyOverrides),
       frontloads,

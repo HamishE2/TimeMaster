@@ -794,7 +794,7 @@
   padding: 0;
   list-style: none;
 }
-.fin-review li {
+.fin-review > li {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(150px, auto) minmax(220px, 300px);
   gap: 8px 14px;
@@ -1115,7 +1115,7 @@
   }
 }
 @media (max-width: 900px) {
-  .fin-review li {
+  .fin-review > li {
     grid-template-columns: minmax(0, 1fr) auto;
   }
   .fin-review-pick {

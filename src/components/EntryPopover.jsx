@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { DAY_NAMES, dayDate, fmt } from '../lib/utils.js';
-import { entryNote } from '../lib/entryNotes.js';
+import { entryActivityTag, entryNote } from '../lib/entryNotes.js';
 import { hoursIn } from '../lib/quickEntry.js';
 
 const WIDTH = 300;
@@ -21,6 +21,8 @@ export default function EntryPopover({
   onSetHours,
   onClose,
   onFinish,
+  onRestoreTag,
+  cancelRef,
   renderNoteExtras,
 }) {
   const { projectId, taskId, day } = target;
@@ -63,10 +65,20 @@ export default function EntryPopover({
           window.innerWidth - WIDTH - 8,
         );
       side.current = below ? 'below' : 'above';
+      // When neither side has room (a tall card near the bottom of a short
+      // window), keep the card on screen and let it scroll inside.
+      const room2 = window.innerHeight - top - 16,
+        maxHeight = h > room2 ? Math.max(160, room2) : null,
+        wanted = below ? r.bottom + 8 : r.top - h - 8,
+        clamped = Math.max(
+          top + 8,
+          Math.min(wanted, window.innerHeight - Math.min(h, room2) - 8),
+        );
       setPos({
         hidden,
         left,
-        top: below ? r.bottom + 8 : r.top - h - 8,
+        top: clamped,
+        maxHeight,
         below,
         arrow: Math.min(WIDTH - 18, Math.max(18, r.left + r.width / 2 - left)),
       });
@@ -116,9 +128,20 @@ export default function EntryPopover({
     return true;
   };
   const commitRef = useRef(commitNote);
+  // Esc cancels everything done in this card: the note draft is dropped and
+  // a costing picked here goes back to what it was when the card opened.
+  const openingTag = useRef(entryActivityTag(project, taskId, week, day));
+  const cancel = () => {
+    draftRef.current = lastSaved.current;
+    setDraft(lastSaved.current);
+    const now = entryActivityTag(project, taskId, week, day);
+    if (JSON.stringify(now) !== JSON.stringify(openingTag.current))
+      onRestoreTag?.(projectId, taskId, week, day, openingTag.current);
+  };
   useLayoutEffect(() => {
     draftRef.current = draft;
     commitRef.current = commitNote;
+    if (cancelRef) cancelRef.current = cancel;
   });
 
   // Leaving both the cell and the card saves the draft and closes.
@@ -165,8 +188,7 @@ export default function EntryPopover({
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
-      setDraft(saved);
-      draftRef.current = saved;
+      cancel();
       onFinish();
       return;
     }
@@ -199,6 +221,9 @@ export default function EntryPopover({
         left: pos?.left ?? -9999,
         top: pos?.top ?? -9999,
         width: WIDTH,
+        ...(pos?.maxHeight
+          ? { maxHeight: pos.maxHeight, overflowY: 'auto' }
+          : {}),
         '--arrow': `${pos?.arrow ?? WIDTH / 2}px`,
         '--pc': project.color || 'var(--muted)',
       }}

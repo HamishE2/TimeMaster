@@ -4,6 +4,7 @@ import {
   resolveEntryActivities,
 } from '../lib/activityMatch.js';
 import { entryActivityTag } from '../lib/entryNotes.js';
+import { isGeneralTask } from '../lib/tasks.js';
 import {
   commitSplitRows,
   normaliseActivities,
@@ -28,6 +29,9 @@ export default function ActivityPicker({
   onTag,
   compact = false,
   hint = true,
+  // A grouped review row tags several entries with different hours, so a
+  // split (typed against one entry's hours) is not offered there.
+  canSplit = true,
 }) {
   const id = useId(),
     [open, setOpen] = useState(false),
@@ -37,7 +41,8 @@ export default function ActivityPicker({
     chip = useRef(null);
   const activities = normaliseActivities(project?.activities);
   const stored =
-    taskId == null || taskId === 'general'
+    taskId == null ||
+    isGeneralTask(project?.tasks?.find((task) => task.id === taskId) || { id: taskId, name: '' })
       ? project?.entries?.[week]?.[day]
       : project?.taskEntries?.[taskId]?.[week]?.[day];
   const total = Number(hours ?? stored);
@@ -98,7 +103,7 @@ export default function ActivityPicker({
   ]
     .filter((option) => matches(option.label))
     .concat([
-      {
+      canSplit && {
         key: 'split',
         group: 'Actions',
         label: 'Split across activities…',
@@ -114,7 +119,8 @@ export default function ActivityPicker({
             },
           ]
         : []),
-    ]);
+    ])
+    .filter(Boolean);
   const current =
     typeof tag === 'string' ? tag : keys.length === 1 ? keys[0] : null;
   const close = (refocus = true) => {
