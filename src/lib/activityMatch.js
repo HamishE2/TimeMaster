@@ -248,13 +248,27 @@ function levenshtein(a, b, max) {
 }
 
 // 1 for an exact token, a little less for typos and abbreviations ("ref").
-// Prefix abbreviations are only trusted against an activity's own words;
-// synonym groups use the strict form so "run" never reads as "runbook".
+// `a` is the note's word and `b` the activity's. Prefix abbreviations only run
+// one way: a note may shorten an activity word ("ref" for "reference"), but an
+// activity word never matches a longer note word that merely starts with it
+// ("Comms" is not "committee", "Plan" is not "planet").
+// Synonym groups use the strict form so "run" never reads as "runbook".
+// "planning" → "plan", "tested" → "test", "mapping" → "map": -ing/-ed
+// forms share a root with the plain word, unlike "planet" or "committee".
+const inflectionRoot = (w) => {
+  const m = /^(.{3,}?)(?:ing|ed)$/.exec(w);
+  if (!m) return w;
+  const r = m[1];
+  return r.length >= 4 && r.at(-1) === r.at(-2) ? r.slice(0, -1) : r;
+};
+
 function tokenSimilarity(a, b, { prefix = true } = {}) {
   if (a === b) return 1;
+  if (a.length >= 3 && b.length >= 3 && inflectionRoot(a) === inflectionRoot(b))
+    return 0.9;
   const short = a.length <= b.length ? a : b,
     long = short === a ? b : a;
-  if (prefix && short.length >= 3 && long.length >= 6 && long.startsWith(short))
+  if (prefix && short === a && a.length >= 3 && b.length >= 6 && b.startsWith(a))
     return 0.85;
   if (short.length < 4) return 0;
   const allowed = long.length >= 8 ? 2 : 1;
@@ -265,7 +279,7 @@ const containsPhrase = (tokens, phrase, options) => {
   if (!phrase.length || phrase.length > tokens.length) return false;
   for (let i = 0; i + phrase.length <= tokens.length; i += 1)
     if (
-      phrase.every((p, j) => tokenSimilarity(p, tokens[i + j], options) >= 0.85)
+      phrase.every((p, j) => tokenSimilarity(tokens[i + j], p, options) >= 0.85)
     )
       return true;
   return false;
@@ -355,10 +369,14 @@ function weightsFor(keyList) {
   return weight;
 }
 
-const bestSimilarity = (token, pool) => {
+// `noteSide` says whether `token` is from the note (pool = activity words)
+// or from the activity (pool = note words), so prefixes run the right way.
+const bestSimilarity = (token, pool, noteSide = true) => {
   let best = 0;
   for (const other of pool) {
-    const sim = tokenSimilarity(token, other);
+    const sim = noteSide
+      ? tokenSimilarity(token, other)
+      : tokenSimilarity(other, token);
     if (sim > best) best = sim;
     if (best === 1) break;
   }
@@ -397,7 +415,7 @@ function scoreActivity(note, keys, weight) {
     for (const token of phrase) {
       const w = weight(token);
       total += w;
-      hit += w * bestSimilarity(token, sig);
+      hit += w * bestSimilarity(token, sig, false);
     }
     if (total) recall = Math.max(recall, hit / total);
   }
@@ -523,15 +541,49 @@ const NUMBER_WORDS = {
   dozen: 12,
 };
 
+// Hours named in a part: "2h QRGs", "30 min workshop", "1:30 build",
+// "1.5 hours". Null when the part names no duration.
+const DURATION =
+  /(?:^|[^\d.:])(\d{1,2}):([0-5]\d)(?![\d:])|(\d+(?:\.\d+)?)\s?(h|hr|hrs|hours?|m|mins?|minutes?)\b/gi;
+export function partHours(text) {
+  let total = 0,
+    found = false;
+  for (const m of String(text ?? '').matchAll(DURATION)) {
+    found = true;
+    total += m[1] != null
+      ? Number(m[1]) + Number(m[2]) / 60
+      : /^h/i.test(m[4])
+        ? Number(m[3])
+        : Number(m[3]) / 60;
+  }
+  return found && total > 0 ? Math.round(total * 100) / 100 : null;
+}
+
+// Numbers that count something other than the deliverable: "for 20 people",
+// "page 10", "QRG for 3 teams".
+const NOT_A_COUNT_BEFORE =
+  /\b(?:for|with|of|page|p|to|from|about|around|over|under|at|on|by|per|version|v|round|week|day|step|phase|level|sprint)\s*$/;
+const NOT_A_COUNT_AFTER =
+  /^\s*(?:people|persons?|teams?|staff|attendees|participants|users|learners|pages?|slides?|mins?|minutes?|hrs?|hours?|h|m|am|pm|days?|weeks?|months?|years?|%|percent)\b/;
+
 // Quantity named in a part: "3 QRGs", "x2 sessions", "QRG x3", "two guides".
+// Durations are hours, not quantities.
 export function partQuantity(text) {
-  const t = String(text ?? '').toLowerCase();
+  const t = String(text ?? '')
+    .toLowerCase()
+    .replace(DURATION, ' ');
   const explicit =
     t.match(/(?:^|\s)[x×]\s?(\d{1,3})\b/) ||
-    t.match(/\b(\d{1,3})\s?[x×](?:\s|$)/) ||
-    t.match(/^\s*(\d{1,3})(?:\s|$)/) ||
-    t.match(/\b(\d{1,3})\s+(?=[a-z])/);
+    t.match(/\b(\d{1,3})\s?[x×](?:\s|$)/);
   if (explicit) return Math.max(1, Math.min(999, Number(explicit[1])));
+  for (const m of t.matchAll(/\b(\d{1,3})(?=\s+[a-z])/g)) {
+    const before = t.slice(0, m.index),
+      after = t.slice(m.index + m[0].length);
+    if (/\d[.:]$/.test(before) || /^[.:]\d/.test(after)) continue;
+    if (NOT_A_COUNT_BEFORE.test(before) || NOT_A_COUNT_AFTER.test(after))
+      continue;
+    return Math.max(1, Math.min(999, Number(m[1])));
+  }
   const word = t.match(
     /\b(a|an|one|single|two|couple|pair|three|four|five|six|seven|eight|nine|ten|dozen)\b/,
   );
@@ -553,6 +605,7 @@ export function matchActivities(note, activities) {
         {
           text: pieces[0],
           quantity: partQuantity(pieces[0]),
+          hours: partHours(pieces[0]),
           activityId: whole.activityId,
           status: whole.status,
           candidates: whole.candidates,
@@ -564,6 +617,7 @@ export function matchActivities(note, activities) {
     return {
       text,
       quantity: partQuantity(text),
+      hours: partHours(text),
       activityId: result.activityId,
       status: result.status,
       candidates: result.candidates,
@@ -581,6 +635,10 @@ export function matchActivities(note, activities) {
         explicit(same) && explicit(part)
           ? same.quantity + part.quantity
           : Math.max(same.quantity, part.quantity);
+      same.hours =
+        same.hours != null || part.hours != null
+          ? (same.hours || 0) + (part.hours || 0)
+          : null;
       same.text = `${same.text} and ${part.text}`;
     } else merged.push({ ...part });
   }
@@ -599,6 +657,7 @@ export function matchActivities(note, activities) {
         {
           text: String(note).trim(),
           quantity: partQuantity(note),
+          hours: null,
           activityId: whole.activityId,
           status: 'match',
           candidates: whole.candidates,
@@ -620,45 +679,76 @@ export function matchActivities(note, activities) {
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
-// Splits `hours` across the parts by quantity. Parts still waiting for an
-// answer go to NOT_COSTED until the person picks an activity. Shares are in
-// quarter hours where the entry allows it and always sum to `hours`.
+// Shares `total` hours by weight in whole units of `unit` hours, using the
+// largest remainder so the shares always add up exactly. Null if a share
+// would be empty.
+function allocate(total, weights, unit) {
+  const units = Math.round(total / unit),
+    sum = [...weights.values()].reduce((a, b) => a + b, 0);
+  if (!sum || Math.abs(units * unit - total) > 1e-9) return null;
+  const rows = [...weights].map(([key, weight], order) => {
+    const exact = (units * weight) / sum;
+    return { key, order, whole: Math.floor(exact), frac: exact - Math.floor(exact) };
+  });
+  let left = units - rows.reduce((n, r) => n + r.whole, 0);
+  [...rows]
+    .sort((a, b) => b.frac - a.frac || a.order - b.order)
+    .forEach((row) => {
+      if (left > 0) {
+        row.whole += 1;
+        left -= 1;
+      }
+    });
+  if (rows.some((r) => r.whole <= 0)) return null;
+  return Object.fromEntries(rows.map((r) => [r.key, round2(r.whole * unit)]));
+}
+
+// Splits `hours` across the parts. Hours named in a part ("2h QRGs") are
+// used as given; the rest is shared by quantity ("3 QRGs and a user guide").
+// Parts still waiting for an answer go to NOT_COSTED until the person picks
+// an activity. Shares are in quarter hours where every activity can still
+// get one, otherwise in hundredths, and always sum to `hours`.
 export function suggestSplit(hours, parts) {
   const total = Number(hours);
   if (!Number.isFinite(total) || total <= 0) return {};
-  const weights = new Map();
-  for (const part of Array.isArray(parts) ? parts : []) {
-    const key = part.activityId || NOT_COSTED;
-    weights.set(key, (weights.get(key) || 0) + Math.max(1, part.quantity || 1));
+  const list = Array.isArray(parts) ? parts : [];
+  const weights = new Map(),
+    named = new Map();
+  for (const part of list) {
+    const key = part.activityId || NOT_COSTED,
+      h = Number(part.hours);
+    if (Number.isFinite(h) && h > 0) named.set(key, (named.get(key) || 0) + h);
+    else
+      weights.set(
+        key,
+        (weights.get(key) || 0) + Math.max(1, Number(part.quantity) || 1),
+      );
   }
-  if (!weights.size) return { [NOT_COSTED]: round2(total) };
+  if (!weights.size && !named.size) return { [NOT_COSTED]: round2(total) };
+  // Named hours are exact; quantities share what they leave. If the named
+  // hours fill (or overrun) the entry, they are scaled to it.
+  const namedSum = [...named.values()].reduce((a, b) => a + b, 0);
+  const exact = new Map();
+  if (namedSum && (namedSum >= total - 0.005 || !weights.size)) {
+    for (const [key, h] of named) exact.set(key, (total * h) / namedSum);
+  } else {
+    for (const [key, h] of named) exact.set(key, h);
+    const rest = total - namedSum,
+      sum = [...weights.values()].reduce((a, b) => a + b, 0);
+    for (const [key, w] of weights)
+      exact.set(key, (exact.get(key) || 0) + (rest * w) / sum);
+  }
+  for (const [key, h] of exact) if (h <= 0) exact.delete(key);
   // Too small to divide (0.01h across three activities): the main one gets it.
-  if (total < 0.01 * weights.size) {
-    const [top] = [...weights].sort((a, b) => b[1] - a[1])[0];
+  if (total < 0.01 * exact.size) {
+    const [top] = [...exact].sort((a, b) => b[1] - a[1])[0];
     return { [top]: round2(total) };
   }
-  const sum = [...weights.values()].reduce((a, b) => a + b, 0);
-  const step = total >= 0.25 * weights.size ? 0.25 : 0.01;
-  const split = {};
-  let given = 0;
-  for (const [key, weight] of weights) {
-    const share = Math.max(
-      step,
-      Math.round((total * weight) / sum / step) * step,
-    );
-    split[key] = round2(share);
-    given += split[key];
-  }
-  // Put any rounding remainder on the largest share.
-  const remainder = round2(total - given);
-  if (remainder) {
-    const largest = Object.keys(split).reduce((a, b) =>
-      split[a] >= split[b] ? a : b,
-    );
-    split[largest] = round2(split[largest] + remainder);
-    if (split[largest] <= 0) delete split[largest];
-  }
-  return split;
+  return (
+    allocate(total, exact, 0.25) ||
+    allocate(total, exact, 0.01) ||
+    { [[...exact].sort((a, b) => b[1] - a[1])[0][0]]: round2(total) }
+  );
 }
 
 // Cleans a stored split against the current activities and entry hours:

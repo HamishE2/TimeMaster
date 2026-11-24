@@ -568,7 +568,7 @@ function plannedWeekHours(project, week, leaveWeeks) {
 // Resourced plan still ahead, from the reference week to the project's end
 // (or a rolling horizon for open-ended projects). Frontloaded hours move
 // allowance between weeks, so using each week's net allowance never counts
-// them twice; this week only counts what is left after logged time.
+// them twice; each week only counts what is left after its logged time.
 export function resourcingForecast(project, week, leaveWeeks = {}) {
   const closed = project.archived || project.status === 'closed';
   const end =
@@ -588,13 +588,12 @@ export function resourcingForecast(project, week, leaveWeeks = {}) {
       const planned = plannedWeekHours(project, key, leaveWeeks);
       if (planned != null) {
         result.planKnown = true;
-        const left =
-          key === week
-            ? Math.max(
-                0,
-                planned - projectMetrics(project, key, leaveWeeks).logged,
-              )
-            : planned;
+        // Logged time is already in the spend, so every week (this one and
+        // any filled in ahead of time) only adds what its plan has left.
+        const left = Math.max(
+          0,
+          planned - projectMetrics(project, key, leaveWeeks).logged,
+        );
         if (key === week) result.thisWeekHours = planned;
         result.hours += left;
         result.weeks += 1;
