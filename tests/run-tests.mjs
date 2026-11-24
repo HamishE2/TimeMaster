@@ -251,3 +251,12 @@ test('undoing a manual split restores the earlier costing',()=>{const before=gp(
 const B=await import('../src/lib/budget.js');
 test('switching a costing to days and saving it unchanged keeps the exact dollars',()=>{const r=B.validateFinanceDraft({budget:'',phaseBudgets:{},activities:[{id:'a',name:'QRGs',amount:'2.84',unit:'days',fromDollars:'4000',daysText:'2.84'}]},[],{settingsRate:185,perDay:7.6});assert.equal(r.value.activities[0].amount,4000);assert.equal('fromDollars' in r.value.activities[0],false);const edited=B.validateFinanceDraft({budget:'',phaseBudgets:{},activities:[{id:'a',name:'QRGs',amount:'3',unit:'days',fromDollars:'4000',daysText:'2.84'}]},[],{settingsRate:185,perDay:7.6});assert.equal(edited.value.activities[0].amount,4218)});
 }
+{
+const {dailyFlexStatus}=await import('../src/lib/timesheet.js');
+const D=[0,1,2,3,4],C=[7.6,7.6,7.6,7.6,7.6,0,0];
+const flagged=(logged,leave)=>Object.fromEntries(Object.entries(dailyFlexStatus(D,logged,C,leave)).filter(([,v])=>v.over||v.flex).map(([d,v])=>[d,v.over?v.overBy:'flex']));
+test('a long day that makes up for a shorter day is flex, not over',()=>{assert.deepEqual(flagged([6,9.2]),{1:'flex'});assert.deepEqual(flagged([6,7.6,7.6,7.6,9.2]),{4:'flex'});assert.deepEqual(flagged([6.8,6.8,9.2]),{2:'flex'})});
+test('a long day balanced by a later shorter day is flex once the short day is logged',()=>{assert.deepEqual(flagged([9.2]),{0:1.6});assert.deepEqual(flagged([9.2,6]),{0:'flex'})});
+test('only the surplus beyond the week so far is flagged over',()=>{assert.deepEqual(flagged([6,10]),{1:0.8});assert.deepEqual(flagged([8,7.6]),{0:0.4});assert.deepEqual(flagged([10,5.2,9]),{0:'flex',2:1.4});assert.deepEqual(flagged([7.6,7.6,7.6,7.6,7.6]),{})});
+test('leave days are not short days that bank flex',()=>{assert.deepEqual(flagged([0,9.2],[0]),{1:1.6})});
+}

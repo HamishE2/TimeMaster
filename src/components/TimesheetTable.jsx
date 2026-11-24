@@ -30,6 +30,7 @@ import QuickEntryBar from './QuickEntryBar.jsx';
 import TickNumber from './TickNumber.jsx';
 import WeekCelebration from './WeekCelebration.jsx';
 import { weekIsComplete } from '../lib/weekGoal.js';
+import { dailyFlexStatus } from '../lib/timesheet.js';
 
 // Put the caret after any existing note text so typing appends to it.
 const focusEnd = (field) => {
@@ -79,6 +80,13 @@ export default function TimesheetTable({
     // the week's resourced plan spread across the days.
     dailyTarget = (day) =>
       leave.includes(day) ? 0 : Math.max(0, Number(capacityByDay?.[day]) || 0),
+    // Long days that make up for shorter ones in the same week are not over.
+    flexByDay = dailyFlexStatus(
+      days,
+      Object.fromEntries(days.map((day) => [day, dayTotal(day)])),
+      capacityByDay,
+      leave,
+    ),
     over = totals.remaining < -EPSILON,
     groups = categoriseProjects(projects, category, week, leaveWeeks),
     columnCount = days.length + 5;
@@ -630,15 +638,27 @@ export default function TimesheetTable({
               const value = dayTotal(day),
                 target = dailyTarget(day),
                 pct = target ? Math.round((value / target) * 100) : 0,
-                isOver = target > 0 && value > target + EPSILON;
+                { over: isOver, flex, overBy } = flexByDay[day] || {};
               return (
-                <td key={day} className={isOver ? 'over' : ''}>
+                <td
+                  key={day}
+                  className={isOver ? 'over' : flex ? 'flex-day' : ''}
+                  title={
+                    isOver
+                      ? `${fmt(overBy)}h more than this week's working hours so far`
+                      : flex
+                        ? `Longer than ${fmt(target)}h, balanced by shorter days this week`
+                        : undefined
+                  }
+                >
                   {fmt(value)}h
                   <small>
                     {leave.includes(day)
                       ? 'Leave'
                       : target
-                        ? `${pct}% of ${fmt(target)}h`
+                        ? flex
+                          ? `${pct}% · flex`
+                          : `${pct}% of ${fmt(target)}h`
                         : '—'}
                   </small>
                 </td>

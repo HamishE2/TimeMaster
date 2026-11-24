@@ -44,6 +44,45 @@ describe('capacity', () => {
   });
 });
 
+describe('weekly flex in the timesheet footer', () => {
+  const renderWeek = async (entries) => {
+    loadSessionFromIdb.mockResolvedValue({
+      weekKey: W1,
+      data: {
+        schemaVersion: 3,
+        projects: [
+          {
+            id: 'a',
+            name: 'A',
+            resourcedHours: null,
+            isBillable: true,
+            entries: { [W1]: entries },
+          },
+        ],
+        settings: settings(),
+      },
+    });
+    const { container } = render(<App />);
+    await screen.findByTitle('Open file controls');
+    return [...container.querySelectorAll('tfoot td')].slice(0, 5);
+  };
+
+  it('does not flag a 9.2h day that makes up for a 6h day', async () => {
+    // Mon 6 + Tue 9.2 = 15.2 = 2 × 7.6
+    const cells = await renderWeek({ 0: 6, 1: 9.2 });
+    expect(cells.filter((c) => c.classList.contains('over'))).toHaveLength(0);
+    expect(cells[1].classList.contains('flex-day')).toBe(true);
+    expect(cells[1].textContent).toContain('121% · flex'); // 9.2 / 7.6
+  });
+
+  it('still flags a long day that is not made up', async () => {
+    // Mon 7.6 + Tue 9.2: 1.6h more than two 7.6h days
+    const cells = await renderWeek({ 0: 7.6, 1: 9.2 });
+    expect(cells[1].classList.contains('over')).toBe(true);
+    expect(cells[1].title).toContain('1.6h more');
+  });
+});
+
 describe('a 7.6h day and a 38h week', () => {
   // 7.6 split as 2.3 + 5.3 and 0.1 + 0.2 + 7.3 carries float noise.
   const projects = [
@@ -95,9 +134,9 @@ describe('a 7.6h day and a 38h week', () => {
     expect(footer.textContent).toContain('0h free');
     // Every day reads 7.6h against a 7.6h target.
     expect(footer.textContent.match(/100% of 7\.6h/g)).toHaveLength(5);
-    expect(screen.getByRole('button', { name: 'Fill remaining' }).disabled).toBe(
-      true,
-    );
+    expect(
+      screen.getByRole('button', { name: 'Fill remaining' }).disabled,
+    ).toBe(true);
   });
 
   it('counts a project logged to exactly its plan as at, not over', () => {
@@ -113,7 +152,11 @@ describe('a 7.6h day and a 38h week', () => {
 describe('billable share and the weekly goal', () => {
   it('is 80% when 30.4h of 38h are billable, which completes the week', () => {
     const projects = [
-      { id: 'a', isBillable: true, entries: { [W1]: { 0: 7.6, 1: 7.6, 2: 7.6, 3: 7.6 } } },
+      {
+        id: 'a',
+        isBillable: true,
+        entries: { [W1]: { 0: 7.6, 1: 7.6, 2: 7.6, 3: 7.6 } },
+      },
       { id: 'b', isBillable: false, entries: { [W1]: { 4: 7.6 } } },
     ];
     const totals = timesheetTotals(projects, W1, settings(), []);
@@ -140,9 +183,13 @@ describe('allowance, remaining and frontloading', () => {
       entries: { [W1]: { 0: 8, 1: 8, 2: 6 } },
     };
     let m = projectMetrics(project, W1);
-    expect([m.plan, m.weeklyAllowance, m.logged, m.remaining, m.status]).toEqual(
-      [20, 20, 22, -2, 'over'],
-    );
+    expect([
+      m.plan,
+      m.weeklyAllowance,
+      m.logged,
+      m.remaining,
+      m.status,
+    ]).toEqual([20, 20, 22, -2, 'over']);
     project.frontloads = { [W1]: 2 };
     m = projectMetrics(project, W1);
     expect([m.weeklyAllowance, m.remaining, m.status]).toEqual([22, 0, 'at']);

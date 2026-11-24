@@ -550,3 +550,8 @@
     opacity: 0;
   }
 }
+
+/* A long day balanced by shorter days in the same week: informative, not a warning. */
+.table-scroll tfoot td.flex-day small {
+  color: var(--healthy);
+}
