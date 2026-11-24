@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   NOT_COSTED,
+  matchActivities,
+  normaliseSplit,
+  partQuantity,
+  resolveEntryActivities,
+  suggestSplit,
   matchActivity,
   normalise,
   resolveEntryActivity,
@@ -172,5 +177,120 @@ describe('matching against a real-world activity catalogue', () => {
   it('asks when a note fits several catalogue activities', () => {
     expect(matchActivity('training', catalogue).status).toBe('ambiguous');
     expect(matchActivity('deliverables', catalogue).status).toBe('vague');
+  });
+});
+
+describe('entries covering several activities', () => {
+  const list = [
+    { id: 'qrg', name: 'Copilot Quick Reference Guide' },
+    { id: 'ug', name: 'Copilot User Guide' },
+    { id: 'fg', name: 'Training Facilitator and Demo Notes' },
+    { id: 'cia', name: 'Change Impact and Readiness Assessment' },
+    { id: 'sm', name: 'Stakeholder mapping' },
+  ];
+  const split = (note, hours, tag = null) =>
+    resolveEntryActivities(note, list, tag, hours);
+  const sum = (s) =>
+    Math.round(Object.values(s).reduce((a, b) => a + b, 0) * 100) / 100;
+
+  it.each([
+    ['3 QRGs', 3],
+    ['QRG x2', 2],
+    ['x4 sessions', 4],
+    ['two user guides', 2],
+    ['a user guide', 1],
+    ['user guide', 1],
+  ])('reads the quantity in %s', (text, quantity) => {
+    expect(partQuantity(text)).toBe(quantity);
+  });
+
+  it('splits hours across activities by quantity', () => {
+    const result = split('3 QRGs and a user guide', 5);
+    expect(result.status).toBe('match');
+    expect(result.source).toBe('auto');
+    expect(result.split).toEqual({ qrg: 3.75, ug: 1.25 });
+  });
+
+  it('accepts commas, ampersands and plus signs', () => {
+    expect(split('QRGs x3, user guide', 5).split).toEqual({
+      qrg: 3.75,
+      ug: 1.25,
+    });
+    expect(split('CIA interviews & stakeholder mapping', 4).split).toEqual({
+      cia: 2,
+      sm: 2,
+    });
+    expect(sum(split('two user guides + 2 QRGs', 0.3).split)).toBe(0.3);
+  });
+
+  it('keeps activity names that contain "and" whole', () => {
+    expect(split('facilitator and demo notes', 2).split).toEqual({ fg: 2 });
+    expect(split('change impact and readiness assessment', 3).split).toEqual({
+      cia: 3,
+    });
+  });
+
+  it('ignores context-only parts but leaves vague parts uncosted', () => {
+    expect(split('QRGs for finance and HR', 2).split).toEqual({ qrg: 2 });
+    const partial = split('2 QRGs and admin', 3);
+    expect(partial.status).toBe('partial');
+    expect(partial.split).toEqual({ qrg: 2, [NOT_COSTED]: 1 });
+  });
+
+  it('always sums to the entry hours', () => {
+    for (const hours of [0.01, 0.1, 0.25, 1, 1.3, 2.6, 7.6, 24])
+      for (const note of ['3 QRGs and a user guide', 'qrg, user guide, CIA'])
+        expect(sum(split(note, hours).split)).toBe(hours);
+  });
+
+  it('honours explicit tags and stored splits', () => {
+    expect(split('QRGs', 2, 'ug').split).toEqual({ ug: 2 });
+    expect(split('QRGs', 2, NOT_COSTED).split).toEqual({ [NOT_COSTED]: 2 });
+    expect(split('anything', 5, { qrg: 3, ug: 2 })).toMatchObject({
+      split: { qrg: 3, ug: 2 },
+      source: 'tag',
+    });
+  });
+
+  it('rescales a stored split when the hours change and moves deleted activities to uncosted', () => {
+    expect(normaliseSplit({ qrg: 3, ug: 2 }, 6, list)).toEqual({
+      qrg: 3.6,
+      ug: 2.4,
+    });
+    expect(normaliseSplit({ qrg: 1, ug: 1, sm: 1 }, 1, list)).toEqual({
+      qrg: 0.34,
+      ug: 0.33,
+      sm: 0.33,
+    });
+    expect(normaliseSplit({ qrg: 3, gone: 2 }, 5, list)).toEqual({
+      qrg: 3,
+      [NOT_COSTED]: 2,
+    });
+    expect(normaliseSplit({ qrg: 'x', ug: -1 }, 5, list)).toBeNull();
+    expect(normaliseSplit({ qrg: 3 }, 0, list)).toBeNull();
+    // An unusable stored split falls back to matching the note.
+    expect(split('user guide', 2, { qrg: 'x' })).toMatchObject({
+      split: { ug: 2 },
+      source: 'auto',
+    });
+  });
+
+  it('handles empty, zero and invalid hours', () => {
+    expect(split('QRGs', 0).split).toEqual({});
+    expect(split('QRGs', 'abc').split).toEqual({});
+    expect(split('', 2)).toMatchObject({ split: {}, status: 'none' });
+    expect(split('deliverables', 2)).toMatchObject({
+      split: {},
+      status: 'vague',
+    });
+    expect(suggestSplit(2, [])).toEqual({ [NOT_COSTED]: 2 });
+  });
+
+  it('describes each part for the split editor', () => {
+    const { parts } = matchActivities('3 QRGs and a user guide', list);
+    expect(parts.map((p) => [p.activityId, p.quantity])).toEqual([
+      ['qrg', 3],
+      ['ug', 1],
+    ]);
   });
 });

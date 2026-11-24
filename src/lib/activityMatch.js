@@ -493,3 +493,233 @@ export function resolveEntryActivity(note, activities, taggedId) {
     status: result.status,
   };
 }
+
+// ---- Several activities in one entry ----------------------------------
+// "3 QRGs and a user guide" covers two costed activities. The note is cut
+// into parts, each part is matched on its own and carries a quantity, and
+// the entry's hours are split between the activities by quantity.
+
+const SEPARATORS =
+  /\s*(?:[,;\n+&/]|\band\b|\bplus\b|\bthen\b|\bas well as\b)\s*/i;
+const NUMBER_WORDS = {
+  a: 1,
+  an: 1,
+  one: 1,
+  single: 1,
+  two: 2,
+  couple: 2,
+  pair: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+  dozen: 12,
+};
+
+// Quantity named in a part: "3 QRGs", "x2 sessions", "QRG x3", "two guides".
+export function partQuantity(text) {
+  const t = String(text ?? '').toLowerCase();
+  const explicit =
+    t.match(/(?:^|\s)[x×]\s?(\d{1,3})\b/) ||
+    t.match(/\b(\d{1,3})\s?[x×](?:\s|$)/) ||
+    t.match(/^\s*(\d{1,3})(?:\s|$)/) ||
+    t.match(/\b(\d{1,3})\s+(?=[a-z])/);
+  if (explicit) return Math.max(1, Math.min(999, Number(explicit[1])));
+  const word = t.match(
+    /\b(a|an|one|single|two|couple|pair|three|four|five|six|seven|eight|nine|ten|dozen)\b/,
+  );
+  return word ? NUMBER_WORDS[word[1]] : 1;
+}
+
+export function matchActivities(note, activities) {
+  const list = Array.isArray(activities) ? activities : [];
+  const pieces = String(note ?? '')
+    .split(SEPARATORS)
+    .map((piece) => piece.trim())
+    .filter((piece) => normalise(piece));
+  if (!pieces.length) return { status: 'none', parts: [] };
+  const whole = matchActivity(note, list);
+  if (pieces.length === 1)
+    return {
+      status: whole.status,
+      parts: [
+        {
+          text: pieces[0],
+          quantity: partQuantity(pieces[0]),
+          activityId: whole.activityId,
+          status: whole.status,
+          candidates: whole.candidates,
+        },
+      ],
+    };
+  let parts = pieces.map((text) => {
+    const result = matchActivity(text, list);
+    return {
+      text,
+      quantity: partQuantity(text),
+      activityId: result.activityId,
+      status: result.status,
+      candidates: result.candidates,
+    };
+  });
+  // Parts naming the same activity ("facilitator and demo notes") are one.
+  const merged = [];
+  for (const part of parts) {
+    const same =
+      part.activityId &&
+      merged.find((other) => other.activityId === part.activityId);
+    if (same) {
+      const explicit = (p) => /\d|\b[x×]/i.test(p.text);
+      same.quantity =
+        explicit(same) && explicit(part)
+          ? same.quantity + part.quantity
+          : Math.max(same.quantity, part.quantity);
+      same.text = `${same.text} and ${part.text}`;
+    } else merged.push({ ...part });
+  }
+  parts = merged;
+  const matched = parts.filter((p) => p.activityId);
+  // "QRGs for HR": a part that matches nothing is context, not an activity.
+  if (matched.length) parts = parts.filter((p) => p.status !== 'none');
+  // The whole note may still name one activity better than its pieces do.
+  if (
+    whole.status === 'match' &&
+    (matched.length === 0 || (matched.length === 1 && parts.length === 1))
+  )
+    return {
+      status: 'match',
+      parts: [
+        {
+          text: String(note).trim(),
+          quantity: partQuantity(note),
+          activityId: whole.activityId,
+          status: 'match',
+          candidates: whole.candidates,
+        },
+      ],
+    };
+  const status =
+    matched.length && matched.length === parts.length
+      ? 'match'
+      : matched.length
+        ? 'partial'
+        : parts.some((p) => p.status === 'ambiguous')
+          ? 'ambiguous'
+          : parts.some((p) => p.status === 'vague')
+            ? 'vague'
+            : 'none';
+  return { status, parts };
+}
+
+const round2 = (n) => Math.round(n * 100) / 100;
+
+// Splits `hours` across the parts by quantity. Parts still waiting for an
+// answer go to NOT_COSTED until the person picks an activity. Shares are in
+// quarter hours where the entry allows it and always sum to `hours`.
+export function suggestSplit(hours, parts) {
+  const total = Number(hours);
+  if (!Number.isFinite(total) || total <= 0) return {};
+  const weights = new Map();
+  for (const part of Array.isArray(parts) ? parts : []) {
+    const key = part.activityId || NOT_COSTED;
+    weights.set(key, (weights.get(key) || 0) + Math.max(1, part.quantity || 1));
+  }
+  if (!weights.size) return { [NOT_COSTED]: round2(total) };
+  // Too small to divide (0.01h across three activities): the main one gets it.
+  if (total < 0.01 * weights.size) {
+    const [top] = [...weights].sort((a, b) => b[1] - a[1])[0];
+    return { [top]: round2(total) };
+  }
+  const sum = [...weights.values()].reduce((a, b) => a + b, 0);
+  const step = total >= 0.25 * weights.size ? 0.25 : 0.01;
+  const split = {};
+  let given = 0;
+  for (const [key, weight] of weights) {
+    const share = Math.max(
+      step,
+      Math.round((total * weight) / sum / step) * step,
+    );
+    split[key] = round2(share);
+    given += split[key];
+  }
+  // Put any rounding remainder on the largest share.
+  const remainder = round2(total - given);
+  if (remainder) {
+    const largest = Object.keys(split).reduce((a, b) =>
+      split[a] >= split[b] ? a : b,
+    );
+    split[largest] = round2(split[largest] + remainder);
+    if (split[largest] <= 0) delete split[largest];
+  }
+  return split;
+}
+
+// Cleans a stored split against the current activities and entry hours:
+// unknown activities become NOT_COSTED, invalid shares are dropped, and a
+// total that no longer matches the entry (the hours were edited) is scaled.
+export function normaliseSplit(split, hours, activities) {
+  const total = Number(hours);
+  if (!split || typeof split !== 'object' || Array.isArray(split)) return null;
+  if (!Number.isFinite(total) || total <= 0) return null;
+  const ids = new Set(
+    (Array.isArray(activities) ? activities : []).map((a) => a?.id),
+  );
+  const clean = {};
+  for (const [key, value] of Object.entries(split)) {
+    const share = Number(value);
+    if (!Number.isFinite(share) || share <= 0) continue;
+    const id = key === NOT_COSTED || ids.has(key) ? key : NOT_COSTED;
+    clean[id] = round2((clean[id] || 0) + share);
+  }
+  const keys = Object.keys(clean);
+  if (!keys.length) return null;
+  const sum = keys.reduce((n, k) => n + clean[k], 0);
+  if (Math.abs(sum - total) <= 0.01) return clean;
+  const scaled = {};
+  let given = 0;
+  for (const key of keys) {
+    scaled[key] = round2((clean[key] * total) / sum);
+    given += scaled[key];
+  }
+  const largest = keys.reduce((a, b) => (scaled[a] >= scaled[b] ? a : b));
+  scaled[largest] = round2(scaled[largest] + total - given);
+  return scaled;
+}
+
+// One call for budgets and the UI: the entry's hours by activity.
+// `tag` is an activity ID, NOT_COSTED, or a stored split; explicit tags win.
+export function resolveEntryActivities(note, activities, tag, hours) {
+  const list = Array.isArray(activities) ? activities : [];
+  const total = Number(hours);
+  const none = { split: {}, source: null, status: 'none', parts: [] };
+  if (!Number.isFinite(total) || total <= 0) return none;
+  if (tag === NOT_COSTED)
+    return {
+      split: { [NOT_COSTED]: round2(total) },
+      source: 'tag',
+      status: 'none',
+      parts: [],
+    };
+  if (typeof tag === 'string' && list.some((a) => a?.id === tag))
+    return {
+      split: { [tag]: round2(total) },
+      source: 'tag',
+      status: 'match',
+      parts: [],
+    };
+  const stored = normaliseSplit(tag, total, list);
+  if (stored)
+    return { split: stored, source: 'tag', status: 'match', parts: [] };
+  const result = matchActivities(note, list);
+  const resolved = result.parts.some((p) => p.activityId);
+  return {
+    split: resolved ? suggestSplit(total, result.parts) : {},
+    source: resolved ? 'auto' : null,
+    status: result.status,
+    parts: result.parts,
+  };
+}
