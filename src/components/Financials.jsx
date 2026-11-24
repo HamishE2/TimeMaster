@@ -306,7 +306,6 @@ export default function Financials({
             </span>
             <div>
               <h3>Set your hourly rate to see costs</h3>
-              <p>Costs show once a rate is set.</p>
             </div>
             <button
               type="button"
