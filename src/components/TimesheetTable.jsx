@@ -58,9 +58,6 @@ export default function TimesheetTable({
               taskHoursForDay(project, week, day)),
         0,
       ),
-    dailyTarget =
-      totals.planned /
-      Math.max(1, days.filter((day) => !leave.includes(day)).length),
     over = totals.remaining < -EPSILON,
     groups = categoriseProjects(projects, category, week, leaveWeeks),
     columnCount = days.length + 5;
@@ -510,15 +507,16 @@ export default function TimesheetTable({
             </th>
             {days.map((day) => {
               const value = dayTotal(day),
-                pct = dailyTarget ? Math.round((value / dailyTarget) * 100) : 0;
+                cap = Number(capacityByDay?.[day] || 0),
+                pct = cap ? Math.round((value / cap) * 100) : 0;
               return (
-                <td key={day} className={pct > 100 ? 'over' : ''}>
+                <td key={day} className={value > cap + EPSILON ? 'over' : ''}>
                   {fmt(value)}h
                   <small>
                     {leave.includes(day)
                       ? 'Leave'
-                      : dailyTarget
-                        ? `${pct}% plan`
+                      : cap
+                        ? `${pct}% of day`
                         : '—'}
                   </small>
                 </td>
