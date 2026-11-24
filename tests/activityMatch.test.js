@@ -294,3 +294,32 @@ describe('entries covering several activities', () => {
     ]);
   });
 });
+
+describe('manual costing picks', () => {
+  const list = [
+    { id: 'collateral', name: 'Collateral development' },
+    { id: 'qrg', name: 'Quick reference guides' },
+  ];
+  it('lets a vague or unmatched note be charged to a chosen activity', () => {
+    for (const note of ['meeting', 'int call', 'sync', ''])
+      expect(
+        resolveEntryActivities(note, list, 'collateral', 0.5),
+      ).toMatchObject({
+        split: { collateral: 0.5 },
+        source: 'tag',
+      });
+  });
+  it('a manual pick beats a confident match', () => {
+    expect(resolveEntryActivities('QRGs', list, 'collateral', 1).split).toEqual(
+      {
+        collateral: 1,
+      },
+    );
+  });
+  it('without a pick, unmatched time is costed to the General bucket', () => {
+    expect(resolveEntryActivities('int call', list, null, 0.5)).toMatchObject({
+      split: { [NOT_COSTED]: 0.5 },
+      source: 'default',
+    });
+  });
+});

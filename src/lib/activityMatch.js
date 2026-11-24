@@ -477,6 +477,9 @@ export function matchActivity(
 
 // Tag value meaning "this entry is not a costed activity".
 export const NOT_COSTED = 'none';
+// The same bucket seen from the project: time that isn't charged to a
+// costed activity is costed against the project's General bucket.
+export const GENERAL_BUCKET = NOT_COSTED;
 
 // An explicit tag that still points at an activity always wins, and the
 // NOT_COSTED tag stops auto-matching for that entry.
@@ -690,8 +693,10 @@ export function normaliseSplit(split, hours, activities) {
   return scaled;
 }
 
-// One call for budgets and the UI: the entry's hours by activity.
-// `tag` is an activity ID, NOT_COSTED, or a stored split; explicit tags win.
+// One call for budgets and the UI: the entry's hours by activity, always
+// summing to `hours` (an empty split only when there are no hours).
+// `tag` is a manual pick — an activity ID, GENERAL_BUCKET, or a stored
+// split — and always wins over the note.
 export function resolveEntryActivities(note, activities, tag, hours) {
   const list = Array.isArray(activities) ? activities : [];
   const total = Number(hours);
@@ -716,9 +721,14 @@ export function resolveEntryActivities(note, activities, tag, hours) {
     return { split: stored, source: 'tag', status: 'match', parts: [] };
   const result = matchActivities(note, list);
   const resolved = result.parts.some((p) => p.activityId);
+  // Nothing picked and nothing matched ("meeting", "int call", no note):
+  // the hours go to the General bucket, and `status` still says why so the
+  // UI can offer a manual pick.
   return {
-    split: resolved ? suggestSplit(total, result.parts) : {},
-    source: resolved ? 'auto' : null,
+    split: resolved
+      ? suggestSplit(total, result.parts)
+      : { [GENERAL_BUCKET]: round2(total) },
+    source: resolved ? 'auto' : 'default',
     status: result.status,
     parts: result.parts,
   };
