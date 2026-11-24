@@ -7,21 +7,20 @@ import {
 import { fmt } from '../lib/utils.js';
 import { BudgetMeter, StatusChip } from './FinancialsParts.jsx';
 
-const SOURCES = [
-  ['picked', 'picked', 'Chosen by hand'],
-  ['auto', 'auto', 'Matched from the note'],
-  ['default', 'default', 'Went to General by default'],
-];
-
-// How the hours of a costing were assigned: by hand, by inference, by default.
+// Whether a costing's time was assigned by hand (manual) or by the app
+// (auto: matched from the note, or General by default). Only the final
+// assignment counts: a pick that overrode a match is just manual.
 function SourceBadges({ bySource }) {
-  const shown = SOURCES.filter(([key]) => bySource?.[key] > 0);
+  const shown = [
+    bySource?.picked > 0 && 'manual',
+    (bySource?.auto > 0 || bySource?.default > 0) && 'auto',
+  ].filter(Boolean);
   if (!shown.length) return null;
   return (
     <span className="costing-sources">
-      {shown.map(([key, label, title]) => (
-        <span key={key} className={`costing-source source-${key}`} title={title}>
-          {label} {fmt(bySource[key])}h
+      {shown.map((label) => (
+        <span key={label} className="costing-source">
+          {label}
         </span>
       ))}
     </span>
@@ -93,12 +92,7 @@ export default function FinancialsActivities({ overview, onEditProject }) {
       <header className="fin-section-head">
         <div>
           <h3 id="fin-activities-title">Costings</h3>
-          <span>
-            Spend vs costing ·{' '}
-            <span className="costing-source source-picked">picked</span>{' '}
-            <span className="costing-source source-auto">auto</span>{' '}
-            <span className="costing-source source-default">default</span>
-          </span>
+          <span>Spend vs costing</span>
         </div>
       </header>
       {withActivities.length === 0 ? (

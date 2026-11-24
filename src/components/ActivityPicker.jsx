@@ -12,7 +12,8 @@ import {
 } from '../lib/budget.js';
 import { fmt } from '../lib/utils.js';
 
-const SOURCE_LABEL = { tag: 'picked', auto: 'auto', default: 'default' };
+// A pick or split by hand is manual; a note match or the General fallback is auto.
+const SOURCE_LABEL = { tag: 'manual', auto: 'auto', default: 'auto' };
 
 // The costing of one time entry: a compact chip ("Costing: QRGs · auto ▾")
 // that opens a keyboard list of costings, General, "Split across
@@ -55,7 +56,7 @@ export default function ActivityPicker({
   const text = String(note || '').trim();
   const resolved = resolveEntryActivities(text, activities, tag, total);
   const keys = Object.keys(resolved.split);
-  const source = SOURCE_LABEL[resolved.source] || 'default';
+  const source = SOURCE_LABEL[resolved.source] || 'auto';
   const summary =
     keys.length > 1
       ? `Split ×${keys.length} · ${keys
@@ -175,7 +176,7 @@ export default function ActivityPicker({
         <span className="costing-chip-name" title={summary}>
           {summary}
         </span>
-        <span className={`costing-source source-${source}`}>{source}</span>
+        <span className="costing-source">{source}</span>
         <span aria-hidden="true" className="costing-caret">
           ▾
         </span>
