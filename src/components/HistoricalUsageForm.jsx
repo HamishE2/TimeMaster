@@ -227,10 +227,6 @@ export default function HistoricalUsageForm({
         {step === 'project' && (
           <section className="cfg-section" aria-labelledby="cfg-step-title">
             <h3 id="cfg-step-title">Which project is it for?</h3>
-            <p className="help">
-              Record work done before you tracked it here. It counts towards the
-              project’s spend, phase budgets and costings.
-            </p>
             {projects.length === 0 ? (
               <p className="help">Add a project first.</p>
             ) : (
@@ -339,7 +335,7 @@ export default function HistoricalUsageForm({
             values={draft.phases}
             onChange={(phasesDraft) => set({ phases: phasesDraft })}
             left={result.phases.left}
-            restLabel="General gets the rest"
+            restLabel="Balance allocated to General"
             errors={errors}
             overError={errors.phases}
           />
@@ -362,7 +358,7 @@ export default function HistoricalUsageForm({
             values={draft.activities}
             onChange={(activitiesDraft) => set({ activities: activitiesDraft })}
             left={result.activities.left}
-            restLabel="General costing gets the rest"
+            restLabel="Balance allocated to General costing"
             errors={errors}
             overError={errors.activities}
           />
