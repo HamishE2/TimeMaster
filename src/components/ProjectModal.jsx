@@ -442,9 +442,11 @@ function ProjectSteps({
         setStep(i);
       }}
       editing={!!initial}
+      // An edit marks any step that needs fixing (adding a phase turns the
+      // Budget pill red); a new project only once a step has been tried.
       stepErrors={STEPS.map(
         (name) =>
-          !!tried[name] &&
+          (!!initial || !!tried[name]) &&
           Object.keys(allErrors).some((key) => STEP_ERRORS[name](key)),
       )}
       onClose={onClose}

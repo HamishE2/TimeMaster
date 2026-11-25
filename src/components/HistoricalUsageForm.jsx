@@ -235,7 +235,8 @@ export default function HistoricalUsageForm({
       preOpened={who ? ['Project', 'Whose work'] : []}
       locked={steps.map((name) => name !== 'project' && !project)}
       stepErrors={steps.map(
-        (name) => name !== 'check' && !!tried[name] && stepHasErrors(name),
+        (name) =>
+          name !== 'check' && (!!record || !!tried[name]) && stepHasErrors(name),
       )}
       onClose={onClose}
       finishLabel={record ? 'Save changes' : 'Add usage'}

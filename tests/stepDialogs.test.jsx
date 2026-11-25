@@ -292,3 +292,31 @@ test('editing a project starts with every step opened', () => {
     false,
   );
 });
+
+test('adding a phase while editing turns the Budget pill red', () => {
+  render(
+    <ProjectModal
+      isOpen
+      onClose={() => {}}
+      onSave={() => {}}
+      initial={{
+        id: 'p',
+        name: 'Intranet',
+        resourcedHours: 6,
+        budget: 10000,
+        tasks: [{ id: 'general', name: 'General' }],
+        entries: {},
+      }}
+      projects={[]}
+      weekKey={WEEK}
+      hourlyRate={100}
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: /^Phases, opened/ }));
+  const add = screen.getByLabelText('Add a phase');
+  fireEvent.change(add, { target: { value: 'Embed' } });
+  fireEvent.keyDown(add, { key: 'Enter' });
+  expect(
+    screen.getByRole('button', { name: /^Budget, needs fixing/ }),
+  ).toBeTruthy();
+});
