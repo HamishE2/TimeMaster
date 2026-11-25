@@ -62,27 +62,18 @@ export async function writeSessionRecord(put, record) {
   }
 }
 
-export async function saveSessionToIdb(
-  fileHandle,
-  weekKey,
-  data,
-  fileRevision = null,
-  savedSignature = null,
-) {
+// record: { fileHandle, attachedName, weekKey, data, savedSignature,
+// lastSavedAt }. attachedName survives a handle that cannot be stored, so the
+// next visit knows which file to ask for again.
+export async function saveSessionToIdb(record) {
   const db = await getDB();
-  const put = (record) =>
+  const put = (value) =>
     new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
-      tx.objectStore(STORE_NAME).put(record, 'currentSession');
+      tx.objectStore(STORE_NAME).put(value, 'currentSession');
       settle(tx, resolve, reject);
     });
-  return writeSessionRecord(put, {
-    fileHandle,
-    weekKey,
-    data,
-    fileRevision,
-    savedSignature,
-  });
+  return writeSessionRecord(put, record);
 }
 
 export async function loadSessionFromIdb() {

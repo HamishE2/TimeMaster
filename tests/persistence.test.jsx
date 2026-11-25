@@ -10,7 +10,6 @@ import App from '../src/App.jsx';
 import MobileCards from '../src/components/MobileCards.jsx';
 import { loadSessionFromIdb } from '../src/lib/idb.js';
 import {
-  FILE_CHANGED_CODE,
   FILE_PERMISSION_CODE,
   backupPayload,
   downloadBlob,
@@ -63,18 +62,11 @@ function fakeHandle({ text = '{"projects":[]}', permission = 'granted' } = {}) {
   return handle;
 }
 
-const revisionOf = async (handle) => {
-  const file = await handle.getFile();
-  const text = await file.text();
-  // Same shape as backupService's revisionFor, read back via a real write.
-  return { lastModified: file.lastModified, size: file.size, text };
-};
-
 describe('writeHandle', () => {
   it('does not raise a permission prompt from an autosave', async () => {
     const handle = fakeHandle({ permission: 'prompt' });
     await expect(
-      writeHandle(handle, backupPayload([], {}), null, { interactive: false }),
+      writeHandle(handle, backupPayload([], {}), { interactive: false }),
     ).rejects.toMatchObject({ code: FILE_PERMISSION_CODE });
     expect(handle.requestPermission).not.toHaveBeenCalled();
     expect(handle.state.writes).toBe(0);
@@ -82,36 +74,19 @@ describe('writeHandle', () => {
 
   it('asks for permission when the person clicked save', async () => {
     const handle = fakeHandle({ permission: 'prompt' });
-    await writeHandle(handle, backupPayload([], {}), null);
+    await writeHandle(handle, backupPayload([], {}));
     expect(handle.requestPermission).toHaveBeenCalledTimes(1);
     expect(handle.state.writes).toBe(1);
   });
 
-  it('treats a moved revision holding our own content as ours', async () => {
+  it('writes over a file a sync client changed', async () => {
+    // The browser copy is the working copy; the file is replaced whole.
     const handle = fakeHandle();
-    const first = backupPayload([], { theme: 'dark' });
-    const revision = await writeHandle(handle, first, null);
-    // A sync client touches the file without changing its content.
-    handle.state.lastModified += 50;
-    const second = backupPayload([], { theme: 'light' });
-    await writeHandle(handle, second, revision, {
-      ownSignatures: [workspaceSignature(first)],
-    });
-    expect(JSON.parse(handle.state.text).settings.theme).toBe('light');
-  });
-
-  it('still stops when someone else changed the file', async () => {
-    const handle = fakeHandle();
-    const revision = await writeHandle(handle, backupPayload([], {}), null);
+    await writeHandle(handle, backupPayload([], { theme: 'dark' }));
     handle.state.text = JSON.stringify(backupPayload([], { theme: 'other' }));
-    await expect(
-      writeHandle(handle, backupPayload([], { theme: 'mine' }), revision, {
-        ownSignatures: [workspaceSignature(backupPayload([], {}))],
-      }),
-    ).rejects.toMatchObject({ code: FILE_CHANGED_CODE });
-    expect(await revisionOf(handle)).toMatchObject({
-      text: expect.stringContaining('other'),
-    });
+    handle.state.lastModified += 50;
+    await writeHandle(handle, backupPayload([], { theme: 'light' }));
+    expect(JSON.parse(handle.state.text).settings.theme).toBe('light');
   });
 });
 
@@ -243,7 +218,7 @@ test('autosave pauses for permission instead of hanging, and Save now resumes it
     fileHandle: handle,
     weekKey: '2026-07-13',
     data: backupPayload(data.projects, data.settings),
-    fileRevision: null,
+
     // The file holds an older workspace, so the restored one needs saving.
     savedSignature: workspaceSignature(backupPayload([], {})),
   });

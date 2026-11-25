@@ -26,6 +26,8 @@ function Action({ name, title, primary, ...props }) {
 
 export default function FilePanel({
   attached,
+  // The file was attached but the browser lost its link to it.
+  lost = false,
   fileName,
   status,
   dirty,
@@ -56,7 +58,7 @@ export default function FilePanel({
           Direct file access needs Chrome or Edge. Import and download still work.
         </p>
       )}
-      {attached && needsAttention && (
+      {(attached || lost) && needsAttention && (
         <p className="file-warning" role="status">
           Your changes are kept in this browser. Try Save now, or choose
           Reattach and save to pick the file again and write this workspace to
@@ -65,7 +67,7 @@ export default function FilePanel({
         </p>
       )}
       <div className="file-actions file-primary-actions">
-        {attached && needsAttention && supported && (
+        {(attached || lost) && needsAttention && supported && (
           <Action
             name="save"
             primary
@@ -75,7 +77,7 @@ export default function FilePanel({
         )}
         <Action
           name="open"
-          primary={!(attached && needsAttention)}
+          primary={!((attached || lost) && needsAttention)}
           title="Choose existing JSON"
           onClick={onOpen}
         />
