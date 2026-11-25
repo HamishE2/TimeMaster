@@ -570,3 +570,27 @@ export function fillProjectResourcingRecord(project, week, amount) {
     },
   };
 }
+
+// Adds a new phase to a project and pins it to a week ("+ New phase" when
+// adding a timesheet line). Names are trimmed and must be new to the project;
+// "General" is reserved. Returns { project, taskId } or { error }.
+export function addPhaseLineRecord(project, name, week, id) {
+  const value = String(name ?? '').trim();
+  if (!value) return { error: 'Name the new phase.' };
+  const taken = (project.tasks || []).some(
+    (task) => task.name.trim().toLowerCase() === value.toLowerCase(),
+  );
+  if (taken || value.toLowerCase() === 'general')
+    return { error: `${project.name} already has a phase called ${value}.` };
+  const tasks = project.tasks?.length
+    ? project.tasks
+    : [{ id: 'general', name: 'General' }];
+  return {
+    taskId: id,
+    project: pinTaskLineRecord(
+      { ...project, tasks: [...tasks, { id, name: value }] },
+      id,
+      week,
+    ),
+  };
+}
