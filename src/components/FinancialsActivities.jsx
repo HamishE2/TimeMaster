@@ -100,7 +100,10 @@ export default function FinancialsActivities({ overview, onEditProject }) {
       {withActivities.length === 0 ? (
         <div className="fin-empty is-inline">
           <span className="fin-empty-glyph" aria-hidden="true">
-            ≡
+            <svg viewBox="0 0 24 24">
+              <path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" />
+              <path d="M9 8h6M9 12h6M9 16h3" />
+            </svg>
           </span>
           <div>
             <h3>No costings yet</h3>
