@@ -1,17 +1,25 @@
 import { useState } from 'react';
 import {
   EPSILON,
+  WEEKLY_RESOURCING_CAPACITY,
   fmt,
   frontloadAmount,
   frontloadLimit,
   projectMetrics,
   shiftWeek,
-  weekLabel,
 } from '../lib/utils.js';
-import AllocationMeter from './AllocationMeter.jsx';
-import { WEEKLY_RESOURCING_CAPACITY } from '../lib/utils.js';
-import Modal from './Modal.jsx';
+import {
+  BigField,
+  ChoiceGroup,
+  ReviewList,
+  StepDialog,
+  StepNote,
+  StepSection,
+} from './StepForm.jsx';
+import { frontloadChoices, sameHours } from '../lib/frontloading.js';
 
+// Moves hours from next week's allowance into this week. Two steps: how
+// many hours, then a before → after check of both weeks.
 export default function FrontloadModal({
   totals,
   project,
@@ -29,221 +37,152 @@ export default function FrontloadModal({
     maximum = Math.max(existing, cap ?? 0),
     suggested = Math.min(maximum, Math.max(0, initialAmount)),
     initial = preferInitial ? suggested : existing || suggested,
-    [value, setValue] = useState(initial ? String(initial) : ''),
-    [error, setError] = useState(''),
-    candidate = value.trim() === '' ? 0 : Number(value),
-    validFormat = value.trim() === '' || /^\d+(\.\d{1,2})?$/.test(value.trim()),
-    valid =
-      validFormat &&
-      Number.isFinite(candidate) &&
-      candidate >= 0 &&
-      candidate <= maximum + EPSILON,
-    draft = {
-      ...project,
-      frontloads: {
-        ...(project.frontloads || {}),
-        [week]: valid ? candidate : existing,
-      },
-    },
-    currentSource = projectMetrics(project, next, leaveWeeks),
-    nextSource = projectMetrics(draft, next, leaveWeeks),
-    destination = projectMetrics(draft, week, leaveWeeks),
     metrics = projectMetrics(project, week, leaveWeeks),
     overage = Math.max(
       0,
       metrics.logged - Math.max(0, Number(metrics.plan || 0)),
-    ),
-    currentLow = (currentSource.weeklyAvailable ?? 0) < 3 - EPSILON,
+    );
+  const options = frontloadChoices({ maximum, suggested, overage, existing });
+  const preset = options.find(
+    (option) => option.hours != null && sameHours(option.hours, initial),
+  );
+  const [choice, setChoice] = useState(
+    preset ? preset.value : initial > 0 ? 'other' : '',
+  );
+  const [value, setValue] = useState(
+    !preset && initial > 0 ? String(initial) : '',
+  );
+  const [step, setStep] = useState(0);
+  const [error, setError] = useState('');
+  const picked = options.find((option) => option.value === choice);
+  const text = value.trim();
+  const candidate =
+    choice === 'other'
+      ? text === ''
+        ? NaN
+        : Number(text)
+      : (picked?.hours ?? NaN);
+  const valid =
+    !!picked &&
+    (choice !== 'other' || /^\d+(\.\d{1,2})?$/.test(text)) &&
+    Number.isFinite(candidate) &&
+    candidate >= 0 &&
+    candidate <= maximum + EPSILON;
+  const amount = valid ? candidate : existing;
+  const draft = {
+    ...project,
+    frontloads: { ...(project.frontloads || {}), [week]: amount },
+  };
+  const currentSource = projectMetrics(project, next, leaveWeeks),
+    nextSource = projectMetrics(draft, next, leaveWeeks),
+    destination = projectMetrics(draft, week, leaveWeeks),
     nextLow = (nextSource.weeklyAvailable ?? 0) < 3 - EPSILON,
-    warningHours = nextLow
-      ? nextSource.weeklyAvailable
-      : currentSource.weeklyAvailable,
     monthlyLimited =
       destination.weeklyAllowance != null &&
       destination.monthly != null &&
       destination.monthly < destination.weeklyAllowance - EPSILON;
-  const rows = [
-    ['This week', week, destination],
-    ['Next week', next, nextSource],
-  ];
-  const hours = (n) => (n == null ? 'Unlimited' : fmt(n) + 'h');
-  const resourced =
+  const hours = (n) => (n == null ? 'Unlimited' : `${fmt(n)}h`);
+  const free = (resourced) => {
+    const left = WEEKLY_RESOURCING_CAPACITY - resourced;
+    return left < -EPSILON ? `${fmt(-left)}h over` : hours(Math.max(0, left));
+  };
+  const resourcedAfter =
     totals.resourced +
     (destination.weeklyAvailable || 0) -
     (metrics.weeklyAvailable || 0);
-  const columns = (m) => [
-    m.plan,
-    m.frontloadedIn - m.frontloadedOut,
-    m.weeklyAvailable,
-    m.logged,
-  ];
-  const sums = columns(destination).map((n, i) =>
-    n == null || columns(nextSource)[i] == null
-      ? null
-      : n + columns(nextSource)[i],
-  );
-  const submit = () => {
-    if (!valid) {
-      setError(`Enter an amount between 0 and ${fmt(maximum)} hours.`);
-      return;
+  const removing = valid && candidate === 0 && existing > 0;
+
+  const nextStep = () => {
+    if (step === 0) {
+      if (!picked) return setError('Choose how many hours to move.');
+      if (!valid)
+        return setError(`Enter an amount between 0 and ${fmt(maximum)} hours.`);
+      setError('');
+      return setStep(1);
     }
     if (onSave(candidate) !== false) onClose();
   };
-  const adjustToOverage = () => {
-    if (onSave(overage) !== false) onClose();
-  };
+
   return (
-    <Modal title={title} onClose={onClose}>
-      <div className="transfer-body">
-        <p className="transfer-project">
-          {project.name}
-          {project.client && <small>{project.client}</small>}
-        </p>
-        <div className="transfer-weeks">
-          {rows.map(([label, date, m], i) => (
-            <div className="transfer-week" key={label}>
-              <b>{label}</b>
-              <small>{weekLabel(date)}</small>
-              <strong>
-                {hours(m.weeklyAvailable)} <small>usable</small>
-              </strong>
-              <AllocationMeter
-                label="Logged"
-                used={m.logged}
-                allocation={i ? m.plan : m.weeklyAllowance}
-                frontloadedUsage={i ? m.frontloadedOut : 0}
-                nativeAllocation={Math.max(0, m.plan - m.frontloadedOut)}
-                frontloaded={i ? 0 : m.frontloadedIn}
-              />
-              {!i && (
-                <span className="transfer-arrow">
-                  ← {fmt(valid ? candidate : existing)}h
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
-        <div className="field">
-          <label htmlFor="frontload-hours">Hours to frontload</label>
-          <input
-            aria-label="Adjust transfer hours"
-            type="range"
-            min="0"
-            max={maximum}
-            step="0.01"
-            value={valid ? candidate : existing}
-            onChange={(e) => {
-              setValue(e.target.value);
+    <StepDialog
+      title={`${title.replace(/\?$/, '')} · ${project.name}`}
+      steps={['Hours', 'Check']}
+      index={step}
+      onBack={() => setStep(0)}
+      onNext={nextStep}
+      onClose={onClose}
+      finishLabel={removing ? 'Remove frontloading' : 'Save frontloading'}
+    >
+      {step === 0 && (
+        <StepSection title="How many of next week’s hours should move to this week?">
+          <ChoiceGroup
+            ariaLabel="Hours to frontload"
+            cols={Math.min(options.length, 4)}
+            value={choice}
+            onChange={(next) => {
+              setChoice(next);
               setError('');
             }}
+            options={options}
           />
-          <input
-            id="frontload-hours"
-            type="number"
-            min="0"
-            max={maximum}
-            step="0.01"
-            value={value}
-            onChange={(event) => {
-              setValue(event.target.value);
-              setError('');
-            }}
-            autoFocus
+          {choice === 'other' && (
+            <BigField
+              id="frontload-hours"
+              label="Hours to frontload"
+              unit="h"
+              inputMode="decimal"
+              value={value}
+              onChange={(event) => {
+                setValue(event.target.value);
+                setError('');
+              }}
+              hint={`Up to ${fmt(maximum)}h. 0 removes the transfer.`}
+              error={error || undefined}
+              autoFocus
+            />
+          )}
+          {error && choice !== 'other' && (
+            <p className="field-error" role="alert">
+              {error}
+            </p>
+          )}
+          {valid && candidate > 0 && nextLow && (
+            <StepNote tone="warn">
+              This leaves {fmt(Math.max(0, nextSource.weeklyAvailable ?? 0))}h
+              for next week. Usable time there may be too low.
+            </StepNote>
+          )}
+        </StepSection>
+      )}
+      {step === 1 && (
+        <StepSection
+          title="Check and save"
+          help={`Hours on ${project.name}, before → after.`}
+        >
+          <ReviewList
+            rows={[
+              [
+                'This week',
+                `${hours(metrics.weeklyAvailable)} → ${hours(destination.weeklyAvailable)}`,
+              ],
+              [
+                'Next week',
+                `${hours(currentSource.weeklyAvailable)} → ${hours(nextSource.weeklyAvailable)}`,
+              ],
+              [
+                'Your free time this week',
+                `${free(totals.resourced)} → ${free(resourcedAfter)}`,
+              ],
+            ]}
           />
-          <small className="field-help">
-            Up to {fmt(maximum)}h can be frontloaded. Set this to 0 to remove
-            the transfer.
-          </small>
-          {error && <span className="field-error">{error}</span>}
-        </div>
-        {(currentLow || nextLow) && (
-          <p className="frontload-low-warning" role="status">
-            This project has {fmt(Math.max(0, warningHours))}h next week.
-            Frontloading may make usable time too low.
-          </p>
-        )}
-        {monthlyLimited && (
-          <p className="help">
-            Monthly allowance still limits this week to{' '}
-            {fmt(destination.monthly)}
-            h.
-          </p>
-        )}
-        <h3>After saving</h3>
-        <div className="transfer-scroll">
-          <table>
-            <thead>
-              <tr>
-                {['Week', 'Plan', 'Moved', 'Usable', 'Logged'].map((h) => (
-                  <th key={h}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(([label, , m]) => (
-                <tr key={label}>
-                  <th>{label}</th>
-                  {columns(m).map((n, i) => (
-                    <td key={i}>
-                      {i === 1 && n > 0 ? '+' : ''}
-                      {hours(n)}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <th>Two-week total</th>
-                {sums.map((n, i) => (
-                  <td key={i}>{hours(n)}</td>
-                ))}
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-        <h3>Capacity this week</h3>
-        <div className="transfer-summary">
-          {[
-            ['Resourced', resourced],
-            ['Logged', totals.logged],
-            [
-              resourced > WEEKLY_RESOURCING_CAPACITY
-                ? 'Over capacity'
-                : 'Unresourced',
-              Math.abs(WEEKLY_RESOURCING_CAPACITY - resourced),
-            ],
-          ].map(([label, n]) => (
-            <div key={label}>
-              <small>{label}</small>
-              <b>{hours(n)}</b>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="modal-actions">
-        <button onClick={onClose}>Cancel</button>
-        {existing > overage + EPSILON && (
-          <button onClick={adjustToOverage}>
-            Adjust to {fmt(overage)}h overage
-          </button>
-        )}
-        {existing > 0 && (
-          <button
-            onClick={() => {
-              setValue('0');
-              setError('');
-            }}
-          >
-            Remove frontloading
-          </button>
-        )}
-        <button className="primary" onClick={submit}>
-          {candidate === 0 && existing > 0
-            ? 'Remove frontloading'
-            : 'Save frontloading'}
-        </button>
-      </div>
-    </Modal>
+          {monthlyLimited && (
+            <StepNote>
+              The monthly allowance still limits this week to{' '}
+              {fmt(destination.monthly)}h.
+            </StepNote>
+          )}
+        </StepSection>
+      )}
+    </StepDialog>
   );
 }

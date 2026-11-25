@@ -323,11 +323,18 @@ function parseDays(value) {
 
 // Validation for the project editor. Returns { errors, warnings, value }.
 // Activity amounts may be typed in days (unit 'days'): they are converted to
-// dollars with the project's rate × hours per day.
+// dollars with the project's rate × hours per day. With requirePhaseBudgets,
+// a project with a total budget needs a budget for every phase (0 is fine)
+// and the phases may not add up to more than the total: what is left is the
+// General budget.
 export function validateFinanceDraft(
   draft,
   tasks = [],
-  { settingsRate = null, perDay = DEFAULT_HOURS_PER_DAY } = {},
+  {
+    settingsRate = null,
+    perDay = DEFAULT_HOURS_PER_DAY,
+    requirePhaseBudgets = false,
+  } = {},
 ) {
   const errors = {},
     warnings = [],
@@ -346,6 +353,14 @@ export function validateFinanceDraft(
     if (parsed.error) errors[`phase:${taskId}`] = parsed.error;
     else if (parsed.value != null) phaseBudgets[taskId] = parsed.value;
   }
+  if (requirePhaseBudgets && budget.value != null)
+    for (const task of tasks)
+      if (
+        phaseIds.has(task.id) &&
+        phaseBudgets[task.id] == null &&
+        !errors[`phase:${task.id}`]
+      )
+        errors[`phase:${task.id}`] = `Enter a budget for ${task.name}, or 0.`;
   const activities = [],
     names = new Set();
   (draft.activities || []).forEach((activity) => {
@@ -381,10 +396,11 @@ export function validateFinanceDraft(
     (sum, value) => sum + toCents(value),
     0,
   );
-  if (budget.value != null && bucketCents > toCents(budget.value))
-    warnings.push(
-      `Phase budgets add up to ${formatMoney(fromCents(bucketCents))}, more than the ${formatMoney(budget.value)} project budget.`,
-    );
+  if (budget.value != null && bucketCents > toCents(budget.value)) {
+    const message = `Phase budgets add up to ${formatMoney(fromCents(bucketCents))}, more than the ${formatMoney(budget.value)} project budget.`;
+    if (requirePhaseBudgets) errors.phases = message;
+    else warnings.push(message);
+  }
   const costingCents = activities.reduce(
     (sum, activity) => sum + toCents(activity.amount || 0),
     0,
@@ -407,7 +423,10 @@ export function validateFinanceDraft(
 
 // Every costed time entry of a project. Leave days are excluded unless asked,
 // matching the timesheet totals; orphaned phase time is ignored.
-export function projectEntries(project, { leaveWeeks = {}, includeLeave = false } = {}) {
+export function projectEntries(
+  project,
+  { leaveWeeks = {}, includeLeave = false } = {},
+) {
   const sources = [
     {
       taskId: GENERAL_NOTE_ID,
@@ -547,8 +566,7 @@ export function budgetStatus({
   flags.highBurn =
     remaining > 0 &&
     (planWeekCents > 0
-      ? Math.max(burnCents, weekSpentCents) >
-        planWeekCents * HIGH_BURN_FACTOR
+      ? Math.max(burnCents, weekSpentCents) > planWeekCents * HIGH_BURN_FACTOR
       : burnCents > 0 && remaining / burnCents < BURN_WINDOW_WEEKS);
   const make = (level, label, message) => ({
     level,
@@ -566,8 +584,7 @@ export function budgetStatus({
       'Over budget',
       `${formatMoney(fromCents(-remaining))} over budget.`,
     );
-  if (remaining === 0)
-    return make('at', 'At budget', 'Budget fully used.');
+  if (remaining === 0) return make('at', 'At budget', 'Budget fully used.');
   if (burnCents > 0 && burnCents >= remaining)
     return make(
       'soon',
@@ -575,11 +592,7 @@ export function budgetStatus({
       'Runs out within a week at this pace.',
     );
   if (pct >= near)
-    return make(
-      'near',
-      'Approaching',
-      `${percentOf(pct)}% spent.`,
-    );
+    return make('near', 'Approaching', `${percentOf(pct)}% spent.`);
   if (flags.resourcingOver)
     return make(
       'resourcing',
@@ -617,8 +630,7 @@ function plannedWeekHours(project, week, leaveWeeks) {
 export function resourcingForecast(project, week, leaveWeeks = {}) {
   const closed = project.archived || project.status === 'closed';
   const end =
-    project.hiddenOnwardsFrom ||
-    shiftWeek(week, FORECAST_HORIZON_WEEKS);
+    project.hiddenOnwardsFrom || shiftWeek(week, FORECAST_HORIZON_WEEKS);
   const result = {
     hours: 0,
     weeks: 0,
@@ -656,7 +668,9 @@ export function projectFinance(project, settings = {}, week, options = {}) {
     leaveWeeks = settings.leaveWeeks || {},
     budget = normaliseMoney(project.budget),
     budgetCents = budget == null ? null : toCents(budget),
-    phaseBudgets = isPlainObject(project.phaseBudgets) ? project.phaseBudgets : {},
+    phaseBudgets = isPlainObject(project.phaseBudgets)
+      ? project.phaseBudgets
+      : {},
     activities = normaliseActivities(project.activities),
     withActivities = { ...project, activities },
     cache = new Map();
@@ -705,7 +719,11 @@ export function projectFinance(project, settings = {}, week, options = {}) {
       spent: fromCents(cents),
       remaining: fromCents(amountCents - cents),
       pct: pctOf(cents, amountCents),
-      status: budgetStatus({ hasRate, budgetCents: amountCents, spentCents: cents }),
+      status: budgetStatus({
+        hasRate,
+        budgetCents: amountCents,
+        spentCents: cents,
+      }),
     };
   });
   const bucketIds = new Set(bucketed.map((task) => task.id));
@@ -715,13 +733,19 @@ export function projectFinance(project, settings = {}, week, options = {}) {
       budgetCents == null ? null : Math.max(0, budgetCents - bucketCents);
   const general = {
     id: GENERAL_NOTE_ID,
-    name: bucketed.length ? 'General & unbudgeted phases' : 'General',
+    name:
+      bucketed.length && bucketed.length < phases.length
+        ? 'General & unbudgeted phases'
+        : 'General',
     budget: unallocatedCents == null ? null : fromCents(unallocatedCents),
     hours: sum(generalList, 'hours'),
     spent: fromCents(generalCents),
     remaining:
-      unallocatedCents == null ? null : fromCents(unallocatedCents - generalCents),
-    pct: unallocatedCents == null ? null : pctOf(generalCents, unallocatedCents),
+      unallocatedCents == null
+        ? null
+        : fromCents(unallocatedCents - generalCents),
+    pct:
+      unallocatedCents == null ? null : pctOf(generalCents, unallocatedCents),
     status: budgetStatus({
       hasRate,
       budgetCents: unallocatedCents,
@@ -732,16 +756,18 @@ export function projectFinance(project, settings = {}, week, options = {}) {
   // Activities draw from their share of tagged or matched entries; a split
   // entry costs each share separately and never more than the entry itself.
   const activityIds = new Set(activities.map((activity) => activity.id));
-  const shares = entries.flatMap((entry) => {
-    const split = entry.activity.split || {},
-      cents = shareCents(split, entry.hours, entry.cents);
-    return Object.entries(split).map(([id, hours]) => ({
-      entry,
-      id,
-      hours,
-      cents: cents[id] || 0,
-    }));
-  }).concat(history.shares);
+  const shares = entries
+    .flatMap((entry) => {
+      const split = entry.activity.split || {},
+        cents = shareCents(split, entry.hours, entry.cents);
+      return Object.entries(split).map(([id, hours]) => ({
+        entry,
+        id,
+        hours,
+        cents: cents[id] || 0,
+      }));
+    })
+    .concat(history.shares);
   const bySource = (list) =>
     list.reduce(
       (acc, share) => {
@@ -790,7 +816,9 @@ export function projectFinance(project, settings = {}, week, options = {}) {
     ? costingRow(
         { id: GENERAL_BUCKET, name: 'General', amount: null },
         shares.filter((share) => !activityIds.has(share.id)),
-        budgetCents == null ? null : Math.max(0, budgetCents - costingCentsTotal),
+        budgetCents == null
+          ? null
+          : Math.max(0, budgetCents - costingCentsTotal),
       )
     : null;
   if (generalCosting && budgetCents != null)
@@ -874,7 +902,11 @@ export function projectFinance(project, settings = {}, week, options = {}) {
     ...phases.map((task) => ({ id: task.id, name: task.name })),
   ].map((line) => {
     const list = entries.filter((entry) => entry.taskId === line.id);
-    return { ...line, hours: sum(list, 'hours'), spent: fromCents(sum(list, 'cents')) };
+    return {
+      ...line,
+      hours: sum(list, 'hours'),
+      spent: fromCents(sum(list, 'cents')),
+    };
   });
   // Cumulative spend at the end of each of the last SERIES_WEEKS weeks.
   const series = [];
@@ -950,15 +982,18 @@ export function projectFinance(project, settings = {}, week, options = {}) {
           : Math.max(0, remainingCents / burnCents),
     },
     status,
-    warning: status.flags.highBurn
-      ? 'Spending faster than planned.'
-      : null,
+    warning: status.flags.highBurn ? 'Spending faster than planned.' : null,
   };
 }
 
 // Cost of one week laid out like the timesheet: one row per General/phase
 // line (or per activity), one cell per day, in cents-accurate dollars.
-export function weekCostRows(project, settings = {}, week, { by = 'phase' } = {}) {
+export function weekCostRows(
+  project,
+  settings = {},
+  week,
+  { by = 'phase' } = {},
+) {
   const rate = projectRateOf(project, settings),
     leave = settings.leaveWeeks?.[week] || [],
     activities = normaliseActivities(project.activities),
@@ -973,8 +1008,7 @@ export function weekCostRows(project, settings = {}, week, { by = 'phase' } = {}
     }));
   const rows = new Map();
   const rowFor = (id, name) => {
-    if (!rows.has(id))
-      rows.set(id, { id, name, days: {}, hours: 0, cents: 0 });
+    if (!rows.has(id)) rows.set(id, { id, name, days: {}, hours: 0, cents: 0 });
     return rows.get(id);
   };
   if (by === 'activity')
@@ -985,7 +1019,11 @@ export function weekCostRows(project, settings = {}, week, { by = 'phase' } = {}
   }
   const activityIds = new Set(activities.map((activity) => activity.id));
   const add = (row, entry, hours, cents) => {
-    const cell = (row.days[entry.day] ||= { hours: 0, cents: 0, onLeave: false });
+    const cell = (row.days[entry.day] ||= {
+      hours: 0,
+      cents: 0,
+      onLeave: false,
+    });
     cell.hours += hours;
     cell.cents += cents;
     cell.onLeave ||= entry.onLeave;
@@ -996,7 +1034,12 @@ export function weekCostRows(project, settings = {}, week, { by = 'phase' } = {}
   };
   for (const entry of entries) {
     if (by !== 'activity') {
-      add(rowFor(entry.taskId, entry.taskName), entry, entry.hours, entry.cents);
+      add(
+        rowFor(entry.taskId, entry.taskName),
+        entry,
+        entry.hours,
+        entry.cents,
+      );
       continue;
     }
     // Split entries land on each of their activities.
@@ -1037,12 +1080,20 @@ export function weekCostRows(project, settings = {}, week, { by = 'phase' } = {}
   }));
   // Keep General first; drop empty phase/activity rows except General.
   return list.filter(
-    (row) => row.id === GENERAL_NOTE_ID || row.hours > EPSILON || Object.keys(row.days).length,
+    (row) =>
+      row.id === GENERAL_NOTE_ID ||
+      row.hours > EPSILON ||
+      Object.keys(row.days).length,
   );
 }
 
 // Portfolio view for the financials screen.
-export function financialsOverview(projects, settings = {}, week, { includeArchived = false } = {}) {
+export function financialsOverview(
+  projects,
+  settings = {},
+  week,
+  { includeArchived = false } = {},
+) {
   const list = projects
     .filter((project) => includeArchived || !project.archived)
     .map((project) => projectFinance(project, settings, week));
@@ -1052,13 +1103,17 @@ export function financialsOverview(projects, settings = {}, week, { includeArchi
   return {
     rate: hourlyRateOf(settings),
     // Costing works when the workspace or any listed project has a rate.
-    hasRate: hourlyRateOf(settings) != null || list.some((item) => item.hasRate),
-    mixedRates: new Set(list.filter((i) => i.hasRate).map((i) => i.rate)).size > 1,
+    hasRate:
+      hourlyRateOf(settings) != null || list.some((item) => item.hasRate),
+    mixedRates:
+      new Set(list.filter((i) => i.hasRate).map((i) => i.rate)).size > 1,
     perDay: hoursPerDay(settings),
     projects: list,
     budgeted: budgeted.length,
     totals: {
-      budget: fromCents(budgeted.reduce((n, item) => n + toCents(item.budget), 0)),
+      budget: fromCents(
+        budgeted.reduce((n, item) => n + toCents(item.budget), 0),
+      ),
       spent: total('spent'),
       budgetedSpent: fromCents(
         budgeted.reduce((n, item) => n + toCents(item.spent), 0),
@@ -1114,11 +1169,7 @@ export const percentOf = (value) => {
   return pct < 100 ? Math.floor(pct) : Math.ceil(pct);
 };
 export const formatPercent = (value) =>
-  value == null
-    ? '—'
-    : value === Infinity
-      ? 'over'
-      : `${percentOf(value)}%`;
+  value == null ? '—' : value === Infinity ? 'over' : `${percentOf(value)}%`;
 
 // ---------- Manual split editor ----------
 const round2 = (n) => Math.round(n * 100) / 100;
@@ -1176,7 +1227,8 @@ export function commitSplitRows(rows, total) {
     if (!Number.isFinite(hours) || hours < 0)
       return { error: 'Enter hours as a number, like 1.5.', row: index };
     if (!row.key) {
-      if (hours > 0) return { error: 'Choose a costing for these hours.', row: index };
+      if (hours > 0)
+        return { error: 'Choose a costing for these hours.', row: index };
       continue;
     }
     if (hours <= 0) continue;
@@ -1189,7 +1241,8 @@ export function commitSplitRows(rows, total) {
       over: round2(given - total),
     };
   const rest = round2(total - given);
-  if (rest > 0) split[GENERAL_BUCKET] = round2((split[GENERAL_BUCKET] || 0) + rest);
+  if (rest > 0)
+    split[GENERAL_BUCKET] = round2((split[GENERAL_BUCKET] || 0) + rest);
   return { split, allocated: given, remainder: rest };
 }
 
@@ -1270,13 +1323,12 @@ export function normaliseHistoricalUsage(list, project, activities = []) {
     );
     // A deleted costing's share moves to the General costing bucket, like a
     // split; a breakdown that adds up to more than the total is dropped.
-    const activityBreakdown =
-      foldBreakdown(
-        item.activities,
-        (key) => key === NO_ACTIVITY_TAG || activityIds.has(key),
-        NO_ACTIVITY_TAG,
-        totalH,
-      ) || { [NO_ACTIVITY_TAG]: fromCents(totalH) };
+    const activityBreakdown = foldBreakdown(
+      item.activities,
+      (key) => key === NO_ACTIVITY_TAG || activityIds.has(key),
+      NO_ACTIVITY_TAG,
+      totalH,
+    ) || { [NO_ACTIVITY_TAG]: fromCents(totalH) };
     let id = String(item.id ?? '').trim() || `history-${index + 1}`;
     if (seen.has(id)) id = `${id}-${index + 1}`;
     seen.add(id);
@@ -1337,7 +1389,12 @@ function historicalUsageParts(project, activities, rate) {
       });
     const entry = { historical: true, recordId: record.id, activity };
     for (const [id, value] of Object.entries(record.activities))
-      shares.push({ entry, id, hours: hoursOf(value), cents: activityCents[id] || 0 });
+      shares.push({
+        entry,
+        id,
+        hours: hoursOf(value),
+        cents: activityCents[id] || 0,
+      });
     summaries.push({
       ...record,
       cost: fromCents(cents),
@@ -1404,8 +1461,7 @@ export function parseUsageAmount(value, unit, label = 'Amount') {
         : `${label} must be hours, like 12.5 or 7:30.`,
     };
   const [whole, mins] = s.split(':');
-  const hours =
-    mins != null ? Number(whole) + Number(mins) / 60 : Number(s);
+  const hours = mins != null ? Number(whole) + Number(mins) / 60 : Number(s);
   if (hours > HISTORY_HOURS_MAX) return { error: `${label} is too large.` };
   return { value: fromCents(toCents(hours)) };
 }
@@ -1414,7 +1470,11 @@ export function parseUsageAmount(value, unit, label = 'Amount') {
 // ('label', 'asOf', 'total', 'phase:<id>', 'phases', 'activity:<id>',
 // 'activities') so each step can check its own. `left` is what General and
 // the General costing bucket receive.
-export function validateHistoricalDraft(draft, project, { today = dateString(new Date()) } = {}) {
+export function validateHistoricalDraft(
+  draft,
+  project,
+  { today = dateString(new Date()) } = {},
+) {
   const errors = {},
     unit = draft.unit === 'money' ? 'money' : 'hours',
     label = String(draft.label ?? '').trim();
@@ -1474,7 +1534,9 @@ export function validateHistoricalDraft(draft, project, { today = dateString(new
         },
         activities: {
           ...activities.out,
-          ...(activities.left > 0 ? { [NO_ACTIVITY_TAG]: activities.left } : {}),
+          ...(activities.left > 0
+            ? { [NO_ACTIVITY_TAG]: activities.left }
+            : {}),
         },
       };
   return {
@@ -1486,4 +1548,3 @@ export function validateHistoricalDraft(draft, project, { today = dateString(new
     record,
   };
 }
-

@@ -13,7 +13,15 @@ import {
 } from '../lib/budget.js';
 import { phasesOf } from '../lib/tasks.js';
 import { uuid } from '../lib/utils.js';
-import Modal from './Modal.jsx';
+import {
+  BigField,
+  ChoiceGroup,
+  RemainderRow,
+  ReviewList,
+  StepDialog,
+  StepNote,
+  StepSection,
+} from './StepForm.jsx';
 
 // Which errors belong to which step.
 const STEP_FIELDS = {
@@ -32,31 +40,9 @@ const STEP_NAMES = {
 };
 
 const UNITS = [
-  ['hours', 'Hours', 'Time worked'],
-  ['money', 'Dollars', 'Amount spent'],
+  { value: 'hours', label: 'Hours', sub: 'Time worked' },
+  { value: 'money', label: 'Dollars', sub: 'Amount spent' },
 ];
-
-// One big field: a label, a large input with an optional unit, and a hint or
-// an error underneath.
-function BigField({ id, label, unit, prefix, hint, error, ...input }) {
-  return (
-    <div className="cfg-field">
-      <label htmlFor={id}>{label}</label>
-      <span className={`cfg-input${error ? ' is-error' : ''}`}>
-        {prefix && <span aria-hidden="true">{prefix}</span>}
-        <input id={id} aria-invalid={!!error} {...input} />
-        {unit && <span>{unit}</span>}
-      </span>
-      {error ? (
-        <span className="field-error" role="alert">
-          {error}
-        </span>
-      ) : (
-        hint && <small className="help">{hint}</small>
-      )}
-    </div>
-  );
-}
 
 // A breakdown of the total: one big field per bucket, with what is left
 // shown as the General row.
@@ -74,9 +60,7 @@ function Breakdown({
   overError,
 }) {
   return (
-    <section className="cfg-section" aria-labelledby="cfg-step-title">
-      <h3 id="cfg-step-title">{title}</h3>
-      <p className="help">{hint}</p>
+    <StepSection title={title} help={hint}>
       <ul className="cfg-rows">
         {rows.map((row) => (
           <li key={row.id}>
@@ -96,17 +80,18 @@ function Breakdown({
             />
           </li>
         ))}
-        <li className={`cfg-rest${left < 0 ? ' is-over' : ''}`}>
-          <span>{restLabel}</span>
-          <b>{left < 0 ? '—' : formatUsage(left, unit)}</b>
-        </li>
       </ul>
+      <RemainderRow
+        label={restLabel}
+        value={formatUsage(left, unit)}
+        over={left < 0}
+      />
       {overError && (
         <p className="field-error" role="alert">
           {overError}
         </p>
       )}
-    </section>
+    </StepSection>
   );
 }
 
@@ -195,264 +180,206 @@ export default function HistoricalUsageForm({
   const back = () => (index === 0 ? onClose() : setStepIndex(index - 1));
 
   return (
-    <Modal
+    <StepDialog
       title={record ? 'Edit historical usage' : 'Add historical usage data'}
+      steps={steps.map((name) => STEP_NAMES[name])}
+      index={index}
+      onBack={back}
+      onNext={next}
       onClose={onClose}
-      wide
+      finishLabel={record ? 'Save changes' : 'Add usage'}
+      nextDisabled={!project}
     >
-      <form
-        className="cfg-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          next();
-        }}
-        noValidate
-      >
-        <ol className="cfg-steps" aria-label="Steps">
-          {steps.map((name, i) => (
-            <li
-              key={name}
-              aria-current={i === index ? 'step' : undefined}
-              className={i < index ? 'is-done' : ''}
-            >
-              <span aria-hidden="true">{i < index ? '✓' : i + 1}</span>
-              {STEP_NAMES[name]}
-            </li>
-          ))}
-        </ol>
-        <p className="cfg-count">
-          Step {index + 1} of {steps.length}
-        </p>
-
-        {step === 'project' && (
-          <section className="cfg-section" aria-labelledby="cfg-step-title">
-            <h3 id="cfg-step-title">Which project is it for?</h3>
-            {projects.length === 0 ? (
-              <p className="help">Add a project first.</p>
-            ) : (
-              <div
-                className="cfg-choices"
-                role="radiogroup"
-                aria-labelledby="cfg-step-title"
-              >
-                {projects.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={item.id === pid}
-                    disabled={!!record && item.id !== pid}
-                    className="cfg-choice"
-                    style={{ '--pc': item.color || 'var(--muted)' }}
-                    onClick={() => {
-                      if (item.id === pid) return;
-                      setPid(item.id);
-                      // Phases and costings belong to the old project.
-                      set({ phases: {}, activities: {} });
-                    }}
-                  >
-                    <i className="cfg-dot" aria-hidden="true" />
-                    <b>{item.name}</b>
-                    <small>{item.client || 'No client'}</small>
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
-        )}
-
-        {step === 'amount' && (
-          <section className="cfg-section" aria-labelledby="cfg-step-title">
-            <h3 id="cfg-step-title">How much was used on {project?.name}?</h3>
-            <div
-              className="cfg-choices is-pair"
-              role="radiogroup"
-              aria-label="Count it in"
-            >
-              {UNITS.map(([value, label, sub]) => (
-                <button
-                  key={value}
-                  type="button"
-                  role="radio"
-                  aria-checked={unit === value}
-                  className="cfg-choice"
-                  onClick={() => set({ unit: value })}
-                >
-                  <b>{label}</b>
-                  <small>{sub}</small>
-                </button>
-              ))}
-            </div>
-            <BigField
-              id="hist-total"
-              label={unit === 'money' ? 'Total spent' : 'Total hours'}
-              prefix={unit === 'money' ? '$' : null}
-              unit={unit === 'money' ? 'AUD ex GST' : 'hours'}
-              inputMode="decimal"
-              placeholder={unit === 'money' ? '4,000' : '32.5'}
-              value={draft.total}
-              error={errors.total}
-              hint={effortHint()}
-              onChange={(event) => set({ total: event.target.value })}
-              autoFocus
+      {step === 'project' && (
+        <StepSection title="Which project is it for?">
+          {projects.length === 0 ? (
+            <p className="help">Add a project first.</p>
+          ) : (
+            <ChoiceGroup
+              ariaLabel="Project"
+              cols={3}
+              value={pid}
+              onChange={(id) => {
+                if (id === pid) return;
+                setPid(id);
+                // Phases and costings belong to the old project.
+                set({ phases: {}, activities: {} });
+              }}
+              options={projects.map((item) => ({
+                value: item.id,
+                label: item.name,
+                sub: item.client || 'No client',
+                color: item.color || 'var(--muted)',
+                disabled: !!record && item.id !== pid,
+              }))}
             />
-            <div className="cfg-pair">
-              <BigField
-                id="hist-label"
-                label="Name"
-                placeholder="Before TimeMaster"
-                value={draft.label}
-                error={errors.label}
-                onChange={(event) => set({ label: event.target.value })}
-              />
-              <BigField
-                id="hist-as-of"
-                label="Up to (optional)"
-                type="date"
-                value={draft.asOf}
-                error={errors.asOf}
-                hint="Places it on the spend chart."
-                onChange={(event) => set({ asOf: event.target.value })}
-              />
-            </div>
-          </section>
-        )}
+          )}
+        </StepSection>
+      )}
 
-        {step === 'phases' && (
-          <Breakdown
-            title={`Which phases was the ${formatUsage(result.total, unit)} spent on?`}
-            hint="Leave a phase blank if none of it went there."
-            prefix="phase"
-            unit={unit}
-            rows={phases.map((task) => ({
-              id: task.id,
-              name: task.name,
-              hint:
-                project.phaseBudgets?.[task.id] != null
-                  ? `Budget ${formatMoney(project.phaseBudgets[task.id], { whole: true })}`
-                  : null,
-            }))}
-            values={draft.phases}
-            onChange={(phasesDraft) => set({ phases: phasesDraft })}
-            left={result.phases.left}
-            restLabel="Balance allocated to General"
-            errors={errors}
-            overError={errors.phases}
+      {step === 'amount' && (
+        <StepSection title={`How much was used on ${project?.name}?`}>
+          <ChoiceGroup
+            ariaLabel="Count it in"
+            cols={2}
+            value={unit}
+            onChange={(value) => set({ unit: value })}
+            options={UNITS}
           />
-        )}
-
-        {step === 'costings' && (
-          <Breakdown
-            title={`Which costings did the ${formatUsage(result.total, unit)} go to?`}
-            hint="Leave a costing blank if none of it went there."
-            prefix="activity"
-            unit={unit}
-            rows={activities.map((activity) => ({
-              id: activity.id,
-              name: activity.name,
-              hint:
-                activity.amount != null
-                  ? `Costed at ${formatMoney(activity.amount, { whole: true })}`
-                  : null,
-            }))}
-            values={draft.activities}
-            onChange={(activitiesDraft) => set({ activities: activitiesDraft })}
-            left={result.activities.left}
-            restLabel="Balance allocated to General costing"
-            errors={errors}
-            overError={errors.activities}
+          <BigField
+            id="hist-total"
+            label={unit === 'money' ? 'Total spent' : 'Total hours'}
+            prefix={unit === 'money' ? '$' : null}
+            unit={unit === 'money' ? 'AUD ex GST' : 'hours'}
+            inputMode="decimal"
+            placeholder={unit === 'money' ? '4,000' : '32.5'}
+            value={draft.total}
+            error={errors.total}
+            hint={effortHint()}
+            onChange={(event) => set({ total: event.target.value })}
+            autoFocus
           />
-        )}
+          <div className="cfg-pair">
+            <BigField
+              id="hist-label"
+              label="Name"
+              placeholder="Before TimeMaster"
+              value={draft.label}
+              error={errors.label}
+              onChange={(event) => set({ label: event.target.value })}
+            />
+            <BigField
+              id="hist-as-of"
+              label="Up to (optional)"
+              type="date"
+              value={draft.asOf}
+              error={errors.asOf}
+              hint="Places it on the spend chart."
+              onChange={(event) => set({ asOf: event.target.value })}
+            />
+          </div>
+        </StepSection>
+      )}
 
-        {step === 'check' && (
-          <section className="cfg-section" aria-labelledby="cfg-step-title">
-            <h3 id="cfg-step-title">Check and save</h3>
-            <dl className="cfg-review">
-              <div>
-                <dt>Project</dt>
-                <dd>{project?.name}</dd>
-              </div>
-              <div>
-                <dt>{result.record?.label || 'Name'}</dt>
-                <dd>
-                  {formatUsage(result.total, unit)}
-                  {draft.asOf &&
-                    ` up to ${new Date(`${draft.asOf}T12:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}`}
-                </dd>
-              </div>
-              {phases.length > 0 && result.record && (
-                <div>
-                  <dt>By phase</dt>
-                  <dd>
-                    {[{ id: 'general', name: 'General' }, ...phases]
-                      .filter((task) => result.record.phases[task.id])
-                      .map(
-                        (task) =>
-                          `${task.name} ${formatUsage(result.record.phases[task.id], unit)}`,
-                      )
-                      .join(' · ')}
-                  </dd>
-                </div>
-              )}
-              {activities.length > 0 && result.record && (
-                <div>
-                  <dt>By costing</dt>
-                  <dd>
-                    {[...activities, { id: 'none', name: 'General costing' }]
-                      .filter(
-                        (activity) => result.record.activities[activity.id],
-                      )
-                      .map(
-                        (activity) =>
-                          `${activity.name} ${formatUsage(result.record.activities[activity.id], unit)}`,
-                      )
-                      .join(' · ')}
-                  </dd>
-                </div>
-              )}
-            </dl>
-            {Object.keys(result.errors).length > 0 && (
-              <p className="field-error" role="alert">
-                Something needs fixing. Use Back to correct it.
-              </p>
-            )}
-          </section>
-        )}
+      {step === 'phases' && (
+        <Breakdown
+          title={`Which phases was the ${formatUsage(result.total, unit)} spent on?`}
+          hint="Leave a phase blank if none of it went there."
+          prefix="phase"
+          unit={unit}
+          rows={phases.map((task) => ({
+            id: task.id,
+            name: task.name,
+            hint:
+              project.phaseBudgets?.[task.id] != null
+                ? `Budget ${formatMoney(project.phaseBudgets[task.id], { whole: true })}`
+                : null,
+          }))}
+          values={draft.phases}
+          onChange={(phasesDraft) => set({ phases: phasesDraft })}
+          left={result.phases.left}
+          restLabel="Balance allocated to General"
+          errors={errors}
+          overError={errors.phases}
+        />
+      )}
 
-        {step === 'check' && impact && (
-          <p className="cfg-summary" aria-live="polite">
-            Adds{' '}
-            <b>
-              {impact.after.hasRate || unit === 'money'
-                ? formatMoney(impact.cost)
-                : '—'}
-            </b>
-            .
-            {impact.after.hasBudget && impact.after.hasRate && (
-              <>
-                {' '}
-                Spent goes from{' '}
-                {formatMoney(impact.before.spent, { whole: true })} to{' '}
-                <b>{formatMoney(impact.after.spent, { whole: true })}</b> of{' '}
-                {formatMoney(impact.after.budget, { whole: true })}.
-              </>
-            )}
-          </p>
-        )}
+      {step === 'costings' && (
+        <Breakdown
+          title={`Which costings did the ${formatUsage(result.total, unit)} go to?`}
+          hint="Leave a costing blank if none of it went there."
+          prefix="activity"
+          unit={unit}
+          rows={activities.map((activity) => ({
+            id: activity.id,
+            name: activity.name,
+            hint:
+              activity.amount != null
+                ? `Costed at ${formatMoney(activity.amount, { whole: true })}`
+                : null,
+          }))}
+          values={draft.activities}
+          onChange={(activitiesDraft) => set({ activities: activitiesDraft })}
+          left={result.activities.left}
+          restLabel="Balance allocated to General costing"
+          errors={errors}
+          overError={errors.activities}
+        />
+      )}
 
-        <div className="cfg-actions">
-          <button type="button" className="cfg-button" onClick={back}>
-            {index === 0 ? 'Cancel' : '← Back'}
-          </button>
-          <button
-            type="submit"
-            className="cfg-button primary"
-            disabled={!project}
-          >
-            {isLast ? (record ? 'Save changes' : 'Add usage') : 'Next →'}
-          </button>
-        </div>
-      </form>
-    </Modal>
+      {step === 'check' && (
+        <StepSection title="Check and save">
+          <ReviewList
+            rows={[
+              ['Project', project?.name],
+              [
+                result.record?.label || 'Name',
+                `${formatUsage(result.total, unit)}${
+                  draft.asOf
+                    ? ` up to ${new Date(`${draft.asOf}T12:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}`
+                    : ''
+                }`,
+              ],
+              ...(phases.length > 0 && result.record
+                ? [
+                    [
+                      'By phase',
+                      [{ id: 'general', name: 'General' }, ...phases]
+                        .filter((task) => result.record.phases[task.id])
+                        .map(
+                          (task) =>
+                            `${task.name} ${formatUsage(result.record.phases[task.id], unit)}`,
+                        )
+                        .join(' · '),
+                    ],
+                  ]
+                : []),
+              ...(activities.length > 0 && result.record
+                ? [
+                    [
+                      'By costing',
+                      [...activities, { id: 'none', name: 'General costing' }]
+                        .filter(
+                          (activity) => result.record.activities[activity.id],
+                        )
+                        .map(
+                          (activity) =>
+                            `${activity.name} ${formatUsage(result.record.activities[activity.id], unit)}`,
+                        )
+                        .join(' · '),
+                    ],
+                  ]
+                : []),
+            ]}
+          />
+          {Object.keys(result.errors).length > 0 && (
+            <p className="field-error" role="alert">
+              Something needs fixing. Use Back to correct it.
+            </p>
+          )}
+        </StepSection>
+      )}
+
+      {step === 'check' && impact && (
+        <StepNote>
+          Adds{' '}
+          <b>
+            {impact.after.hasRate || unit === 'money'
+              ? formatMoney(impact.cost)
+              : '—'}
+          </b>
+          .
+          {impact.after.hasBudget && impact.after.hasRate && (
+            <>
+              {' '}
+              Spent goes from{' '}
+              {formatMoney(impact.before.spent, { whole: true })} to{' '}
+              <b>{formatMoney(impact.after.spent, { whole: true })}</b> of{' '}
+              {formatMoney(impact.after.budget, { whole: true })}.
+            </>
+          )}
+        </StepNote>
+      )}
+    </StepDialog>
   );
 }

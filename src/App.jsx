@@ -13,6 +13,7 @@ import {
   migrateBackup,
   parseHours,
   shiftWeek,
+  uuid,
   weekKeyFor,
   weekLabel,
 } from './lib/utils.js';
@@ -46,6 +47,7 @@ import {
   setTaskEntryRecord,
   toggleLeaveRecord,
   editProjectRecord,
+  addPhaseLineRecord,
   pinTaskLineRecord,
   removeTaskLineRecord,
   restoreProjectRecord,
@@ -104,16 +106,8 @@ const icon = (d) => (
 );
 
 export default function App() {
-  const {
-    data,
-    setData,
-    resetData,
-    undo,
-    redo,
-    checkpoint,
-    canUndo,
-    canRedo,
-  } = useHistory(empty);
+  const { data, setData, resetData, undo, redo, checkpoint, canUndo, canRedo } =
+    useHistory(empty);
   const [ready, setReady] = useState(false),
     [week, setWeek] = useState(weekKeyFor(new Date())),
     [panel, setPanel] = useState(null),
@@ -986,16 +980,20 @@ export default function App() {
           });
         })
         .catch(() =>
-        setNotice({
-          type: 'error',
-          text: 'The browser copy could not be saved. Export a backup copy from File.',
-        }),
-      );
+          setNotice({
+            type: 'error',
+            text: 'The browser copy could not be saved. Export a backup copy from File.',
+          }),
+        );
     clearTimeout(autoSaveTimer.current);
     if (file && signature !== savedFileSignature && !saveBlocked.current) {
       setFileStatus((current) => (current === 'saving' ? current : 'dirty'));
       autoSaveTimer.current = setTimeout(() => saveAttachedFile(), 800);
-    } else if (file && signature === savedFileSignature && !saveInFlight.current) {
+    } else if (
+      file &&
+      signature === savedFileSignature &&
+      !saveInFlight.current
+    ) {
       // Edits undone back to the saved state leave nothing to save, so an
       // "Unsaved changes" or failed-save status must not linger.
       setFileStatus((current) =>
@@ -1048,14 +1046,14 @@ export default function App() {
           : fileStatus === 'permission'
             ? 'Save paused · allow access'
             : fileStatus === 'error'
-            ? 'Save needs attention'
-            : fileStatus === 'saved' && lastSavedAt
-              ? `Saved ${lastSavedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
-              : file
-                ? 'Attached'
-                : fileName
-                  ? 'Imported copy · browser only'
-                  : 'Stored in this browser';
+              ? 'Save needs attention'
+              : fileStatus === 'saved' && lastSavedAt
+                ? `Saved ${lastSavedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+                : file
+                  ? 'Attached'
+                  : fileName
+                    ? 'Imported copy · browser only'
+                    : 'Stored in this browser';
 
   if (!ready) return <div className="loading">Opening workspace…</div>;
   return (
@@ -1260,200 +1258,176 @@ export default function App() {
             onRemoveHistory={removeHistoricalUsage}
           />
         ) : (
-        <section
-          className={`workspace ${mobileView === 'days' ? 'day-mode' : ''}`}
-        >
-          <div className="phone-week-summary">
-            <b>{fmt(totals.logged)}h logged</b> ·{' '}
-            {fmt(Math.abs(totals.remaining))}h{' '}
-            {totals.remaining < 0 ? 'over' : 'free'}{' '}
-            <button onClick={() => setCapacityDetails(true)}>Capacity ↗</button>
-          </div>
-          <div className="week-readouts">
-            <Overview totals={totals} week={week} settings={data.settings} />
-            <CounterRail
-              totals={totals}
-              projects={visible}
-              onFill={fillDevelopment}
-              onCapacity={() => setCapacityDetails(true)}
-            />
-          </div>
-          <div className="sheet">
-            <div className="mobile-switch">
-              <button
-                className={mobileView === 'projects' ? 'selected' : ''}
-                onClick={() => setMobileView('projects')}
-              >
-                By project
-              </button>
-              <button
-                className={mobileView === 'days' ? 'selected' : ''}
-                onClick={() => setMobileView('days')}
-              >
-                By day
+          <section
+            className={`workspace ${mobileView === 'days' ? 'day-mode' : ''}`}
+          >
+            <div className="phone-week-summary">
+              <b>{fmt(totals.logged)}h logged</b> ·{' '}
+              {fmt(Math.abs(totals.remaining))}h{' '}
+              {totals.remaining < 0 ? 'over' : 'free'}{' '}
+              <button onClick={() => setCapacityDetails(true)}>
+                Capacity ↗
               </button>
             </div>
-
-            <div
-              className={`sheet-toolbar ${showSheetTools ? 'tools-open' : ''}`}
-            >
-              <div>
-                <h2>Timesheet</h2>
-                <span>
-                  {matching.length} of {visible.length} projects
-                </span>
-              </div>
-              <button
-                className="sheet-tools-toggle"
-                aria-expanded={showSheetTools}
-                onClick={() => setShowSheetTools(!showSheetTools)}
-              >
-                Filters
-                {(query || filter !== 'all' || category !== 'none') && ' •'}
-                <svg className="chevron" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M6 9l6 6 6-6" />
-                </svg>
-              </button>
-              <div className="sheet-tools">
-                <div className="sheet-tools-inner">
-                  <label className="search">
-                    <span className="sr-only">Search projects</span>
-                    {icon(
-                      'M21 21l-4.35-4.35m2.35-5.15a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0z',
-                    )}
-                    <input
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                      placeholder="Find a project"
-                    />
-                  </label>
-                  <select
-                    value={filter}
-                    onChange={(e) => setFilter(e.target.value)}
-                    aria-label="Filter projects"
-                  >
-                    <option value="all">All projects</option>
-                    <option value="logged">Logged</option>
-                    <option value="unlogged">Not logged</option>
-                    <option value="under">Allowance left</option>
-                    <option value="at">At allocation</option>
-                    <option value="over">Over allocation</option>
-                    <option value="unlimited">Unlimited</option>
-                    <option value="billable">Billable</option>
-                    <option value="nonbillable">Non-billable</option>
-                  </select>
-                  <label className="timesheet-grouping">
-                    <span className="sr-only">Group</span>
-                    <select
-                      value={category}
-                      onChange={(e) => setCategory(e.target.value)}
-                      aria-label="Categorise timesheet"
-                    >
-                      <option value="none">No grouping</option>
-                      <option value="status">Status</option>
-                      <option value="client">Client</option>
-                      <option value="billability">
-                        Billable / non-billable
-                      </option>
-                      <option value="usage">Usage</option>
-                    </select>
-                  </label>
-                  {(query || filter !== 'all') && (
-                    <button
-                      onClick={() => {
-                        setQuery('');
-                        setFilter('all');
-                      }}
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-              </div>
-              <button className="primary" onClick={() => setLineTarget(true)}>
-                Add line
-              </button>
-            </div>
-            {visible.length === 0 ? (
-              <Empty
-                projects={data.projects}
-                onNew={() => setPanel('project')}
-                onManage={() => setPanel('manage')}
-                onSample={addSample}
+            <div className="week-readouts">
+              <Overview totals={totals} week={week} settings={data.settings} />
+              <CounterRail
+                totals={totals}
+                projects={visible}
+                onFill={fillDevelopment}
+                onCapacity={() => setCapacityDetails(true)}
               />
-            ) : (
-              <>
-                <TimesheetTable
-                  capacityByDay={data.settings.capacityByDay}
-                  projects={matching}
-                  allProjects={visible}
-                  category={category}
-                  week={week}
-                  days={days}
-                  leave={leave}
-                  leaveWeeks={data.settings.leaveWeeks}
-                  totals={totals}
-                  onEntry={setEntry}
-                  onTaskEntry={setTaskEntry}
-                  onSaveNote={(projectId, taskId, wk, day, text) =>
-                    saveEntryNote({ projectId, taskId, week: wk, day }, text)
-                  }
-                  onUndo={undo}
-                  onCheckpoint={checkpoint}
-                  onRestoreTag={(projectId, taskId, wk, day, tag) =>
-                    tagEntryActivity({ projectId, taskId, week: wk, day }, tag)
-                  }
-                  renderNoteExtras={(entry) => (
-                    <ActivityPicker
-                      {...entry}
-                      compact
-                      onTag={(activityId) =>
-                        tagEntryActivity(
-                          { ...entry, projectId: entry.project.id },
-                          activityId,
-                        )
-                      }
-                    />
-                  )}
-                  onNote={(projectId, taskId, wk, day) =>
-                    setNoteTarget({ projectId, taskId, week: wk, day })
-                  }
-                  onAddLine={(project) => setLineTarget(project.id)}
-                  onRemoveTaskLine={removeTaskLine}
-                  onLeave={toggleLeave}
-                  onEdit={(p, phaseId = null) => {
-                    setFocusPhase(phaseId);
-                    setEdit(p);
-                    setPanel('project');
-                  }}
-                  onFrontload={(project) =>
-                    setFrontloadTarget({ id: project.id })
-                  }
-                  onSuggestFrontload={(project, prompt) =>
-                    setFrontloadTarget({
-                      id: project.id,
-                      prompt: true,
-                      amount: prompt.amount,
-                      adjustment: prompt.adjustment,
-                    })
-                  }
-                  onRemove={setRemoveTarget}
-                  onMove={move}
-                  onPlace={place}
-                  onPlaceTask={placeTask}
+            </div>
+            <div className="sheet">
+              <div className="mobile-switch">
+                <button
+                  className={mobileView === 'projects' ? 'selected' : ''}
+                  onClick={() => setMobileView('projects')}
+                >
+                  By project
+                </button>
+                <button
+                  className={mobileView === 'days' ? 'selected' : ''}
+                  onClick={() => setMobileView('days')}
+                >
+                  By day
+                </button>
+              </div>
+
+              <div
+                className={`sheet-toolbar ${showSheetTools ? 'tools-open' : ''}`}
+              >
+                <div>
+                  <h2>Timesheet</h2>
+                  <span>
+                    {matching.length} of {visible.length} projects
+                  </span>
+                </div>
+                <button
+                  className="sheet-tools-toggle"
+                  aria-expanded={showSheetTools}
+                  onClick={() => setShowSheetTools(!showSheetTools)}
+                >
+                  Filters
+                  {(query || filter !== 'all' || category !== 'none') && ' •'}
+                  <svg
+                    className="chevron"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </button>
+                <div className="sheet-tools">
+                  <div className="sheet-tools-inner">
+                    <label className="search">
+                      <span className="sr-only">Search projects</span>
+                      {icon(
+                        'M21 21l-4.35-4.35m2.35-5.15a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0z',
+                      )}
+                      <input
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        placeholder="Find a project"
+                      />
+                    </label>
+                    <select
+                      value={filter}
+                      onChange={(e) => setFilter(e.target.value)}
+                      aria-label="Filter projects"
+                    >
+                      <option value="all">All projects</option>
+                      <option value="logged">Logged</option>
+                      <option value="unlogged">Not logged</option>
+                      <option value="under">Allowance left</option>
+                      <option value="at">At allocation</option>
+                      <option value="over">Over allocation</option>
+                      <option value="unlimited">Unlimited</option>
+                      <option value="billable">Billable</option>
+                      <option value="nonbillable">Non-billable</option>
+                    </select>
+                    <label className="timesheet-grouping">
+                      <span className="sr-only">Group</span>
+                      <select
+                        value={category}
+                        onChange={(e) => setCategory(e.target.value)}
+                        aria-label="Categorise timesheet"
+                      >
+                        <option value="none">No grouping</option>
+                        <option value="status">Status</option>
+                        <option value="client">Client</option>
+                        <option value="billability">
+                          Billable / non-billable
+                        </option>
+                        <option value="usage">Usage</option>
+                      </select>
+                    </label>
+                    {(query || filter !== 'all') && (
+                      <button
+                        onClick={() => {
+                          setQuery('');
+                          setFilter('all');
+                        }}
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <button className="primary" onClick={() => setLineTarget(true)}>
+                  Add line
+                </button>
+              </div>
+              {visible.length === 0 ? (
+                <Empty
+                  projects={data.projects}
+                  onNew={() => setPanel('project')}
+                  onManage={() => setPanel('manage')}
+                  onSample={addSample}
                 />
-                {mobileView === 'projects' ? (
-                  <MobileCards
+              ) : (
+                <>
+                  <TimesheetTable
+                    capacityByDay={data.settings.capacityByDay}
                     projects={matching}
+                    allProjects={visible}
                     category={category}
                     week={week}
                     days={days}
                     leave={leave}
                     leaveWeeks={data.settings.leaveWeeks}
+                    totals={totals}
                     onEntry={setEntry}
                     onTaskEntry={setTaskEntry}
+                    onSaveNote={(projectId, taskId, wk, day, text) =>
+                      saveEntryNote({ projectId, taskId, week: wk, day }, text)
+                    }
+                    onUndo={undo}
+                    onCheckpoint={checkpoint}
+                    onRestoreTag={(projectId, taskId, wk, day, tag) =>
+                      tagEntryActivity(
+                        { projectId, taskId, week: wk, day },
+                        tag,
+                      )
+                    }
+                    renderNoteExtras={(entry) => (
+                      <ActivityPicker
+                        {...entry}
+                        compact
+                        onTag={(activityId) =>
+                          tagEntryActivity(
+                            { ...entry, projectId: entry.project.id },
+                            activityId,
+                          )
+                        }
+                      />
+                    )}
+                    onNote={(projectId, taskId, wk, day) =>
+                      setNoteTarget({ projectId, taskId, week: wk, day })
+                    }
                     onAddLine={(project) => setLineTarget(project.id)}
                     onRemoveTaskLine={removeTaskLine}
+                    onLeave={toggleLeave}
                     onEdit={(p, phaseId = null) => {
                       setFocusPhase(phaseId);
                       setEdit(p);
@@ -1462,42 +1436,76 @@ export default function App() {
                     onFrontload={(project) =>
                       setFrontloadTarget({ id: project.id })
                     }
+                    onSuggestFrontload={(project, prompt) =>
+                      setFrontloadTarget({
+                        id: project.id,
+                        prompt: true,
+                        amount: prompt.amount,
+                        adjustment: prompt.adjustment,
+                      })
+                    }
+                    onRemove={setRemoveTarget}
+                    onMove={move}
+                    onPlace={place}
+                    onPlaceTask={placeTask}
                   />
-                ) : (
-                  <MobileDays
-                    projects={matching}
-                    week={week}
-                    days={days}
-                    leave={leave}
-                    onEntry={setEntry}
-                    onTaskEntry={setTaskEntry}
-                  />
-                )}{' '}
-                {matching.length === 0 && (
-                  <div className="no-results">
-                    <h3>No projects match</h3>
-                    <p>
-                      Clear the current search or filter to see the whole week.
-                    </p>
-                    <button
-                      onClick={() => {
-                        setQuery('');
-                        setFilter('all');
+                  {mobileView === 'projects' ? (
+                    <MobileCards
+                      projects={matching}
+                      category={category}
+                      week={week}
+                      days={days}
+                      leave={leave}
+                      leaveWeeks={data.settings.leaveWeeks}
+                      onEntry={setEntry}
+                      onTaskEntry={setTaskEntry}
+                      onAddLine={(project) => setLineTarget(project.id)}
+                      onRemoveTaskLine={removeTaskLine}
+                      onEdit={(p, phaseId = null) => {
+                        setFocusPhase(phaseId);
+                        setEdit(p);
+                        setPanel('project');
                       }}
-                    >
-                      Clear filters
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-          <Insights
-            projects={visible}
-            week={week}
-            leaveWeeks={data.settings.leaveWeeks}
-          />
-        </section>
+                      onFrontload={(project) =>
+                        setFrontloadTarget({ id: project.id })
+                      }
+                    />
+                  ) : (
+                    <MobileDays
+                      projects={matching}
+                      week={week}
+                      days={days}
+                      leave={leave}
+                      onEntry={setEntry}
+                      onTaskEntry={setTaskEntry}
+                    />
+                  )}{' '}
+                  {matching.length === 0 && (
+                    <div className="no-results">
+                      <h3>No projects match</h3>
+                      <p>
+                        Clear the current search or filter to see the whole
+                        week.
+                      </p>
+                      <button
+                        onClick={() => {
+                          setQuery('');
+                          setFilter('all');
+                        }}
+                      >
+                        Clear filters
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            <Insights
+              projects={visible}
+              week={week}
+              leaveWeeks={data.settings.leaveWeeks}
+            />
+          </section>
         )}
         <nav className="phone-dock" aria-label="Mobile workspace">
           <button
@@ -1556,12 +1564,13 @@ export default function App() {
         hourlyRate={hourlyRateOf(data.settings)}
         perDay={hoursPerDay(data.settings)}
       />
-      <ImportModal
-        isOpen={panel === 'import'}
-        onClose={() => setPanel(null)}
-        existingProjects={data.projects}
-        onImport={importData}
-      />
+      {panel === 'import' && (
+        <ImportModal
+          onClose={() => setPanel(null)}
+          existingProjects={data.projects}
+          onImport={importData}
+        />
+      )}
       <ManageProjectsModal
         isOpen={panel === 'manage'}
         onClose={() => setPanel(null)}
@@ -1698,6 +1707,24 @@ export default function App() {
             pinTaskLine(id, task, targetWeek);
           }}
           onAddProject={showProjectForWeek}
+          onAddPhase={(id, name, targetWeek) => {
+            const project = data.projects.find((item) => item.id === id);
+            const result = project
+              ? addPhaseLineRecord(project, name, targetWeek, uuid())
+              : { error: 'That project no longer exists.' };
+            if (result.error) return result;
+            showProjectForWeek(id, targetWeek);
+            setData((d) => ({
+              ...d,
+              projects: d.projects.map((item) =>
+                item.id === id
+                  ? addPhaseLineRecord(item, name, targetWeek, result.taskId)
+                      .project
+                  : item,
+              ),
+            }));
+            return result;
+          }}
           onManage={() => {
             setLineTarget(null);
             setPanel('manage');

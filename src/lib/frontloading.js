@@ -1,5 +1,6 @@
 import {
   EPSILON,
+  fmt,
   isVisible,
   projectMetrics,
   shiftWeek,
@@ -70,3 +71,40 @@ export const frontloadAdjustment = (project, week, leaveWeeks) => {
   const entry = latestLoggedEntry(project, week);
   return entry ? { ...entry, amount: overage, adjustment: true } : null;
 };
+
+const roundQuarter = (n) => Math.round(n * 4) / 4;
+export const sameHours = (a, b) => Math.abs(a - b) < EPSILON / 2;
+
+// Quick amounts for the Hours step: the suggestion that opened the dialog,
+// this week's overage, thirds of what next week can give, and (when hours
+// are already moved) none. Each amount appears once.
+export function frontloadChoices({ maximum, suggested, overage, existing }) {
+  const list = [];
+  const add = (hours, sub) => {
+    if (!(hours > EPSILON) || hours > maximum + EPSILON) return;
+    if (list.some((item) => sameHours(item.hours, hours))) return;
+    list.push({ hours, sub });
+  };
+  add(suggested, 'Suggested');
+  add(overage, 'Matches this week’s overage');
+  [1 / 3, 2 / 3].forEach((share) => add(roundQuarter(maximum * share)));
+  add(maximum, 'All of next week');
+  const options = list
+    .slice(0, 4)
+    .sort((a, b) => a.hours - b.hours)
+    .map((item) => ({
+      value: `h:${item.hours}`,
+      hours: item.hours,
+      label: `${fmt(item.hours)}h`,
+      sub: item.sub,
+    }));
+  if (existing > EPSILON)
+    options.push({
+      value: 'none',
+      hours: 0,
+      label: 'None',
+      sub: 'Removes the frontloading',
+    });
+  options.push({ value: 'other', label: 'Other amount' });
+  return options;
+}
