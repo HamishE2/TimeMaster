@@ -1128,6 +1128,121 @@ export function financialsOverview(
   };
 }
 
+// "$1,200 left" or "$450 over", in whole dollars.
+export const formatLeft = (left) =>
+  left < 0
+    ? `${formatMoney(-left, { whole: true })} over`
+    : `${formatMoney(left, { whole: true })} left`;
+
+// What is still to do inside a project budget: the unspent part of its
+// costings and of its non-General phase budgets. Costed work is done inside
+// phases, so the two overlap; the larger of the two is counted, never both.
+export function committedWorkLeft(item) {
+  const unspent = (list) =>
+    list.reduce(
+      (cents, row) =>
+        row.amount == null && row.budget == null
+          ? cents
+          : cents +
+            Math.max(0, toCents(row.amount ?? row.budget) - toCents(row.spent)),
+      0,
+    );
+  const costings = unspent(item.activities || []),
+    phases = unspent(
+      (item.phases || []).filter((phase) => phase.id !== GENERAL_NOTE_ID),
+    );
+  return fromCents(Math.max(costings, phases));
+}
+
+// Whether a project budget is low: what is left will not cover the costed
+// work still to do, it is 75%+ used (or used up), or the resourcing plan
+// goes over it. Null when it is fine, or there is no budget or rate.
+export function budgetLow(item) {
+  if (!item.hasRate || !item.hasBudget) return null;
+  const left = item.remaining,
+    workLeft = committedWorkLeft(item),
+    shortBy = roundMoney(Math.max(0, workLeft - Math.max(0, left)));
+  const base = { left, workLeft, shortBy };
+  if (left <= 0 || ['at', 'over'].includes(item.status.level))
+    return { ...base, reason: 'over', tone: 'red' };
+  if (shortBy > 0) return { ...base, reason: 'short', tone: 'red' };
+  if (item.status.level === 'soon' || item.pct >= BUDGET_NEAR)
+    return { ...base, reason: 'near', tone: 'amber' };
+  if (item.status.flags.resourcingOver)
+    return { ...base, reason: 'plan', tone: 'amber' };
+  return null;
+}
+
+// The things worth a look on one project, worst first: costings and phase
+// budgets that are near or over, and a low project budget. Each is
+// { kind, id, name, tone, left, pct } with `left` negative when over.
+export function attentionItems(item) {
+  if (!item.hasRate) return [];
+  const items = [];
+  const add = (kind, row, amount) => {
+    const tone = row.status?.tone;
+    if (tone !== 'red' && tone !== 'amber') return;
+    items.push({
+      kind,
+      id: row.id,
+      name: row.name,
+      tone,
+      left: roundMoney(amount - row.spent),
+      pct: row.pct,
+    });
+  };
+  item.activities.forEach(
+    (row) => row.amount != null && add('costing', row, row.amount),
+  );
+  // A lone General phase is the project budget itself.
+  if (item.phases.length > 1)
+    item.phases.forEach(
+      (row) => row.budget != null && add('phase', row, row.budget),
+    );
+  const low = budgetLow(item);
+  if (low)
+    items.push({
+      kind: 'budget',
+      id: 'budget',
+      name: item.name,
+      tone: low.tone,
+      left: low.reason === 'short' ? -low.shortBy : low.left,
+      pct: item.pct,
+      reason: low.reason,
+    });
+  const rank = { red: 0, amber: 1 };
+  return items.sort(
+    (a, b) => rank[a.tone] - rank[b.tone] || (b.pct ?? 0) - (a.pct ?? 0),
+  );
+}
+
+// The fullest costing or phase on a project (or its budget when it has
+// neither), for the "On track" list.
+export function tightestItem(item) {
+  if (!item.hasRate) return null;
+  const rows = [
+    ...item.activities
+      .filter((row) => row.amount != null)
+      .map((row) => ({ kind: 'costing', row, amount: row.amount })),
+    ...(item.phases.length > 1 ? item.phases : [])
+      .filter((row) => row.budget != null)
+      .map((row) => ({ kind: 'phase', row, amount: row.budget })),
+  ];
+  if (!rows.length)
+    return item.hasBudget
+      ? { kind: 'budget', name: item.name, pct: item.pct, left: item.remaining }
+      : null;
+  const best = rows.reduce((a, b) =>
+    (b.row.pct ?? 0) > (a.row.pct ?? 0) ? b : a,
+  );
+  return {
+    kind: best.kind,
+    name: best.row.name,
+    pct: best.row.pct,
+    left: roundMoney(best.amount - best.row.spent),
+  };
+}
+
 // Editable text draft of a project's financial fields for the project editor.
 export function financeDraftOf(project) {
   const text = (value) => (value == null ? '' : String(value));
