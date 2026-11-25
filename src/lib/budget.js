@@ -189,10 +189,62 @@ export function formatEffort(dollars, rate, perDay) {
 export const daysToMoney = (days, rate, perDay = DEFAULT_HOURS_PER_DAY) =>
   rate == null ? null : roundMoney(Number(days) * perDay * rate);
 
+// Rate levels: the workspace's own list of levels and their hourly rates
+// (none are built in). Stored as settings.rateLevels: [{ id, name, rate }].
+// settings.roleLevelId is the level picked as "Your role".
+export function normaliseRateLevels(list) {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set();
+  return list.flatMap((item, index) => {
+    if (!isPlainObject(item)) return [];
+    const name = String(item.name ?? '')
+      .trim()
+      .slice(0, 60);
+    if (!name) return [];
+    let id = String(item.id ?? '').trim() || `level-${index + 1}`;
+    if (seen.has(id)) id = `${id}-${index + 1}`;
+    seen.add(id);
+    return [{ id, name, rate: positiveRate(item.rate) }];
+  });
+}
+export const rateLevelsOf = (settings) =>
+  normaliseRateLevels(settings?.rateLevels);
+export const levelOf = (settings, levelId) =>
+  levelId
+    ? rateLevelsOf(settings).find((level) => level.id === levelId) || null
+    : null;
+
 // Settings fields owned by financials, for migrateBackup.
 export function normaliseFinanceSettings(settings) {
-  if (!isPlainObject(settings) || !('hourlyRate' in settings)) return {};
-  return { hourlyRate: hourlyRateOf(settings) };
+  if (!isPlainObject(settings)) return {};
+  const out = {};
+  if ('hourlyRate' in settings) out.hourlyRate = hourlyRateOf(settings);
+  if ('rateLevels' in settings)
+    out.rateLevels = normaliseRateLevels(settings.rateLevels);
+  if ('roleLevelId' in settings) {
+    const levels = out.rateLevels ?? normaliseRateLevels(settings.rateLevels);
+    out.roleLevelId = levels.some((level) => level.id === settings.roleLevelId)
+      ? settings.roleLevelId
+      : null;
+  }
+  return out;
+}
+
+// A project's Projectworks page: a full http(s) web address, or null.
+export const PROJECTWORKS_FOCUS = '__projectworks';
+export function parseProjectworksUrl(value) {
+  const s = String(value ?? '').trim();
+  if (!s) return { value: null };
+  let url;
+  try {
+    url = new URL(s);
+  } catch {
+    return { error: 'Paste a full link starting with https://' };
+  }
+  if (!['http:', 'https:'].includes(url.protocol) || !url.hostname)
+    return { error: 'Paste a full link starting with https://' };
+  if (s.length > 2000) return { error: 'That link is too long.' };
+  return { value: url.href };
 }
 
 const nonGeneralTaskIds = (project) =>
@@ -223,6 +275,9 @@ export function normaliseActivities(list) {
         name,
         amount: normaliseMoney(item.amount),
         ...(aliases.length ? { aliases: [...new Set(aliases)] } : {}),
+        ...(typeof item.levelId === 'string' && item.levelId.trim()
+          ? { levelId: item.levelId.trim() }
+          : {}),
       },
     ];
   });
@@ -242,6 +297,9 @@ export function normaliseProjectFinance(project) {
   const next = { ...project },
     phaseIds = nonGeneralTaskIds(project);
   if ('budget' in project) next.budget = normaliseMoney(project.budget);
+  if ('projectworksUrl' in project)
+    next.projectworksUrl =
+      parseProjectworksUrl(project.projectworksUrl).value ?? null;
   if ('hourlyRate' in project)
     next.hourlyRate = normaliseMoney(project.hourlyRate, RATE_MAX);
   if ('phaseBudgets' in project)
@@ -309,6 +367,9 @@ export function applyProjectFinance(project, finance) {
     phaseBudgets: finance.phaseBudgets || {},
     activities: finance.activities || [],
     activityTags: project.activityTags || {},
+    ...('projectworksUrl' in finance
+      ? { projectworksUrl: finance.projectworksUrl }
+      : {}),
   });
 }
 
@@ -688,7 +749,7 @@ export function projectFinance(project, settings = {}, week, options = {}) {
   }));
   // Historical usage (work done before it was logged here) counts towards
   // spend, phase buckets and costings, but not burn, the week or the review.
-  const history = historicalUsageParts(project, activities, rate);
+  const history = historicalUsageParts(project, activities, rate, settings);
   const entries = [...logged, ...history.entries];
   const leaveHours = projectEntries(project, { leaveWeeks, includeLeave: true })
     .filter((entry) => entry.onLeave)
@@ -964,6 +1025,16 @@ export function projectFinance(project, settings = {}, week, options = {}) {
       records: history.records,
       hours: sum(history.entries, 'hours'),
       spent: fromCents(sum(history.entries, 'cents')),
+      mine: fromCents(
+        history.records
+          .filter((record) => record.who !== 'others')
+          .reduce((n, record) => n + toCents(record.cost), 0),
+      ),
+      others: fromCents(
+        history.records
+          .filter((record) => record.who === 'others')
+          .reduce((n, record) => n + toCents(record.cost), 0),
+      ),
     },
     forecast: {
       ...forecast,
@@ -1260,6 +1331,7 @@ export function financeDraftOf(project) {
       amount: text(activity.amount),
       unit: '$',
       aliases: (activity.aliases || []).join(', '),
+      levelId: activity.levelId || '',
     })),
   };
 }
@@ -1459,6 +1531,18 @@ export function normaliseHistoricalUsage(list, project, activities = []) {
         total: fromCents(totalH),
         phases,
         activities: activityBreakdown,
+        // Whose work: your own (the default) or other people's. Other
+        // people's hours may be costed at one of the workspace's levels.
+        ...(item.who === 'others'
+          ? {
+              who: 'others',
+              ...(unit === 'hours' &&
+              typeof item.levelId === 'string' &&
+              item.levelId
+                ? { levelId: item.levelId }
+                : {}),
+            }
+          : {}),
       },
     ];
   });
@@ -1468,7 +1552,7 @@ export function normaliseHistoricalUsage(list, project, activities = []) {
 // in projectFinance. Hours are costed at the project's rate like logged time;
 // dollars are taken as given. Usage dated "up to" a day sits in that week on
 // the spend chart; undated usage comes before everything.
-function historicalUsageParts(project, activities, rate) {
+function historicalUsageParts(project, activities, rate, settings = {}) {
   const records = normaliseHistoricalUsage(
     project.historicalUsage,
     project,
@@ -1479,10 +1563,14 @@ function historicalUsageParts(project, activities, rate) {
     shares = [],
     summaries = [];
   for (const record of records) {
-    const cents =
+    const recordRate =
+        record.who === 'others' && record.levelId
+          ? (levelOf(settings, record.levelId)?.rate ?? rate)
+          : rate,
+      cents =
         record.unit === 'money'
           ? toCents(record.total)
-          : entryCents(record.total, rate),
+          : entryCents(record.total, recordRate),
       hoursOf = (value) => (record.unit === 'hours' ? value : 0),
       week = record.asOf ? weekKeyFor(record.asOf) : '',
       phaseCents = shareCents(record.phases, record.total, cents),
@@ -1512,6 +1600,7 @@ function historicalUsageParts(project, activities, rate) {
       });
     summaries.push({
       ...record,
+      who: record.who === 'others' ? 'others' : 'me',
       cost: fromCents(cents),
       hours: record.unit === 'hours' ? record.total : null,
     });
@@ -1557,6 +1646,8 @@ export function historicalDraftOf(record = null) {
     label: record?.label ?? HISTORY_DEFAULT_LABEL,
     asOf: record?.asOf || '',
     unit: record?.unit === 'money' ? 'money' : 'hours',
+    who: record?.who === 'others' ? 'others' : 'me',
+    levelId: record?.levelId || '',
     total: text(record?.total),
     phases: typed(record?.phases, GENERAL_NOTE_ID),
     activities: typed(record?.activities, NO_ACTIVITY_TAG),
@@ -1643,6 +1734,14 @@ export function validateHistoricalDraft(
         asOf: asOf || null,
         unit,
         total: total.value,
+        ...(draft.who === 'others'
+          ? {
+              who: 'others',
+              ...(unit === 'hours' && draft.levelId
+                ? { levelId: draft.levelId }
+                : {}),
+            }
+          : {}),
         phases: {
           ...phases.out,
           ...(phases.left > 0 ? { [GENERAL_NOTE_ID]: phases.left } : {}),

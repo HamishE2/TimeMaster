@@ -90,6 +90,12 @@ export default function ProjectLineModal({
       index={step}
       onBack={() => setStep(0)}
       onNext={next}
+      onJump={setStep}
+      locked={[false, !project]}
+      // Opened from a project's row, the project is already chosen.
+      preOpened={
+        initialProjectId && projectId === initialProjectId ? ['Project'] : []
+      }
       onClose={onClose}
       finishLabel="Add line"
       nextDisabled={!project || (step === 1 && !line)}

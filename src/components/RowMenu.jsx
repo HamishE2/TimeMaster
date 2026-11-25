@@ -3,8 +3,8 @@ import { createPortal } from 'react-dom';
 
 // Context menu for a timesheet row. Opens from the row's ⋯ button or a
 // right-click, positioned at the pointer (or under the button) and kept on
-// screen. Items are [label, onSelect, { danger, disabled }?] or null for a
-// divider. Closes on Escape, outside click, scroll or resize.
+// screen. Items are [label, onSelect, { danger, disabled }?], null for a
+// divider, or [label, null, { heading: true }] for a small group heading. Closes on Escape, outside click, scroll or resize.
 export default function RowMenu({ open, items, label, onClose }) {
   const ref = useRef(null);
   const [pos, setPos] = useState(null);
@@ -77,7 +77,11 @@ export default function RowMenu({ open, items, label, onClose }) {
       }
     >
       {items.map((item, i) =>
-        item ? (
+        item?.[2]?.heading ? (
+          <small key={`heading-${item[0]}`} className="row-menu-heading">
+            {item[0]}
+          </small>
+        ) : item ? (
           <button
             key={item[0]}
             type="button"

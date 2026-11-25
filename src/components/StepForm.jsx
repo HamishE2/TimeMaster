@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import CheckIcon from './CheckIcon.jsx';
 import Modal from './Modal.jsx';
 
 // Building blocks for the stepped setup dialogs (historical usage, project
@@ -6,41 +8,103 @@ import Modal from './Modal.jsx';
 
 // The dialog shell: step pills, "Step n of m", the current step and the
 // Back / Next buttons. Enter submits the form, which moves to the next step.
+//
+// With `onJump`, every pill is a button that jumps straight to its step
+// (unless `locked[i]`, for a step that needs an earlier answer). Steps are
+// remembered by name once opened; a new setup can only be finished once
+// every step has been opened. `editing` counts every step as opened from the
+// start; `preOpened` names steps already answered elsewhere (a project
+// picked from its row). `stepErrors[i]` marks an opened step that needs fixing.
+// `secondary` ({ label, onClick }) is a second way to finish, shown under the
+// buttons on the last step and held back by the same rules.
 export function StepDialog({
   title,
   steps,
   index,
   onBack,
   onNext,
+  onJump,
   onClose,
   finishLabel,
   nextDisabled = false,
+  editing = false,
+  preOpened = [],
+  locked = [],
+  stepErrors = [],
+  secondary = null,
   children,
 }) {
   const last = index === steps.length - 1;
+  const [opened, setOpened] = useState(() =>
+    editing ? new Set(steps) : new Set([...preOpened, steps[index]]),
+  );
+  const current = steps[index];
+  // Remember each step as it is opened (updated during render, as React
+  // recommends for state derived from props).
+  if (!opened.has(current)) setOpened(new Set(opened).add(current));
+  const isOpened = (name) => editing || opened.has(name) || name === current;
+  const allOpened = steps.every(isOpened);
+  const finishBlocked = last && !allOpened;
   return (
     <Modal title={title} onClose={onClose} wide>
       <form
         className="cfg-form"
         onSubmit={(event) => {
           event.preventDefault();
-          if (!nextDisabled) onNext();
+          if (!nextDisabled && !finishBlocked) onNext();
         }}
         noValidate
       >
         {steps.length > 1 && (
           <>
             <ol className="cfg-steps" aria-label="Steps">
-              {steps.map((name, i) => (
-                <li
-                  key={name}
-                  aria-current={i === index ? 'step' : undefined}
-                  className={i < index ? 'is-done' : ''}
-                >
-                  <span aria-hidden="true">{i < index ? '✓' : i + 1}</span>
-                  {name}
-                </li>
-              ))}
+              {steps.map((name, i) => {
+                const here = i === index,
+                  seen = !here && isOpened(name),
+                  bad = seen && stepErrors[i],
+                  mark = bad ? '!' : seen ? <CheckIcon /> : i + 1,
+                  className = [
+                    seen && 'is-done',
+                    bad && 'is-error',
+                    locked[i] && 'is-locked',
+                  ]
+                    .filter(Boolean)
+                    .join(' ');
+                const label = `${name}${
+                  here
+                    ? ', current step'
+                    : bad
+                      ? ', needs fixing'
+                      : seen
+                        ? ', opened'
+                        : ', not opened yet'
+                }`;
+                return (
+                  <li
+                    key={name}
+                    aria-current={here ? 'step' : undefined}
+                    className={className || undefined}
+                  >
+                    {onJump ? (
+                      <button
+                        type="button"
+                        className="cfg-step"
+                        aria-label={label}
+                        disabled={!here && !!locked[i]}
+                        onClick={() => !here && onJump(i)}
+                      >
+                        <span aria-hidden="true">{mark}</span>
+                        {name}
+                      </button>
+                    ) : (
+                      <>
+                        <span aria-hidden="true">{mark}</span>
+                        {name}
+                      </>
+                    )}
+                  </li>
+                );
+              })}
             </ol>
             <p className="cfg-count">
               Step {index + 1} of {steps.length}
@@ -59,11 +123,21 @@ export function StepDialog({
           <button
             type="submit"
             className="cfg-button primary"
-            disabled={nextDisabled}
+            disabled={nextDisabled || finishBlocked}
           >
             {last ? finishLabel : 'Next →'}
           </button>
         </div>
+        {last && secondary && (
+          <button
+            type="button"
+            className="cfg-link"
+            disabled={nextDisabled || finishBlocked}
+            onClick={secondary.onClick}
+          >
+            {secondary.label}
+          </button>
+        )}
       </form>
     </Modal>
   );

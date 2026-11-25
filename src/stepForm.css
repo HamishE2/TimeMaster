@@ -282,7 +282,8 @@
   padding: 0;
   list-style: none;
 }
-.cfg-steps li {
+.cfg-steps li,
+.cfg-steps .cfg-step {
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -293,7 +294,28 @@
   font-weight: 600;
   color: var(--muted);
 }
-.cfg-steps li > span {
+.cfg-steps li:has(> .cfg-step) {
+  padding: 0;
+  border: 0;
+}
+.cfg-steps .cfg-step {
+  min-height: 34px;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cfg-steps .cfg-step:hover:not(:disabled) {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+.cfg-steps .cfg-step:disabled {
+  border-style: dashed;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.cfg-steps li span {
   display: grid;
   place-items: center;
   width: 22px;
@@ -302,17 +324,31 @@
   background: var(--surface-2);
   font-size: 12px;
 }
-.cfg-steps li[aria-current='step'] {
+.cfg-steps li[aria-current='step'],
+.cfg-steps li[aria-current='step'] .cfg-step {
   border-color: var(--ink);
   color: var(--ink);
 }
-.cfg-steps li[aria-current='step'] > span {
+.cfg-steps li[aria-current='step'] span {
   background: var(--accent);
   color: var(--accent-ink);
 }
-.cfg-steps li.is-done > span {
+.cfg-steps li.is-done span {
   background: var(--ink);
   color: var(--surface);
+}
+.cfg-steps li.is-done,
+.cfg-steps li.is-done .cfg-step {
+  color: var(--ink);
+}
+.cfg-steps li.is-error span {
+  background: var(--danger);
+  color: var(--surface);
+  font-weight: 700;
+}
+.cfg-steps li.is-error .cfg-step {
+  border-color: var(--danger);
+  color: var(--danger);
 }
 .cfg-count {
   margin: -12px 0 0;
@@ -419,4 +455,29 @@
     padding-bottom: 12px;
     border-bottom: 1px solid var(--border);
   }
+}
+.cfg-link {
+  align-self: center;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.cfg-link:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+/* Finishing waits until every step has been opened: the button greys out. */
+.cfg-button.primary:disabled {
+  border-color: var(--border);
+  background: var(--surface-2);
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 1;
 }

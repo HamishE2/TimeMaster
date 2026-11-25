@@ -1,4 +1,5 @@
-import { useId, useRef, useState } from 'react';
+import { useContext, useId, useRef, useState } from 'react';
+import { LevelsContext } from './levelsContext.js';
 import {
   GENERAL_BUCKET,
   resolveEntryActivities,
@@ -34,6 +35,7 @@ export default function ActivityPicker({
   // split (typed against one entry's hours) is not offered there.
   canSplit = true,
 }) {
+  const levels = useContext(LevelsContext);
   const id = useId(),
     [open, setOpen] = useState(false),
     [filter, setFilter] = useState(''),
@@ -79,11 +81,14 @@ export default function ActivityPicker({
   ].slice(0, 3);
   const term = filter.trim().toLowerCase();
   const matches = (label) => !term || label.toLowerCase().includes(term);
+  const levelHint = (activityId) =>
+    levels.find((level) => level.id === byId.get(activityId)?.levelId)?.name;
   const options = [
     ...suggested.map((key) => ({
       key: `s-${key}`,
       group: 'Suggested',
       label: nameOf(key),
+      hint: levelHint(key),
       run: () => onTag?.(key),
     })),
     ...activities
@@ -92,6 +97,7 @@ export default function ActivityPicker({
         key: activity.id,
         group: 'Costings',
         label: activity.name,
+        hint: levelHint(activity.id),
         run: () => onTag?.(activity.id),
       })),
     {

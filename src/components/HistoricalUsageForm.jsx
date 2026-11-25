@@ -5,9 +5,11 @@ import {
   formatUsage,
   historicalDraftOf,
   hoursPerDay,
+  levelOf,
   normaliseActivities,
   projectFinance,
   projectRateOf,
+  rateLevelsOf,
   setHistoricalUsageRecord,
   validateHistoricalDraft,
 } from '../lib/budget.js';
@@ -26,6 +28,7 @@ import {
 // Which errors belong to which step.
 const STEP_FIELDS = {
   project: () => false,
+  who: () => false,
   amount: (key) => ['label', 'asOf', 'total'].includes(key),
   phases: (key) => key === 'phases' || key.startsWith('phase:'),
   costings: (key) => key === 'activities' || key.startsWith('activity:'),
@@ -33,11 +36,25 @@ const STEP_FIELDS = {
 };
 const STEP_NAMES = {
   project: 'Project',
+  who: 'Whose work',
   amount: 'Amount',
   phases: 'By phase',
   costings: 'By costing',
   check: 'Check',
 };
+
+const WHO = [
+  {
+    value: 'me',
+    label: 'Mine',
+    sub: 'Time I worked before logging it here. Costed at the project rate.',
+  },
+  {
+    value: 'others',
+    label: 'Other people',
+    sub: 'Work by the rest of the team that used this project’s budget.',
+  },
+];
 
 const UNITS = [
   { value: 'hours', label: 'Hours', sub: 'Time worked' },
@@ -96,15 +113,18 @@ function Breakdown({
 }
 
 // "Add historical usage data": work done on a project before it was logged
-// here, as one total broken down by phase bucket and by costing. One question
-// per step, with large buttons and fields and Back / Next to move between
-// them. The phase and costing steps only appear when the project has any.
+// here, yours or other people's, as one total broken down by phase bucket and
+// by costing. One question per step, with large buttons and fields and Back /
+// Next (or the step pills) to move between them. The phase and costing steps
+// only appear when the project has any. `who` starts a new record as the
+// given kind ("Save and add…" restarts the form that way).
 export default function HistoricalUsageForm({
   projects,
   settings,
   week,
   projectId = null,
   record = null,
+  who = null,
   onSave,
   onClose,
 }) {
@@ -112,21 +132,32 @@ export default function HistoricalUsageForm({
   // A new record gets its id up front so it stays the same while typing.
   const [draft, setDraft] = useState(() => {
     const initial = historicalDraftOf(record);
-    return { ...initial, id: initial.id || `history-${uuid()}` };
+    return {
+      ...initial,
+      ...(who && !record ? { who } : {}),
+      id: initial.id || `history-${uuid()}`,
+    };
   });
   // Steps whose errors are shown (after Next was pressed on them).
   const [tried, setTried] = useState({});
-  const [stepIndex, setStepIndex] = useState(record ? 1 : 0);
+  const [stepIndex, setStepIndex] = useState(record ? 1 : who ? 2 : 0);
   const project = projects.find((item) => item.id === pid) || null;
+  const others = draft.who === 'others';
+  const levels = rateLevelsOf(settings).filter((level) => level.rate);
+  const level = others ? levelOf(settings, draft.levelId) : null;
   const phases = phasesOf(project || {}),
     activities = normaliseActivities(project?.activities),
-    rate = projectRateOf(project, settings),
+    rate =
+      draft.unit === 'hours' && level?.rate
+        ? level.rate
+        : projectRateOf(project, settings),
     perDay = hoursPerDay(settings);
   const set = (patch) => setDraft((current) => ({ ...current, ...patch }));
   const result = validateHistoricalDraft(draft, project || {});
   const { unit } = result;
   const steps = [
     'project',
+    'who',
     'amount',
     phases.length > 0 && 'phases',
     activities.length > 0 && 'costings',
@@ -177,6 +208,19 @@ export default function HistoricalUsageForm({
     }
     if (project && result.record) onSave(project.id, result.record);
   };
+  const jump = (i) => {
+    setTried((current) => ({ ...current, [step]: true }));
+    setStepIndex(i);
+  };
+  // Saves this record and starts another for the same project, for the
+  // other kind of work.
+  const saveAndAddOther = () => {
+    setTried((current) => ({ ...current, [step]: true }));
+    if (Object.keys(result.errors).length || !project || !result.record) return;
+    onSave(project.id, result.record, { addOther: others ? 'me' : 'others' });
+  };
+  const stepHasErrors = (name) =>
+    Object.keys(result.errors).some((key) => STEP_FIELDS[name](key));
   const back = () => (index === 0 ? onClose() : setStepIndex(index - 1));
 
   return (
@@ -186,9 +230,26 @@ export default function HistoricalUsageForm({
       index={index}
       onBack={back}
       onNext={next}
+      onJump={jump}
+      editing={!!record}
+      preOpened={who ? ['Project', 'Whose work'] : []}
+      locked={steps.map((name) => name !== 'project' && !project)}
+      stepErrors={steps.map(
+        (name) => name !== 'check' && !!tried[name] && stepHasErrors(name),
+      )}
       onClose={onClose}
       finishLabel={record ? 'Save changes' : 'Add usage'}
       nextDisabled={!project}
+      secondary={
+        record
+          ? null
+          : {
+              label: others
+                ? 'Save and add my own usage'
+                : 'Save and add other people’s usage',
+              onClick: saveAndAddOther,
+            }
+      }
     >
       {step === 'project' && (
         <StepSection title="Which project is it for?">
@@ -217,8 +278,29 @@ export default function HistoricalUsageForm({
         </StepSection>
       )}
 
+      {step === 'who' && (
+        <StepSection
+          title="Whose work was it?"
+          help="Both count towards the project budget, phases and costings. Add one, then the other."
+        >
+          <ChoiceGroup
+            ariaLabel="Whose work"
+            cols={2}
+            value={draft.who}
+            onChange={(value) => set({ who: value })}
+            options={WHO}
+          />
+        </StepSection>
+      )}
+
       {step === 'amount' && (
-        <StepSection title={`How much was used on ${project?.name}?`}>
+        <StepSection
+          title={
+            others
+              ? `How much did other people use on ${project?.name}?`
+              : `How much was used on ${project?.name}?`
+          }
+        >
           <ChoiceGroup
             ariaLabel="Count it in"
             cols={2}
@@ -239,6 +321,28 @@ export default function HistoricalUsageForm({
             onChange={(event) => set({ total: event.target.value })}
             autoFocus
           />
+          {others && unit === 'hours' && levels.length > 0 && (
+            <ChoiceGroup
+              label="Cost their hours at"
+              cols={3}
+              value={level ? level.id : ''}
+              onChange={(value) => set({ levelId: value })}
+              options={[
+                {
+                  value: '',
+                  label: 'Project rate',
+                  sub: projectRateOf(project, settings)
+                    ? `${formatMoney(projectRateOf(project, settings))}/h`
+                    : 'Not set',
+                },
+                ...levels.map((item) => ({
+                  value: item.id,
+                  label: item.name,
+                  sub: `${formatMoney(item.rate)}/h`,
+                })),
+              ]}
+            />
+          )}
           <div className="cfg-pair">
             <BigField
               id="hist-label"
@@ -312,6 +416,12 @@ export default function HistoricalUsageForm({
           <ReviewList
             rows={[
               ['Project', project?.name],
+              [
+                'Whose work',
+                others
+                  ? `Other people${unit === 'hours' ? ` · ${level ? level.name : 'project rate'}` : ''}`
+                  : 'Mine',
+              ],
               [
                 result.record?.label || 'Name',
                 `${formatUsage(result.total, unit)}${

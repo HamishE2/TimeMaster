@@ -8,6 +8,7 @@ import {
   useState,
 } from 'react';
 import RowMenu from './RowMenu.jsx';
+import { projectworksMenuItem } from './projectMenu.js';
 import { hasPhases } from '../lib/tasks.js';
 import {
   DAY_NAMES,
@@ -63,6 +64,7 @@ export default function TimesheetTable({
   onFrontload,
   onSuggestFrontload,
   onRemove,
+  onAddLink,
   onPlace,
   onPlaceTask,
   onRestoreTag,
@@ -420,6 +422,8 @@ export default function TimesheetTable({
   };
   const projectMenu = (p) =>
     [
+      projectworksMenuItem(p, onAddLink),
+      null,
       hasPhases(p) && ['Add task line', () => onAddLine(p)],
       ['Edit project', () => onEdit(p)],
       null,
@@ -596,6 +600,8 @@ export default function TimesheetTable({
                             event,
                             [
                               [`Edit ${task.name}`, () => onEdit(p, task.id)],
+                                projectworksMenuItem(p, onAddLink),
+                                null,
                               ['Add task line', () => onAddLine(p)],
                               ['Edit project', () => onEdit(p)],
                               null,

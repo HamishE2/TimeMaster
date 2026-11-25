@@ -83,6 +83,8 @@ export default function ImportModal({ onClose, existingProjects, onImport }) {
       index={step}
       onBack={() => setStep(step - 1)}
       onNext={next}
+      onJump={setStep}
+      locked={[false, !classified.length, !classified.length || !chosen.length]}
       onClose={onClose}
       finishLabel={`Import ${chosen.length} project${chosen.length === 1 ? '' : 's'}`}
       nextDisabled={step === 0 ? !classified.length : !chosen.length}

@@ -76,6 +76,7 @@ import useHistory from './lib/useHistory.js';
 import EntryNoteModal from './components/EntryNoteModal.jsx';
 import Financials from './components/Financials.jsx';
 import ActivityPicker from './components/ActivityPicker.jsx';
+import { LevelsContext } from './components/levelsContext.js';
 import { setActivityTagRecord } from './lib/entryNotes.js';
 import {
   applyProjectFinance,
@@ -84,6 +85,9 @@ import {
   hourlyRateOf,
   hoursPerDay,
   BUDGET_FOCUS,
+  PROJECTWORKS_FOCUS,
+  levelOf,
+  rateLevelsOf,
 } from './lib/budget.js';
 import { entryNote, setEntryNoteRecord } from './lib/entryNotes.js';
 
@@ -341,6 +345,13 @@ export default function App() {
       ...d,
       projects: d.projects.map((p) => (p.id === projectId ? change(p) : p)),
     }));
+  // "Add Projectworks link…": the project editor at Details, link focused.
+  const addProjectworksLink = (project) => {
+    if (!project) return;
+    setFocusPhase(PROJECTWORKS_FOCUS);
+    setEdit(project);
+    setPanel('project');
+  };
   const saveHistoricalUsage = (projectId, record) => {
     updateProjectById(projectId, (p) => setHistoricalUsageRecord(p, record));
     setNotice({ type: 'success', text: 'Historical usage saved.' });
@@ -1052,6 +1063,8 @@ export default function App() {
 
   if (!ready) return <div className="loading">Opening workspace…</div>;
   return (
+    // Rate levels for the costing pickers' "Costed at" labels.
+    <LevelsContext.Provider value={rateLevelsOf(data.settings)}>
     <div className="app" data-theme={data.settings.theme}>
       <header className="topbar">
         <a className="brand" href="#workspace">
@@ -1238,9 +1251,9 @@ export default function App() {
             week={week}
             days={days}
             onOpenSettings={openSettings}
-            onEditProject={(project) => {
+            onEditProject={(project, focus = BUDGET_FOCUS) => {
               if (!project) return;
-              setFocusPhase(BUDGET_FOCUS);
+              setFocusPhase(focus);
               setEdit(project);
               setPanel('project');
             }}
@@ -1250,6 +1263,7 @@ export default function App() {
             }}
             onTag={tagEntryActivity}
             onSaveHistory={saveHistoricalUsage}
+            onAddLink={addProjectworksLink}
             onRemoveHistory={removeHistoricalUsage}
           />
         ) : (
@@ -1440,6 +1454,7 @@ export default function App() {
                       })
                     }
                     onRemove={setRemoveTarget}
+                    onAddLink={addProjectworksLink}
                     onMove={move}
                     onPlace={place}
                     onPlaceTask={placeTask}
@@ -1558,6 +1573,8 @@ export default function App() {
         weekKey={week}
         hourlyRate={hourlyRateOf(data.settings)}
         perDay={hoursPerDay(data.settings)}
+        rateLevels={rateLevelsOf(data.settings)}
+        roleName={levelOf(data.settings, data.settings.roleLevelId)?.name || null}
       />
       {panel === 'import' && (
         <ImportModal
@@ -1763,5 +1780,6 @@ export default function App() {
         />
       )}
     </div>
+    </LevelsContext.Provider>
   );
 }
