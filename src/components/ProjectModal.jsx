@@ -10,6 +10,7 @@ import { validateProjectDraft } from '../lib/projectOperations.js';
 import { isGeneralTask, phaseHours } from '../lib/tasks.js';
 import {
   BUDGET_FOCUS,
+  PROJECTWORKS_FOCUS,
   activityTagCounts,
   daysToMoney,
   financeDraftOf,
@@ -17,6 +18,7 @@ import {
   formatMoney,
   fromCents,
   parseMoney,
+  parseProjectworksUrl,
   parseRate,
   toCents,
   validateFinanceDraft,
@@ -53,7 +55,7 @@ const STEPS = [
 ];
 // Which validation errors belong to which step.
 const STEP_ERRORS = {
-  Details: (key) => key === 'name',
+  Details: (key) => key === 'name' || key === 'projectworksUrl',
   Type: (key) => key === 'duration',
   Hours: (key) =>
     ['hours', 'monthlyHours', 'historicalMonthly', 'remainderLimit'].includes(
@@ -78,6 +80,7 @@ const blankActivity = () => ({
   name: '',
   amount: '',
   aliases: '',
+  levelId: '',
   unit: '$',
 });
 const hasPhaseTime = (project, taskId) =>
@@ -108,6 +111,7 @@ function draftOf(project, weekKey) {
     name: project?.name ?? '',
     client: project?.client ?? '',
     code: project?.code ?? '',
+    projectworksUrl: project?.projectworksUrl ?? '',
     status: project?.status ?? 'active',
     color: project?.color ?? PROJECT_COLOURS[0],
     isBillable: project?.isBillable ?? true,
@@ -154,6 +158,8 @@ function ProjectSteps({
   weekKey,
   hourlyRate = null,
   perDay = 7.6,
+  rateLevels = [],
+  roleName = null,
 }) {
   const [draft, setDraft] = useState(() => draftOf(initial, weekKey));
   const [startFrom, setStartFrom] = useState('blank');
@@ -175,7 +181,11 @@ function ProjectSteps({
   const [phaseError, setPhaseError] = useState('');
   const [pendingRemoval, setPendingRemoval] = useState(null);
   const [step, setStep] = useState(() =>
-    focusPhase === BUDGET_FOCUS ? 4 : focusPhase ? 3 : 0,
+    focusPhase === BUDGET_FOCUS
+      ? 4
+      : focusPhase && focusPhase !== PROJECTWORKS_FOCUS
+        ? 3
+        : 0,
   );
   const [tried, setTried] = useState({});
   const set = (patch) => setDraft((current) => ({ ...current, ...patch }));
@@ -210,7 +220,9 @@ function ProjectSteps({
     perDay,
     requirePhaseBudgets: true,
   });
+  const projectworks = parseProjectworksUrl(draft.projectworksUrl);
   const allErrors = {
+    ...(projectworks.error ? { projectworksUrl: projectworks.error } : {}),
     ...validateProjectDraft({
       name: draft.name,
       unlimited: draft.unlimited,
@@ -379,7 +391,7 @@ function ProjectSteps({
       draft.durationWeeks,
       draft.durationDays,
       draft.remainderLimit === '' ? null : Number(draft.remainderLimit),
-      financeResult.value,
+      { ...financeResult.value, projectworksUrl: projectworks.value ?? null },
     );
     if (saved !== false) onClose();
   };
@@ -425,6 +437,18 @@ function ProjectSteps({
       index={step}
       onBack={() => setStep(step - 1)}
       onNext={next}
+      onJump={(i) => {
+        setTried((current) => ({ ...current, [stepName]: true }));
+        setStep(i);
+      }}
+      editing={!!initial}
+      // An edit marks any step that needs fixing (adding a phase turns the
+      // Budget pill red); a new project only once a step has been tried.
+      stepErrors={STEPS.map(
+        (name) =>
+          (!!initial || !!tried[name]) &&
+          Object.keys(allErrors).some((key) => STEP_ERRORS[name](key)),
+      )}
       onClose={onClose}
       finishLabel={initial ? 'Save changes' : 'Create project'}
     >
@@ -479,7 +503,7 @@ function ProjectSteps({
             value={draft.name}
             error={errors.name}
             onChange={(event) => set({ name: event.target.value })}
-            autoFocus
+            autoFocus={focusPhase !== PROJECTWORKS_FOCUS}
           />
           <div className="cfg-pair">
             <BigField
@@ -498,6 +522,17 @@ function ProjectSteps({
               onChange={(event) => set({ code: event.target.value })}
             />
           </div>
+          <BigField
+            id="project-projectworks"
+            label="Projectworks link"
+            type="url"
+            inputMode="url"
+            placeholder="Paste the project’s Projectworks page"
+            value={draft.projectworksUrl}
+            error={errors.projectworksUrl}
+            onChange={(event) => set({ projectworksUrl: event.target.value })}
+            autoFocus={focusPhase === PROJECTWORKS_FOCUS}
+          />
           {initial && (
             <ChoiceGroup
               label="Status"
@@ -784,7 +819,11 @@ function ProjectSteps({
               addPhase();
             }}
             onBlur={addPhase}
-            autoFocus={!!focusPhase && focusPhase !== BUDGET_FOCUS}
+            autoFocus={
+              !!focusPhase &&
+              focusPhase !== BUDGET_FOCUS &&
+              focusPhase !== PROJECTWORKS_FOCUS
+            }
           />
         </StepSection>
       )}
@@ -819,11 +858,17 @@ function ProjectSteps({
               unit="/ h"
               inputMode="decimal"
               placeholder={
-                hourlyRate == null ? 'Not set' : `${hourlyRate} (workspace)`
+                hourlyRate == null
+                  ? 'Not set'
+                  : `${hourlyRate} (${roleName || 'workspace'})`
               }
               value={draft.finance.hourlyRate ?? ''}
               error={errors.hourlyRate}
-              hint="Blank uses the workspace rate"
+              hint={
+                roleName
+                  ? 'Blank uses your role’s rate'
+                  : 'Blank uses the workspace rate'
+              }
               onChange={(event) =>
                 setFinance({ hourlyRate: event.target.value })
               }
@@ -947,6 +992,30 @@ function ProjectSteps({
                     setActivity(activity.id, { aliases: event.target.value })
                   }
                 />
+                {rateLevels.length > 0 &&
+                  (activity.name || activity.amount) && (
+                    <ChoiceGroup
+                      label="Costed at"
+                      ariaLabel={`${activity.name || 'Activity'} costed at`}
+                      value={
+                        rateLevels.some(
+                          (level) => level.id === activity.levelId,
+                        )
+                          ? activity.levelId
+                          : ''
+                      }
+                      onChange={(levelId) =>
+                        setActivity(activity.id, { levelId })
+                      }
+                      options={[
+                        { value: '', label: 'Not set' },
+                        ...rateLevels.map((level) => ({
+                          value: level.id,
+                          label: level.name,
+                        })),
+                      ]}
+                    />
+                  )}
               </div>
             );
           })}
@@ -981,6 +1050,9 @@ function ProjectSteps({
                   .filter(Boolean)
                   .join(' · '),
               ],
+              ...(projectworks.value
+                ? [['Projectworks', projectworks.value]]
+                : []),
               ['Type', oneTime ? `One-time · ${durationText}` : 'Standard'],
               [
                 'Hours',

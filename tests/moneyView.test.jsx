@@ -99,3 +99,79 @@ test('the sidebar lists the items themselves, and history lives in the ⋯ menu'
   );
   expect(onRemoveHistory).toHaveBeenCalledWith('n', 'h');
 });
+
+test('every Needs attention project has a ⋯ menu with its Projectworks link', () => {
+  const onAddLink = vi.fn();
+  const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+  show({
+    onAddLink,
+    projects: [
+      { ...northwind, projectworksUrl: 'https://acme.projectworks.io/p/1' },
+      presales,
+    ],
+  });
+  // An untracked project (no budget) still gets the menu.
+  fireEvent.click(screen.getByRole('button', { name: 'Options for Presales' }));
+  fireEvent.click(
+    screen.getByRole('menuitem', { name: 'Add Projectworks link…' }),
+  );
+  expect(onAddLink).toHaveBeenCalledWith(presales);
+  fireEvent.click(
+    screen.getAllByRole('button', { name: 'Options for Northwind' })[0],
+  );
+  fireEvent.click(
+    screen.getByRole('menuitem', { name: 'Open in Projectworks ↗' }),
+  );
+  expect(open).toHaveBeenCalledWith(
+    'https://acme.projectworks.io/p/1',
+    '_blank',
+    'noopener,noreferrer',
+  );
+  // The card's ⋯ menu leads with it too.
+  fireEvent.click(screen.getByRole('button', { name: 'More for Northwind' }));
+  expect(screen.getAllByRole('menuitem')[0].textContent).toBe(
+    'Open in Projectworks ↗',
+  );
+  open.mockRestore();
+});
+
+test('costings show their level and history is split into yours and other people’s', () => {
+  show({
+    settings: {
+      hourlyRate: 210,
+      leaveWeeks: {},
+      rateLevels: [{ id: 'cert', name: 'Certified', rate: 250 }],
+    },
+    projects: [
+      {
+        ...northwind,
+        activities: northwind.activities.map((a) =>
+          a.id === 'gov' ? { ...a, levelId: 'cert' } : a,
+        ),
+        historicalUsage: [
+          ...northwind.historicalUsage,
+          {
+            id: 't',
+            label: 'Team',
+            who: 'others',
+            unit: 'money',
+            total: 1000,
+            phases: {},
+            activities: {},
+          },
+        ],
+      },
+    ],
+  });
+  const card = screen
+    .getByRole('region', { name: 'Northwind costings' })
+    .closest('li.fin-card');
+  expect(card.querySelector('.fin-level').textContent).toBe('Certified');
+  expect(card.textContent).toContain(
+    'Includes historical usage: $25,200 yours · $1,000 other people',
+  );
+  const side = screen.getByRole('complementary', { name: 'Needs attention' });
+  expect(side.textContent).toContain('Governance framework · Certified');
+  fireEvent.click(screen.getByRole('button', { name: 'More for Northwind' }));
+  expect(screen.getByText('Other people')).toBeTruthy();
+});

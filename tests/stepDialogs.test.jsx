@@ -210,3 +210,113 @@ test('importing a CSV picks projects and shows the counts', async () => {
   expect(onImport).toHaveBeenCalledTimes(1);
   expect(onImport.mock.calls[0][1].map((item) => item.name)).toEqual(['Alpha']);
 });
+
+test('step pills jump between steps and a new project needs every step opened', () => {
+  const onSave = vi.fn();
+  render(
+    <ProjectModal
+      isOpen
+      onClose={() => {}}
+      onSave={onSave}
+      initial={null}
+      projects={[]}
+      weekKey={WEEK}
+      hourlyRate={100}
+      rateLevels={[{ id: 'cert', name: 'Certified', rate: 200 }]}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText('Project name'), {
+    target: { value: 'Intranet' },
+  });
+  fireEvent.change(screen.getByLabelText('Projectworks link'), {
+    target: { value: 'not a link' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: /^Check, not opened yet/ }));
+  stepIs(7, 7);
+  // Details is marked as needing a fix, and Create stays grey.
+  expect(
+    screen.getByRole('button', { name: /^Details, needs fixing/ }),
+  ).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Create project' }).disabled).toBe(
+    true,
+  );
+  fireEvent.click(screen.getByRole('button', { name: /^Details/ }));
+  fireEvent.change(screen.getByLabelText('Projectworks link'), {
+    target: { value: 'https://acme.projectworks.io/projects/7' },
+  });
+  for (const name of ['Type', 'Hours', 'Phases', 'Budget', 'Costings'])
+    fireEvent.click(
+      screen.getByRole('button', { name: new RegExp(`^${name}, `) }),
+    );
+  fireEvent.change(screen.getByLabelText('Activity'), {
+    target: { value: 'Workshops' },
+  });
+  fireEvent.click(screen.getByRole('radio', { name: 'Certified' }));
+  fireEvent.click(screen.getByRole('button', { name: /^Hours/ }));
+  fireEvent.change(screen.getByLabelText('Hours a week'), {
+    target: { value: '6' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: /^Check/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Create project' }));
+  expect(onSave).toHaveBeenCalledTimes(1);
+  const finance = onSave.mock.calls[0].at(-1);
+  expect(finance.projectworksUrl).toBe(
+    'https://acme.projectworks.io/projects/7',
+  );
+  expect(finance.activities[0]).toMatchObject({
+    name: 'Workshops',
+    levelId: 'cert',
+  });
+});
+
+test('editing a project starts with every step opened', () => {
+  render(
+    <ProjectModal
+      isOpen
+      onClose={() => {}}
+      onSave={() => {}}
+      initial={{
+        id: 'p',
+        name: 'Intranet',
+        resourcedHours: 6,
+        tasks: [{ id: 'general', name: 'General' }],
+        entries: {},
+      }}
+      projects={[]}
+      weekKey={WEEK}
+      hourlyRate={100}
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: /^Check, opened/ }));
+  expect(screen.getByRole('button', { name: 'Save changes' }).disabled).toBe(
+    false,
+  );
+});
+
+test('adding a phase while editing turns the Budget pill red', () => {
+  render(
+    <ProjectModal
+      isOpen
+      onClose={() => {}}
+      onSave={() => {}}
+      initial={{
+        id: 'p',
+        name: 'Intranet',
+        resourcedHours: 6,
+        budget: 10000,
+        tasks: [{ id: 'general', name: 'General' }],
+        entries: {},
+      }}
+      projects={[]}
+      weekKey={WEEK}
+      hourlyRate={100}
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: /^Phases, opened/ }));
+  const add = screen.getByLabelText('Add a phase');
+  fireEvent.change(add, { target: { value: 'Embed' } });
+  fireEvent.keyDown(add, { key: 'Enter' });
+  expect(
+    screen.getByRole('button', { name: /^Budget, needs fixing/ }),
+  ).toBeTruthy();
+});

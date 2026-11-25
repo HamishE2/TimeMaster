@@ -128,16 +128,16 @@
   background: var(--accent-soft);
 }
 .scope-grid > button[aria-checked='true']::after {
-  content: '✓';
+  /* The app's drawn tick (see CheckIcon.jsx) on an accent circle. */
+  content: '';
   display: grid;
-  place-items: center;
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-size: 12px;
-  font-weight: 700;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23172000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E")
+      center / 12px no-repeat,
+    var(--accent);
 }
 .scope-grid > button.is-danger {
   border-color: color-mix(in srgb, var(--danger) 60%, var(--border));
@@ -1718,6 +1718,15 @@
   margin: 4px 2px;
   border: 0;
   border-top: 1px solid var(--border);
+}
+.row-menu-heading {
+  display: block;
+  padding: 6px 10px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 /* Usage bar: continuous, labelled; segments only for frontload and overage. */

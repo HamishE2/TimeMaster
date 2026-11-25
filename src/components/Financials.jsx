@@ -5,6 +5,7 @@ import {
   formatLeft as leftText,
   formatMoney,
   formatPercent,
+  rateLevelsOf,
   tightestItem,
   toCents,
   weekCostRows,
@@ -15,6 +16,8 @@ import FinancialsCard from './FinancialsCard.jsx';
 import FinancialsWeek from './FinancialsWeek.jsx';
 import FinancialsReview from './FinancialsReview.jsx';
 import HistoricalUsageForm from './HistoricalUsageForm.jsx';
+import RowMenu from './RowMenu.jsx';
+import { projectworksMenuItem } from './projectMenu.js';
 
 const KIND_LABELS = {
   costing: 'costing',
@@ -70,28 +73,56 @@ function WatchTile({ label, hasRate, items, empty }) {
   );
 }
 
-function SideItem({ title, value, tone, project, kind, onClick }) {
+const dots = (
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <circle cx="5" cy="12" r="1.8" />
+    <circle cx="12" cy="12" r="1.8" />
+    <circle cx="19" cy="12" r="1.8" />
+  </svg>
+);
+
+function SideItem({ title, value, tone, project, kind, onClick, onMenu }) {
   return (
-    <button type="button" className="fin-side-item" onClick={onClick}>
-      <span className="fin-side-head">
-        <strong>{title}</strong>
-        <span
-          className={
-            tone === 'red'
-              ? 'over-text'
-              : tone === 'amber'
-                ? 'fin-amber-text'
-                : ''
-          }
-        >
-          {value}
+    <div
+      className="fin-side-row"
+      onContextMenu={(event) => {
+        event.preventDefault();
+        onMenu({ x: event.clientX, y: event.clientY });
+      }}
+    >
+      <button type="button" className="fin-side-item" onClick={onClick}>
+        <span className="fin-side-head">
+          <strong>{title}</strong>
+          <span
+            className={
+              tone === 'red'
+                ? 'over-text'
+                : tone === 'amber'
+                  ? 'fin-amber-text'
+                  : ''
+            }
+          >
+            {value}
+          </span>
         </span>
-      </span>
-      <small className="fin-side-sub">
-        <i className="project-ring" style={{ color: project.color }} />
-        {project.name} · {kind}
-      </small>
-    </button>
+        <small className="fin-side-sub">
+          <i className="project-ring" style={{ color: project.color }} />
+          {project.name} · {kind}
+        </small>
+      </button>
+      <button
+        type="button"
+        className="fin-side-more"
+        aria-label={`Options for ${project.name}`}
+        aria-haspopup="menu"
+        onClick={(event) => {
+          const box = event.currentTarget.getBoundingClientRect();
+          onMenu({ x: box.right - 200, y: box.bottom + 4 });
+        }}
+      >
+        {dots}
+      </button>
+    </div>
   );
 }
 
@@ -112,8 +143,11 @@ export default function Financials({
   onTag,
   onSaveHistory,
   onRemoveHistory,
+  onAddLink,
 }) {
   const [includeArchived, setIncludeArchived] = useState(false);
+  // The ⋯ menu open on a Needs attention item: { x, y, project } or null.
+  const [sideMenu, setSideMenu] = useState(null);
   // null, or { projectId, record } for the historical usage form.
   const [historyForm, setHistoryForm] = useState(null);
   const overview = useMemo(
@@ -186,6 +220,34 @@ export default function Financials({
   const listed = projects.filter(
     (project) => includeArchived || !project.archived,
   );
+  const levels = new Map(
+    rateLevelsOf(settings).map((level) => [level.id, level.name]),
+  );
+  const levelName = (levelId) => (levelId && levels.get(levelId)) || null;
+  // A costing in Needs attention carries its level: "Workshops · Certified".
+  const attentionTitle = (entry) => {
+    if (entry.kind === 'budget') return BUDGET_TITLES[entry.reason];
+    const level =
+      entry.kind === 'costing' &&
+      levelName(
+        entry.project.activities.find((a) => a.id === entry.id)?.levelId,
+      );
+    return level ? `${entry.name} · ${level}` : entry.name;
+  };
+  const openSideMenu = (project) => (at) =>
+    setSideMenu({ ...at, project: byId.get(project.id) });
+  const sideMenuItems = sideMenu
+    ? [
+        projectworksMenuItem(sideMenu.project, onAddLink),
+        ['Edit project', () => onEditProject(sideMenu.project, null)],
+        null,
+        [
+          'Add history',
+          () =>
+            setHistoryForm({ projectId: sideMenu.project.id, record: null }),
+        ],
+      ]
+    : [];
   const editHistory = (projectId, recordId) =>
     setHistoryForm({
       projectId,
@@ -340,6 +402,10 @@ export default function Financials({
               <FinancialsCard
                 key={item.id}
                 item={item}
+                project={byId.get(item.id)}
+                levelName={levelName}
+                onEditProject={() => onEditProject(byId.get(item.id), null)}
+                onAddLink={onAddLink}
                 onEditBudget={() => onEditProject(byId.get(item.id))}
                 onAddHistory={() =>
                   setHistoryForm({ projectId: item.id, record: null })
@@ -398,11 +464,7 @@ export default function Financials({
                 {list.map((entry) => (
                   <SideItem
                     key={`${entry.project.id}-${entry.kind}-${entry.id}`}
-                    title={
-                      entry.kind === 'budget'
-                        ? BUDGET_TITLES[entry.reason]
-                        : entry.name
-                    }
+                    title={attentionTitle(entry)}
                     value={
                       entry.reason === 'short'
                         ? `${formatMoney(-entry.left, { whole: true })} short`
@@ -412,6 +474,7 @@ export default function Financials({
                     project={entry.project}
                     kind={KIND_LABELS[entry.kind]}
                     onClick={() => onEditProject(byId.get(entry.project.id))}
+                    onMenu={openSideMenu(entry.project)}
                   />
                 ))}
               </section>
@@ -437,6 +500,7 @@ export default function Financials({
                       : `fullest: ${tight.name}`
                   }
                   onClick={() => onEditProject(byId.get(item.id))}
+                  onMenu={openSideMenu(item)}
                 />
               );
             })}
@@ -456,6 +520,7 @@ export default function Financials({
                 project={item}
                 kind="not tracked"
                 onClick={() => onEditProject(byId.get(item.id))}
+                onMenu={openSideMenu(item)}
               />
             ))}
           </section>
@@ -464,17 +529,35 @@ export default function Financials({
           <p className="quiet">No projects yet.</p>
         )}
       </aside>
+      <RowMenu
+        open={sideMenu}
+        items={sideMenuItems}
+        label={sideMenu ? `Options for ${sideMenu.project?.name}` : ''}
+        onClose={() => setSideMenu(null)}
+      />
       {historyForm && (
         <HistoricalUsageForm
           projects={listed}
           settings={settings}
           week={week}
+          key={historyForm.key || 'history'}
           projectId={historyForm.projectId}
           record={historyForm.record}
+          who={historyForm.who || null}
           onClose={() => setHistoryForm(null)}
-          onSave={(projectId, record) => {
+          onSave={(projectId, record, options) => {
             onSaveHistory(projectId, record);
-            setHistoryForm(null);
+            // "Save and add…" starts a fresh form for the other kind of work.
+            setHistoryForm(
+              options?.addOther
+                ? {
+                    projectId,
+                    record: null,
+                    who: options.addOther,
+                    key: record.id,
+                  }
+                : null,
+            );
           }}
         />
       )}

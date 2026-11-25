@@ -110,6 +110,7 @@ export default function FrontloadModal({
       index={step}
       onBack={() => setStep(0)}
       onNext={nextStep}
+      onJump={(i) => (i === 0 ? setStep(0) : nextStep())}
       onClose={onClose}
       finishLabel={removing ? 'Remove frontloading' : 'Save frontloading'}
     >

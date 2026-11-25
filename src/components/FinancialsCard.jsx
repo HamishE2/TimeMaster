@@ -6,6 +6,8 @@ import {
   formatMoney,
   formatPercent,
 } from '../lib/budget.js';
+import CheckIcon from './CheckIcon.jsx';
+import { projectworksMenuItem } from './projectMenu.js';
 import RowMenu from './RowMenu.jsx';
 
 const whole = (value) => formatMoney(value, { whole: true });
@@ -40,7 +42,12 @@ function headline(item, attention) {
   return { tone: 'green', label: 'On track' };
 }
 
-const GLYPHS = { neutral: '–', green: '✓', amber: '!', red: '×' };
+const GLYPHS = {
+  neutral: '–',
+  green: <CheckIcon size={10} />,
+  amber: '!',
+  red: '×',
+};
 
 function Chip({ tone, label }) {
   return (
@@ -59,12 +66,15 @@ function barWidth(spent, amount) {
 
 // A costing (or the lead phase / budget): what's left in bold, a bar, then
 // spent of amount.
-function LeadRow({ name, spent, amount, pct, tone, hasRate }) {
+function LeadRow({ name, level, spent, amount, pct, tone, hasRate }) {
   const left = amount == null ? null : amount - spent;
   return (
     <li className={`fin-lead-row tone-${tone}`}>
       <span className="fin-lead-head">
-        <span className="fin-lead-name">{name}</span>
+        <span className="fin-lead-name">
+          {name}
+          {level && <span className="fin-level">{level}</span>}
+        </span>
         <b
           className={`fin-lead-left fin-num${left != null && left < 0 ? ' over-text' : ''}`}
         >
@@ -145,6 +155,10 @@ function LowBanner({ low }) {
 // budget as one line unless it is low.
 export default function FinancialsCard({
   item,
+  project,
+  levelName = () => null,
+  onEditProject,
+  onAddLink,
   onEditBudget,
   onAddHistory,
   onEditHistory,
@@ -175,6 +189,7 @@ export default function FinancialsCard({
     rows = item.activities.map((a) => ({
       id: a.id,
       name: a.name,
+      level: levelName(a.levelId),
       spent: a.spent,
       amount: a.amount,
       pct: a.pct,
@@ -214,17 +229,35 @@ export default function FinancialsCard({
         ? `Project budget ${whole(item.budget)}${item.hasRate ? ` · ${leftText(item.remaining)}` : ''}`
         : 'No project budget';
   const records = item.history.records;
-  const menuItems = [
-    ['Add history', onAddHistory],
-    ...records.flatMap((record) => [
+  const recordItems = (list) =>
+    list.flatMap((record) => [
       [`Edit “${record.label}”`, () => onEditHistory(record.id)],
       [
         `Remove “${record.label}”`,
         () => onRemoveHistory(record.id),
         { danger: true },
       ],
-    ]),
+    ]);
+  const mine = records.filter((record) => record.who !== 'others'),
+    theirs = records.filter((record) => record.who === 'others');
+  const menuItems = [
+    projectworksMenuItem(project, onAddLink),
+    ['Edit project', onEditProject],
+    null,
+    ['Add history', onAddHistory],
+    ...(theirs.length
+      ? [
+          ...(mine.length ? [['Mine', null, { heading: true }]] : []),
+          ...recordItems(mine),
+          ['Other people', null, { heading: true }],
+          ...recordItems(theirs),
+        ]
+      : recordItems(records)),
   ];
+  const historyText = (amount, list) =>
+    item.hasRate || list.every((r) => r.unit === 'money')
+      ? whole(amount)
+      : `${Math.round(list.reduce((n, r) => n + (r.hours || 0), 0) * 100) / 100}h`;
 
   return (
     <li className="fin-card" style={{ '--pc': item.color || 'var(--muted)' }}>
@@ -288,15 +321,21 @@ export default function FinancialsCard({
       <footer className="fin-card-foot">
         <span>
           {budgetLine}
-          {records.length > 0 && (
-            <small>
-              Includes{' '}
-              {item.hasRate || records.every((r) => r.unit === 'money')
-                ? whole(item.history.spent)
-                : `${Math.round(item.history.hours * 100) / 100}h`}{' '}
-              historical usage
-            </small>
-          )}
+          {records.length > 0 &&
+            (theirs.length ? (
+              <small>
+                Includes historical usage:{' '}
+                {mine.length > 0 && (
+                  <>{historyText(item.history.mine, mine)} yours · </>
+                )}
+                {historyText(item.history.others, theirs)} other people
+              </small>
+            ) : (
+              <small>
+                Includes {historyText(item.history.spent, records)} historical
+                usage
+              </small>
+            ))}
         </span>
         <button type="button" className="fin-edit" onClick={onEditBudget}>
           Edit budget
