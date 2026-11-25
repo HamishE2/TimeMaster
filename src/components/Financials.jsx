@@ -302,7 +302,10 @@ export default function Financials({
         {!hasRate && (
           <div className="fin-empty fin-callout" role="note">
             <span className="fin-empty-glyph" aria-hidden="true">
-              $
+              <svg viewBox="0 0 24 24">
+                <path d="M12 3v18" />
+                <path d="M16.5 7.5c0-1.7-2-3-4.5-3s-4.5 1.3-4.5 3 2 2.6 4.5 3 4.5 1.3 4.5 3-2 3-4.5 3-4.5-1.3-4.5-3" />
+              </svg>
             </span>
             <div>
               <h3>Set your hourly rate to see costs</h3>
@@ -320,7 +323,11 @@ export default function Financials({
         {tracked.length === 0 ? (
           <div className="fin-empty">
             <span className="fin-empty-glyph" aria-hidden="true">
-              ◎
+              <svg viewBox="0 0 24 24">
+                <path d="M4 7.5h14.5a1.5 1.5 0 0 1 1.5 1.5v9.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5z" />
+                <path d="M4 7.5 15.5 4v3.5" />
+                <path d="M15.5 13.75h1" />
+              </svg>
             </span>
             <div>
               <h3>No budgets yet</h3>

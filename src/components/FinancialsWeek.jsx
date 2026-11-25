@@ -35,7 +35,9 @@ export default function FinancialsWeek({
       project,
       // A project with no rate (and no workspace rate) shows dashes, not $0.
       rated: hasRate && projectRateOf(project, settings) != null,
-      lines: lines.filter((row) => row.hours > 0 || Object.keys(row.days).length),
+      lines: lines.filter(
+        (row) => row.hours > 0 || Object.keys(row.days).length,
+      ),
       dayCents,
       totalCents: lines.reduce((sum, row) => sum + toCents(row.cost), 0),
       hours: lines.reduce((sum, row) => sum + row.hours, 0),
@@ -80,7 +82,12 @@ export default function FinancialsWeek({
       </header>
       {logged.length === 0 ? (
         <div className="fin-empty is-inline">
-          <span className="fin-empty-glyph" aria-hidden="true">0</span>
+          <span className="fin-empty-glyph" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <rect x="4" y="5" width="16" height="15" rx="2" />
+              <path d="M4 10h16M8 3v4M16 3v4" />
+            </svg>
+          </span>
           <div>
             <h3>Nothing logged this week</h3>
             <p>Log time to see costs here.</p>
@@ -132,7 +139,10 @@ export default function FinancialsWeek({
                   </td>
                 </tr>
                 {block.lines.map((row) => (
-                  <tr key={row.id} className={row.id === '__unlinked' ? 'is-unlinked' : ''}>
+                  <tr
+                    key={row.id}
+                    className={row.id === '__unlinked' ? 'is-unlinked' : ''}
+                  >
                     <th scope="row" className="fin-line">
                       {row.name || 'Activity'}
                     </th>

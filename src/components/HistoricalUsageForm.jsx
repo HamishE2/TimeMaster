@@ -335,7 +335,7 @@ export default function HistoricalUsageForm({
             values={draft.phases}
             onChange={(phasesDraft) => set({ phases: phasesDraft })}
             left={result.phases.left}
-            restLabel="Unallocated · assigned to General"
+            restLabel="Balance allocated to General"
             errors={errors}
             overError={errors.phases}
           />
@@ -358,7 +358,7 @@ export default function HistoricalUsageForm({
             values={draft.activities}
             onChange={(activitiesDraft) => set({ activities: activitiesDraft })}
             left={result.activities.left}
-            restLabel="Unallocated · assigned to General costing"
+            restLabel="Balance allocated to General costing"
             errors={errors}
             overError={errors.activities}
           />

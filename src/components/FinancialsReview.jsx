@@ -65,10 +65,13 @@ export default function FinancialsReview({ review, projects, onTag }) {
       </header>
       {groups.length === 0 ? (
         <div className="fin-empty is-inline is-good">
-          <span className="fin-empty-glyph" aria-hidden="true">✓</span>
+          <span className="fin-empty-glyph" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="m5 12.5 4.5 4.5L19 7.5" />
+            </svg>
+          </span>
           <div>
             <h3>Nothing to check</h3>
-            {review.length > 0 && <p>No vague or ambiguous notes.</p>}
           </div>
         </div>
       ) : (
@@ -109,7 +112,9 @@ export default function FinancialsReview({ review, projects, onTag }) {
                         canSplit={items.length === 1}
                         compact
                         hint={false}
-                        onTag={(tag) => items.forEach((item) => onTag(item, tag))}
+                        onTag={(tag) =>
+                          items.forEach((item) => onTag(item, tag))
+                        }
                       />
                     </div>
                   )}
