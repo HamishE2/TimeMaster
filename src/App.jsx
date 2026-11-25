@@ -18,7 +18,6 @@ import {
   weekLabel,
 } from './lib/utils.js';
 import {
-  FILE_CHANGED_CODE,
   FILE_PERMISSION_CODE,
   backupPayload,
   chooseNewBackupHandle,
@@ -145,7 +144,6 @@ export default function App() {
     }),
     [settingsFocus, setSettingsFocus] = useState(null);
   const [fileName, setFileName] = useState(null),
-    [fileRevision, setFileRevision] = useState(null),
     [fileStatus, setFileStatus] = useState('local'),
     [lastSavedAt, setLastSavedAt] = useState(null),
     [savedFileSignature, setSavedFileSignature] = useState('');
@@ -193,13 +191,11 @@ export default function App() {
     // Bumped whenever a different file is attached, so a save still writing
     // to the previous file cannot overwrite the new file's saved state.
     fileGeneration = useRef(0),
-    // Signatures this tab tried to write since (and including) the last
-    // confirmed save. A
-    // write that timed out may still land; its content is ours, not a
-    // change made elsewhere.
-    attemptedSignatures = useRef([]),
     sessionUnreadable = useRef(false),
-    lostHandleNotified = useRef(null),
+    // The name of a file whose link the browser lost, kept in the browser
+    // copy so the next visit still asks for that file again.
+    lostFileName = useRef(null),
+    lastSaved = useRef(null),
     latestSignature = useRef(workspaceSignature(empty));
   const [saveRetry, setSaveRetry] = useState(0);
 
@@ -209,6 +205,16 @@ export default function App() {
         const restored = session?.data ? migrateBackup(session.data) : empty,
           signature = workspaceSignature(restored),
           handle = session?.fileHandle || null,
+          // The file this workspace was saving to. Older records only kept
+          // it inside fileRevision.
+          attachedName =
+            session?.attachedName ||
+            (handle ? handle.name : session?.fileRevision?.name) ||
+            null,
+          // The browser could not keep its link to the file (it cannot
+          // store the handle again once it loses track of the file), so the
+          // file has to be picked again before saves reach it.
+          lost = !handle && !!attachedName && supportsFileSystemAccess(),
           // Migration can fill defaults the stored copy lacks (archived:
           // false, sorted days), so a copy that matched the file still counts
           // as saved, and the file's own content stays recognised as ours.
@@ -218,21 +224,29 @@ export default function App() {
           saved = matchedFile
             ? signature
             : session?.savedSignature || (handle ? signature : '');
-        if (matchedFile) attemptedSignatures.current = [session.savedSignature];
         resetData(restored);
         latestSignature.current = signature;
         setSavedFileSignature(saved);
         setFile(handle);
-        setFileName(handle?.name || null);
-        setFileRevision(session?.fileRevision || null);
-        setLastSavedAt(
-          session?.fileRevision?.lastModified
-            ? new Date(session.fileRevision.lastModified)
-            : null,
-        );
+        lostFileName.current = lost ? attachedName : null;
+        setFileName(handle || lost ? attachedName : null);
+        const savedAt =
+          session?.lastSavedAt || session?.fileRevision?.lastModified;
+        setLastSavedAt(savedAt ? new Date(savedAt) : null);
         setFileStatus(
-          handle ? (saved === signature ? 'saved' : 'dirty') : 'local',
+          handle
+            ? saved === signature
+              ? 'saved'
+              : 'dirty'
+            : lost
+              ? 'error'
+              : 'local',
         );
+        if (lost)
+          setNotice({
+            type: 'error',
+            text: `Your work is saved in this browser. To keep saving to ${attachedName}, choose Reattach and save in File and pick it again.`,
+          });
         if (/^\d{4}-\d{2}-\d{2}$/.test(session?.weekKey || ''))
           setWeek(session.weekKey);
         setReady(true);
@@ -770,9 +784,8 @@ export default function App() {
   const attachLoadedFile = useCallback(
     (result) => {
       const signature = workspaceSignature(result.data);
-      // Attempted signatures are kept: a write that was still landing when
-      // the file was refreshed holds our content, not someone else's.
       fileGeneration.current += 1;
+      lostFileName.current = null;
       setSavedFileSignature(signature);
       latestSignature.current = signature;
       saveBlocked.current = false;
@@ -780,11 +793,8 @@ export default function App() {
       resetData(result.data);
       setFile(result.handle);
       setFileName(result.name);
-      setFileRevision(result.revision);
       setLastSavedAt(
-        result.revision?.lastModified
-          ? new Date(result.revision.lastModified)
-          : new Date(),
+        result.lastModified ? new Date(result.lastModified) : new Date(),
       );
       setFileStatus(result.handle ? 'saved' : 'local');
     },
@@ -837,15 +847,14 @@ export default function App() {
       const handle = await chooseNewBackupHandle(fileName || undefined),
         payload = backupPayload(data.projects, data.settings),
         signature = workspaceSignature(payload),
-        revision = await writeHandle(handle, payload);
+        savedAt = await writeHandle(handle, payload);
       fileGeneration.current += 1;
-      attemptedSignatures.current = [];
+      lostFileName.current = null;
       setSavedFileSignature(signature);
       saveBlocked.current = false;
       setFile(handle);
       setFileName(handle.name);
-      setFileRevision(revision);
-      setLastSavedAt(new Date(revision.lastModified));
+      setLastSavedAt(savedAt);
       setFileStatus(latestSignature.current === signature ? 'saved' : 'dirty');
       setNotice({
         type: 'success',
@@ -874,27 +883,17 @@ export default function App() {
       setFileStatus('saving');
       const generation = fileGeneration.current,
         payload = backupPayload(data.projects, data.settings),
-        signature = workspaceSignature(payload),
-        ownSignatures = [savedFileSignature, ...attemptedSignatures.current];
-      attemptedSignatures.current = [
-        ...attemptedSignatures.current,
-        signature,
-      ].slice(-5);
+        signature = workspaceSignature(payload);
       try {
-        const revision = await writeHandle(file, payload, fileRevision, {
+        const savedAt = await writeHandle(file, payload, {
           // Only a click may raise the browser's permission prompt.
           interactive: notify,
-          ownSignatures,
         });
         // Another file was attached while this one was writing.
         if (generation !== fileGeneration.current) return false;
-        // Kept as ours: a save already queued before React applies this
-        // result still holds the old revision and must not see a conflict.
-        attemptedSignatures.current = [signature];
         setSavedFileSignature(signature);
         saveBlocked.current = false;
-        setFileRevision(revision);
-        setLastSavedAt(new Date(revision.lastModified));
+        setLastSavedAt(savedAt);
         setFileStatus(
           latestSignature.current === signature ? 'saved' : 'dirty',
         );
@@ -902,11 +901,7 @@ export default function App() {
         return true;
       } catch (error) {
         if (generation !== fileGeneration.current) return false;
-        if (error?.code === FILE_CHANGED_CODE) {
-          saveBlocked.current = true;
-          setFileStatus('conflict');
-          setNotice({ type: 'error', text: error.message });
-        } else if (error?.code === FILE_PERMISSION_CODE) {
+        if (error?.code === FILE_PERMISSION_CODE) {
           // Autosave cannot ask for permission; wait for Save now.
           saveBlocked.current = true;
           setFileStatus('permission');
@@ -931,7 +926,7 @@ export default function App() {
         }
       }
     },
-    [data, file, fileRevision, savedFileSignature],
+    [data, file],
   );
   const doRefreshFile = async () => {
     if (!file) return;
@@ -962,6 +957,9 @@ export default function App() {
   };
 
   useEffect(() => {
+    lastSaved.current = lastSavedAt;
+  }, [lastSavedAt]);
+  useEffect(() => {
     if (!ready) return;
     const payload = backupPayload(data.projects, data.settings),
       signature = workspaceSignature(payload);
@@ -969,22 +967,22 @@ export default function App() {
     // after edits: a transient IndexedDB failure must not replace real work.
     // Opening or importing a file lifts the guard.
     if (!sessionUnreadable.current)
-      saveSessionToIdb(file, week, payload, fileRevision, savedFileSignature)
-        .then((result) => {
-          if (!file || result?.handleStored !== false) return;
-          if (lostHandleNotified.current === file) return;
-          lostHandleNotified.current = file;
-          setNotice({
-            type: 'error',
-            text: `The browser can no longer reach ${file.name || 'the attached file'}. Your work is still saved in this browser. Open the file again from File to reattach it.`,
-          });
-        })
-        .catch(() =>
-          setNotice({
-            type: 'error',
-            text: 'The browser copy could not be saved. Export a backup copy from File.',
-          }),
-        );
+      // If the browser cannot store the file handle, the workspace is still
+      // stored and this tab keeps saving through the handle it has; the next
+      // visit asks for the file again.
+      saveSessionToIdb({
+        fileHandle: file,
+        attachedName: file ? file.name : lostFileName.current,
+        weekKey: week,
+        data: payload,
+        savedSignature: savedFileSignature,
+        lastSavedAt: lastSaved.current?.getTime() ?? null,
+      }).catch(() =>
+        setNotice({
+          type: 'error',
+          text: 'The browser copy could not be saved. Export a backup copy from File.',
+        }),
+      );
     clearTimeout(autoSaveTimer.current);
     if (file && signature !== savedFileSignature && !saveBlocked.current) {
       setFileStatus((current) => (current === 'saving' ? current : 'dirty'));
@@ -1006,7 +1004,6 @@ export default function App() {
   }, [
     data,
     file,
-    fileRevision,
     ready,
     saveAttachedFile,
     savedFileSignature,
@@ -1041,9 +1038,7 @@ export default function App() {
       ? 'Saving…'
       : fileStatus === 'dirty'
         ? 'Unsaved changes'
-        : fileStatus === 'conflict'
-          ? 'Save blocked · file changed'
-          : fileStatus === 'permission'
+        : fileStatus === 'permission'
             ? 'Save paused · allow access'
             : fileStatus === 'error'
               ? 'Save needs attention'
@@ -1734,6 +1729,7 @@ export default function App() {
       {panel === 'file' && (
         <FilePanel
           attached={!!file}
+          lost={!file && fileStatus === 'error' && !!fileName}
           fileName={fileName}
           status={saveStatusText}
           dirty={dirty}

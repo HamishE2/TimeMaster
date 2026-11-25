@@ -1,31 +1,9 @@
 import { SCHEMA_VERSION, migrateBackup } from './utils.js';
 
-export const FILE_CHANGED_CODE = 'EXTERNAL_FILE_CHANGED';
-
-const hashText = (text) => {
-  let hash = 2166136261;
-  for (let index = 0; index < text.length; index += 1) {
-    hash ^= text.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(16).padStart(8, '0');
-};
-
-const revisionFor = (file, text) => ({
-  name: file.name,
-  lastModified: file.lastModified,
-  size: file.size,
-  contentHash: hashText(text),
-});
-
-export const revisionsMatch = (left, right) =>
-  Boolean(
-    left &&
-    right &&
-    left.lastModified === right.lastModified &&
-    left.size === right.size &&
-    left.contentHash === right.contentHash,
-  );
+// The attached file is a plain copy of the workspace. The browser copy
+// (IndexedDB) is the working copy and is always saved; writing the file
+// replaces its whole content. Syncing it (for example with OneDrive) is the
+// operating system's job, so TimeMaster treats it as an ordinary local file.
 
 export const backupPayload = (projects, settings) => ({
   schemaVersion: SCHEMA_VERSION,
@@ -45,16 +23,6 @@ export const supportsFileSystemAccess = () =>
   typeof window !== 'undefined' &&
   typeof window.showOpenFilePicker === 'function' &&
   typeof window.showSaveFilePicker === 'function';
-
-export class ExternalFileChangedError extends Error {
-  constructor() {
-    super(
-      'The attached file changed outside this tab. TimeMaster stopped before overwriting it. Refresh from file or save your work as a new copy.',
-    );
-    this.name = 'ExternalFileChangedError';
-    this.code = FILE_CHANGED_CODE;
-  }
-}
 
 // Saves a Blob through a temporary download link. The link is attached to the
 // page while it is clicked (older Firefox ignores detached links) and the
@@ -93,8 +61,8 @@ export class FileUnresponsiveError extends Error {
   }
 }
 
-// File handles restored from browser storage can stall forever (for example
-// when the browser loses track of the file), so every call is time-boxed.
+// A file handle can stall forever (for example when the browser loses track
+// of the file), so every call is time-boxed.
 export function withTimeout(promise, ms, name) {
   let timer;
   return Promise.race([
@@ -112,7 +80,7 @@ export async function readHandle(handle, timeoutMs = FILE_TIMEOUT_MS) {
     handle,
     data: migrateBackup(JSON.parse(text)),
     name: file.name,
-    revision: revisionFor(file, text),
+    lastModified: file.lastModified,
   };
 }
 
@@ -151,7 +119,7 @@ export async function openBackup() {
           handle: null,
           data: migrateBackup(JSON.parse(text)),
           name: file.name,
-          revision: revisionFor(file, text),
+          lastModified: file.lastModified,
         });
       } catch (error) {
         reject(error);
@@ -186,51 +154,17 @@ export class FilePermissionError extends Error {
   }
 }
 
-// The workspace signature of a file's text, or null when it is not JSON.
-const textSignature = (text) => {
-  try {
-    return workspaceSignature(JSON.parse(text));
-  } catch {
-    return null;
-  }
-};
-
-// Writes that timed out but may still be running, by handle. One that lands
-// after a later save would put the older workspace back in the file while
-// the app shows "Saved", so the next write to that file waits for it — even
-// through a different handle object for the same file ("Reattach and save"
-// picks the file again and gets a new handle).
-const unsettledWrites = new Map();
-const sameFile = async (a, b) => {
-  if (a === b) return true;
-  try {
-    return typeof a.isSameEntry === 'function' && (await a.isSameEntry(b));
-  } catch {
-    return false;
-  }
-};
-async function waitForUnsettled(handle, step) {
-  for (const [other, settled] of [...unsettledWrites])
-    if (await sameFile(other, handle)) await step(settled);
-}
-
-// Writes the workspace to an attached file handle.
-// - `interactive` must only be true while handling a click: browsers refuse
-//   (or silently ignore) permission prompts without a user gesture, so an
-//   autosave reports FilePermissionError instead of asking.
-// - `ownSignatures` lists workspace signatures this tab knows it wrote. When
-//   the file's revision moved (a sync client touched it, or an earlier write
-//   that timed out landed late) but its content is still one of ours, the
-//   write goes ahead instead of reporting an external change.
+// Writes the whole workspace to an attached file handle.
+// `interactive` must only be true while handling a click: browsers refuse (or
+// silently ignore) permission prompts without a user gesture, so an autosave
+// reports FilePermissionError instead of asking.
 export async function writeHandle(
   handle,
   data,
-  expectedRevision = null,
   {
     timeoutMs = FILE_TIMEOUT_MS,
     permissionTimeoutMs = PERMISSION_TIMEOUT_MS,
     interactive = true,
-    ownSignatures = [],
   } = {},
 ) {
   const step = (promise, ms = timeoutMs) => withTimeout(promise, ms, handle.name);
@@ -248,47 +182,20 @@ export async function writeHandle(
       throw new Error('Permission to write the TimeMaster file was not granted.');
   }
 
-  await waitForUnsettled(handle, step);
-
-  if (expectedRevision) {
-    const current = await step(handle.getFile());
-    const currentText = await step(current.text());
-    if (!revisionsMatch(expectedRevision, revisionFor(current, currentText))) {
-      const signature = textSignature(currentText);
-      if (
-        !signature ||
-        ![...ownSignatures, workspaceSignature(data)].includes(signature)
-      )
-        throw new ExternalFileChangedError();
-    }
-  }
-
   const writable = await step(handle.createWritable());
-  const writing = Promise.resolve()
-    .then(() => writable.write(JSON.stringify(data, null, 2)))
-    .then(() => writable.close());
   try {
-    await step(writing, timeoutMs * 2);
+    await step(
+      Promise.resolve()
+        .then(() => writable.write(JSON.stringify(data, null, 2)))
+        .then(() => writable.close()),
+      timeoutMs * 2,
+    );
   } catch (error) {
-    if (error instanceof FileUnresponsiveError) {
-      const settled = writing
-        .then(
-          () => {},
-          () => {},
-        )
-        .finally(() => {
-          if (unsettledWrites.get(handle) === settled)
-            unsettledWrites.delete(handle);
-        });
-      unsettledWrites.set(handle, settled);
-    }
+    // Leave the file as it was rather than half-written.
     Promise.resolve()
       .then(() => writable.abort?.())
       .catch(() => {});
     throw error;
   }
-
-  const saved = await step(handle.getFile());
-  const savedText = await step(saved.text());
-  return revisionFor(saved, savedText);
+  return new Date();
 }

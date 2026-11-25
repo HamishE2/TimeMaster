@@ -364,74 +364,24 @@ test('a write that timed out but landed is recognised as ours on the next save',
   expect(fileData(handle).projects[0].entries[WEEK]).toEqual({ 0: 1, 1: 2 });
 });
 
-test('a timed-out write that lands after the next save cannot leave stale content behind', async () => {
+test('a write the browser never finishes does not block later saves', async () => {
+  // A stuck write used to hold back every later save to the file, even
+  // through a reattached handle, until the tab was reloaded.
   const handle = controlledHandle('TimeMaster.json');
-  const workspace = baseWorkspace();
-  const revision = await writeHandle(
-    handle,
-    backupPayload(workspace.projects, workspace.settings),
-    null,
-  );
   const one = baseWorkspace();
   one.projects[0].entries = { [WEEK]: { 0: 1 } };
   const two = baseWorkspace();
   two.projects[0].entries = { [WEEK]: { 0: 1, 1: 2 } };
-  const ours = [workspaceSignature(backupPayload(one.projects, one.settings))];
-  // First write: its close hangs past the timeout but is still in progress.
   handle.state.hold = true;
   await expect(
-    writeHandle(handle, backupPayload(one.projects, one.settings), revision, {
-      timeoutMs: 50,
+    writeHandle(handle, backupPayload(one.projects, one.settings), {
+      timeoutMs: 30,
     }),
   ).rejects.toBeInstanceOf(FileUnresponsiveError);
   handle.state.hold = false;
-  // The next save must not race the write still in flight: had it gone
-  // ahead, the late write would land on top of it and the file would hold
-  // the older workspace while the app showed "Saved".
-  await expect(
-    writeHandle(handle, backupPayload(two.projects, two.settings), revision, {
-      timeoutMs: 50,
-      ownSignatures: ours,
-    }),
-  ).rejects.toBeInstanceOf(FileUnresponsiveError);
-  expect(handle.state.writes).toBe(1);
-  // Once the late write lands, a retry writes the newer workspace over it.
-  releaseHeld(handle);
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  expect(fileData(handle).projects[0].entries[WEEK]).toEqual({ 0: 1 });
-  await writeHandle(handle, backupPayload(two.projects, two.settings), revision, {
-    ownSignatures: ours,
+  await writeHandle(handle, backupPayload(two.projects, two.settings), {
+    timeoutMs: 30,
   });
-  expect(fileData(handle).projects[0].entries[WEEK]).toEqual({ 0: 1, 1: 2 });
-});
-
-test('a write that timed out also holds back a new handle to the same file', async () => {
-  // "Reattach and save" picks the file again and gets a new handle object.
-  const handle = controlledHandle('TimeMaster.json');
-  const again = { ...handle, isSameEntry: async (other) => other === handle };
-  handle.isSameEntry = async (other) => other === again;
-  const one = baseWorkspace();
-  one.projects[0].entries = { [WEEK]: { 0: 1 } };
-  const two = baseWorkspace();
-  two.projects[0].entries = { [WEEK]: { 0: 1, 1: 2 } };
-  handle.state.hold = true;
-  await expect(
-    writeHandle(handle, backupPayload(one.projects, one.settings), null, {
-      timeoutMs: 50,
-    }),
-  ).rejects.toBeInstanceOf(FileUnresponsiveError);
-  handle.state.hold = false;
-  const pending = writeHandle(
-    again,
-    backupPayload(two.projects, two.settings),
-    null,
-    { timeoutMs: 1000 },
-  );
-  await new Promise((resolve) => setTimeout(resolve, 20));
-  // The reattached write waits for the late one instead of racing it.
-  expect(handle.state.writes).toBe(0);
-  releaseHeld(handle);
-  await pending;
   expect(fileData(handle).projects[0].entries[WEEK]).toEqual({ 0: 1, 1: 2 });
 });
 

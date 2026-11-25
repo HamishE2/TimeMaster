@@ -60,11 +60,11 @@ test('a write aborted by the browser (quota) rejects instead of hanging', async 
   const { saveSessionToIdb } = await import('../src/lib/idb.js');
   fake.outcome = 'abort';
   await expect(
-    saveSessionToIdb(null, '2026-07-13', { projects: [] }),
+    saveSessionToIdb({ fileHandle: null, weekKey: '2026-07-13', data: { projects: [] } }),
   ).rejects.toMatchObject({ name: 'QuotaExceededError' });
   // Space freed: the next write goes through on the same connection.
   fake.outcome = 'complete';
-  await saveSessionToIdb(null, '2026-07-13', { projects: [1] });
+  await saveSessionToIdb({ fileHandle: null, weekKey: '2026-07-13', data: { projects: [1] } });
   expect(fake.stored.get('currentSession').data).toEqual({ projects: [1] });
   expect(fake.opens).toBe(1);
 });
@@ -73,8 +73,8 @@ test('reuses one connection and reopens after another tab upgrades it', async ()
   const { saveSessionToIdb, loadSessionFromIdb } = await import(
     '../src/lib/idb.js'
   );
-  await saveSessionToIdb(null, '2026-07-13', { projects: [] });
-  await saveSessionToIdb(null, '2026-07-20', { projects: [] });
+  await saveSessionToIdb({ fileHandle: null, weekKey: '2026-07-13', data: { projects: [] } });
+  await saveSessionToIdb({ fileHandle: null, weekKey: '2026-07-20', data: { projects: [] } });
   expect(fake.opens).toBe(1);
   fake.dbs[0].onversionchange();
   expect(fake.dbs[0].close).toHaveBeenCalled();

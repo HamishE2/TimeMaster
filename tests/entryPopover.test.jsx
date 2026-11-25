@@ -24,7 +24,7 @@ const session = () => ({
     settings: { visibleDays: [0, 1], capacityByDay: [7.6, 7.6], leaveWeeks: {} },
   },
 });
-const latest = () => saveSessionToIdb.mock.lastCall[2];
+const latest = () => saveSessionToIdb.mock.lastCall[0].data;
 const cellFor = async (name) =>
   within(await screen.findByRole('table')).getByRole('textbox', { name });
 
