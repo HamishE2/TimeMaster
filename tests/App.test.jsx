@@ -3,6 +3,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
@@ -146,7 +147,7 @@ test('remembers ledger column widths and queues local edits immediately', async 
     name: 'Audit, General, Monday',
   });
   fireEvent.blur(input, { target: { value: '2.5' } });
-  expect(saveSessionToIdb.mock.lastCall[2].projects[0].entries[week][0]).toBe(
+  expect(saveSessionToIdb.mock.lastCall[0].data.projects[0].entries[week][0]).toBe(
     2.5,
   );
   view.unmount();
@@ -185,7 +186,7 @@ test('the entry popover saves hours and a note together', async () => {
   const note = within(dialog).getByRole('textbox', { name: 'Entry note' });
   fireEvent.change(note, { target: { value: 'Reviewed controls' } });
   fireEvent.keyDown(note, { key: 'Enter' });
-  const saved = saveSessionToIdb.mock.lastCall[2].projects[0];
+  const saved = saveSessionToIdb.mock.lastCall[0].data.projects[0];
   expect(saved.entries[week][0]).toBe(1.5);
   expect(saved.notes.general[week][0]).toBe('Reviewed controls');
   expect(
@@ -199,7 +200,7 @@ test('the entry popover saves hours and a note together', async () => {
     within(table).getByRole('textbox', { name: 'Audit, General, Monday' }),
     { target: { value: '' } },
   );
-  const cleared = saveSessionToIdb.mock.lastCall[2].projects[0];
+  const cleared = saveSessionToIdb.mock.lastCall[0].data.projects[0];
   expect(cleared.notes?.general?.[week]?.[0]).toBeUndefined();
 });
 
@@ -277,25 +278,38 @@ test('typing 0 in a cell clears its hours and note', async () => {
   const table = await screen.findByRole('table');
   expect(cell(table, 'Monday').getAttribute('title')).toBe('Walkthrough');
   fireEvent.blur(cell(table, 'Monday'), { target: { value: '0' } });
-  const saved = saveSessionToIdb.mock.lastCall[2].projects[0];
+  const saved = saveSessionToIdb.mock.lastCall[0].data.projects[0];
   expect(saved.entries?.[auditWeek]?.[0]).toBeUndefined();
   expect(saved.notes?.general?.[auditWeek]?.[0]).toBeUndefined();
   expect(cell(table, 'Monday').value).toBe('');
 });
 
-test('warns once when the attached file handle can no longer be stored', async () => {
-  const handle = { name: 'TimeMaster.json' };
-  loadSessionFromIdb.mockResolvedValue({
-    fileHandle: handle,
-    weekKey: '2026-07-13',
-    data: { schemaVersion: 3, projects: [], settings: {} },
-  });
-  saveSessionToIdb.mockResolvedValue({ handleStored: false });
-  render(<App />);
+test('a file whose handle could not be stored is asked for again', async () => {
+  window.showOpenFilePicker = vi.fn();
+  window.showSaveFilePicker = vi.fn();
+  try {
+    loadSessionFromIdb.mockResolvedValue({
+      fileHandle: null,
+      attachedName: 'TimeMaster.json',
+      weekKey: '2026-07-13',
+      data: { schemaVersion: 3, projects: [], settings: {} },
+    });
+    render(<App />);
 
-  expect(
-    await screen.findByText(/can no longer reach TimeMaster\.json/),
-  ).toBeTruthy();
-  expect(screen.queryByText(/browser copy could not be saved/)).toBeNull();
-  saveSessionToIdb.mockResolvedValue(undefined);
+    expect(
+      await screen.findByText(/To keep saving to TimeMaster\.json/),
+    ).toBeTruthy();
+    expect(screen.getByText('Save needs attention')).toBeTruthy();
+    // The next visit still knows which file to ask for.
+    await waitFor(() =>
+      expect(saveSessionToIdb.mock.lastCall[0].attachedName).toBe(
+        'TimeMaster.json',
+      ),
+    );
+    fireEvent.click(screen.getByTitle('Open file controls'));
+    expect(screen.getByText('Reattach and save')).toBeTruthy();
+  } finally {
+    delete window.showOpenFilePicker;
+    delete window.showSaveFilePicker;
+  }
 });
