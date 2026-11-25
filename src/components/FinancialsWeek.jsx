@@ -84,8 +84,8 @@ export default function FinancialsWeek({
         <div className="fin-empty is-inline">
           <span className="fin-empty-glyph" aria-hidden="true">
             <svg viewBox="0 0 24 24">
-              <path d="M7 3h10M7 21h10" />
-              <path d="M8 3c0 5 8 5 8 9s-8 4-8 9M16 3c0 5-8 5-8 9s8 4 8 9" />
+              <rect x="4" y="5" width="16" height="15" rx="2" />
+              <path d="M4 10h16M8 3v4M16 3v4" />
             </svg>
           </span>
           <div>
