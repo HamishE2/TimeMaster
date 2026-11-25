@@ -230,7 +230,7 @@ export default function HistoricalUsageForm({
             id="hist-total"
             label={unit === 'money' ? 'Total spent' : 'Total hours'}
             prefix={unit === 'money' ? '$' : null}
-            unit={unit === 'money' ? 'AUD ex GST' : 'hours'}
+            unit={unit === 'money' ? 'AUD' : 'hours'}
             inputMode="decimal"
             placeholder={unit === 'money' ? '4,000' : '32.5'}
             value={draft.total}

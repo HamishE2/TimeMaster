@@ -202,7 +202,7 @@ export default function Financials({
       <div className="week-readouts fin-readouts">
         <article>
           <p className="readout-label">
-            Cost this week <span className="fin-gst">ex GST</span>
+            Cost this week
           </p>
           <strong className="readout-value">
             {hasRate ? <TickMoney value={weekCost} /> : '—'}
@@ -261,7 +261,7 @@ export default function Financials({
             <h2 id="financials-title">Budgets</h2>
             <span>
               {tracked.length} of {overview.projects.length} projects tracked
-              {hasRate && ` · ${rateText} · ex GST`}
+              {hasRate && ` · ${rateText}`}
             </span>
           </div>
           <button
