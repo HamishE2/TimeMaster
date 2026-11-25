@@ -68,11 +68,7 @@ export default function FinancialsReview({ review, projects, onTag }) {
           <span className="fin-empty-glyph" aria-hidden="true">✓</span>
           <div>
             <h3>Nothing to check</h3>
-            <p>
-              {review.length
-                ? 'No vague or ambiguous notes.'
-                : 'Every entry has a costing.'}
-            </p>
+            {review.length > 0 && <p>No vague or ambiguous notes.</p>}
           </div>
         </div>
       ) : (
