@@ -125,7 +125,7 @@ export default function Settings({ settings, focus, onClose, onSave }) {
               else if (rate.value != null) setRateText(String(rate.value));
             }}
           />
-          <span>AUD ex GST / h</span>
+          <span>AUD / h</span>
         </span>
         <small
           id="settings-hourly-rate-help"

@@ -799,7 +799,7 @@ function ProjectSteps({
               id="project-budget"
               label="Total budget"
               prefix="$"
-              unit="AUD ex GST"
+              unit="AUD"
               inputMode="decimal"
               placeholder="No budget"
               value={draft.finance.budget}
