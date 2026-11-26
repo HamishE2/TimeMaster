@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import {
+  BUDGET_NEAR,
   attentionItems,
-  formatLeft as leftText,
-  budgetLow,
+  formatDays,
   formatMoney,
   formatPercent,
 } from '../lib/budget.js';
@@ -24,7 +24,7 @@ function headline(item, attention) {
     if (count('costing', tone))
       return {
         tone,
-        label: `${plural(count('costing', tone), 'costing')} ${word}`,
+        label: `${plural(count('costing', tone), 'deliverable')} ${word}`,
       };
     if (budget?.tone === tone)
       return {
@@ -58,96 +58,85 @@ function Chip({ tone, label }) {
   );
 }
 
-function barWidth(spent, amount) {
-  if (amount == null) return 0;
-  if (amount <= 0) return spent > 0 ? 100 : 0;
-  return Math.min(100, Math.max(0, (spent / amount) * 100));
+const pctOf = (part, total) =>
+  total > 0 ? Math.min(100, Math.max(0, (part / total) * 100)) : 0;
+
+// Your usage against an amount: a filled bar and, once over, the part past
+// the amount hatched.
+function UsageBar({ spent, amount }) {
+  if (amount == null) return null;
+  const over = spent > amount,
+    within = over
+      ? pctOf(amount, spent)
+      : amount > 0
+        ? pctOf(spent, amount)
+        : 0;
+  return (
+    <span className="fin-bar" aria-hidden="true">
+      <i style={{ width: `${within}%` }} />
+      {over && <i className="is-past" style={{ width: `${100 - within}%` }} />}
+    </span>
+  );
 }
 
-// A costing (or the lead phase / budget): what's left in bold, a bar, then
-// spent of amount.
-function LeadRow({ name, level, spent, amount, pct, tone, hasRate }) {
-  const left = amount == null ? null : amount - spent;
+// A deliverable (costing): your usage in bold, or how far over, a bar, then
+// days · costed amount · percent. Never what is left.
+function DeliverableRow({ row, level, hasRate }) {
+  const over = hasRate && row.amount != null && row.spent > row.amount;
   return (
-    <li className={`fin-lead-row tone-${tone}`}>
+    <li
+      className={`fin-lead-row tone-${row.status.tone}${over ? ' is-over' : ''}`}
+    >
       <span className="fin-lead-head">
         <span className="fin-lead-name">
-          {name}
+          {row.name}
           {level && <span className="fin-level">{level}</span>}
         </span>
-        <b
-          className={`fin-lead-left fin-num${left != null && left < 0 ? ' over-text' : ''}`}
-        >
-          {!hasRate ? '—' : left == null ? whole(spent) : leftText(left)}
+        <b className={`fin-lead-left fin-num${over ? ' over-text' : ''}`}>
+          {!hasRate
+            ? '—'
+            : over
+              ? `${whole(row.spent - row.amount)} over`
+              : `${whole(row.spent)} used`}
         </b>
       </span>
-      {hasRate && amount != null && (
-        <span className="fin-bar" aria-hidden="true">
-          <i style={{ width: `${barWidth(spent, amount)}%` }} />
-        </span>
-      )}
+      {hasRate && <UsageBar spent={row.spent} amount={row.amount} />}
       <small className="fin-num">
-        {amount == null
-          ? hasRate
-            ? 'No amount set'
-            : 'No rate'
-          : hasRate
-            ? `${whole(spent)} of ${whole(amount)} · ${formatPercent(pct)}`
-            : `${whole(amount)} · no rate`}
+        <b>{formatDays(row.days)}</b>
+        {' · '}
+        {row.amount == null
+          ? 'No amount set'
+          : [
+              over && `${whole(row.spent)} used`,
+              `${whole(row.amount)} costed`,
+              hasRate ? formatPercent(row.pct) : 'no rate',
+            ]
+              .filter(Boolean)
+              .join(' · ')}
       </small>
     </li>
   );
 }
 
-// A phase under the costings: name, a thin bar and spent / budget.
-function PhaseRow({ phase, hasRate }) {
+// A phase: its share of your own time on the project, in days and dollars.
+function PhaseRow({ phase, total, hasRate }) {
   return (
-    <li className={`fin-phase-row tone-${phase.status.tone}`}>
+    <li className="fin-phase-row">
       <span className="fin-phase-name">{phase.name}</span>
       <span className="fin-bar is-thin" aria-hidden="true">
-        {hasRate && phase.budget != null && (
-          <i style={{ width: `${barWidth(phase.spent, phase.budget)}%` }} />
-        )}
+        <i style={{ width: `${pctOf(phase.days, total)}%` }} />
       </span>
       <span className="fin-num fin-phase-of">
-        {hasRate ? whole(phase.spent) : '—'} /{' '}
-        {phase.budget == null ? '—' : whole(phase.budget)}
+        <b>{formatDays(phase.days)}</b>
+        {hasRate && ` · ${whole(phase.spent)}`}
       </span>
     </li>
   );
 }
 
-function LowBanner({ low }) {
-  const [title, text] =
-    low.reason === 'over'
-      ? [
-          'Project budget used up',
-          low.left < 0
-            ? `${whole(-low.left)} over budget.`
-            : 'Budget fully used.',
-        ]
-      : low.reason === 'near'
-        ? ['Project budget near its limit', `${whole(low.left)} left.`]
-        : [
-            'Plan goes over the project budget',
-            'The resourcing plan costs more than is left.',
-          ];
-  return (
-    <p className={`fin-low tone-${low.tone}`} role="note">
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M12 3 2 20h20z" />
-        <path d="M12 10v4M12 17v.5" />
-      </svg>
-      <span>
-        <b>{title}</b>
-        {text}
-      </span>
-    </p>
-  );
-}
-
-// One project's budget card: costings first, then phases, then the project
-// budget as one line unless it is low.
+// One project's Money card, built only from your own time: deliverables
+// first, then your time by phase, then what you have used of the project
+// budget.
 export default function FinancialsCard({
   item,
   project,
@@ -161,89 +150,34 @@ export default function FinancialsCard({
 }) {
   const [menu, setMenu] = useState(null);
   const attention = attentionItems(item);
-  const low = budgetLow(item);
   const head = headline(item, attention);
   const costings = item.activities.filter((a) => a.amount != null);
   const hasPhases = item.phases.length > 1;
-  const lead = costings.length
-    ? 'costings'
-    : hasPhases
-      ? 'phases'
-      : item.hasBudget
-        ? 'budget'
-        : null;
   const sum = (list, key) =>
     list.reduce((n, row) => n + Math.round((row[key] || 0) * 100), 0) / 100;
+  const budgetTone =
+    !item.hasRate || item.pct == null
+      ? 'tone-neutral'
+      : item.spent > item.budget
+        ? 'tone-red'
+        : item.pct >= BUDGET_NEAR
+          ? 'tone-amber'
+          : 'tone-green';
 
-  let leadLabel = null,
-    leadTotal = null,
-    rows = [];
-  if (lead === 'costings') {
-    leadLabel = 'Costings';
-    leadTotal = `${whole(sum(costings, 'spent'))} of ${whole(sum(costings, 'amount'))}`;
-    rows = item.activities.map((a) => ({
-      id: a.id,
-      name: a.name,
-      level: levelName(a.levelId),
-      spent: a.spent,
-      amount: a.amount,
-      pct: a.pct,
-      tone: a.status.tone,
-    }));
-  } else if (lead === 'phases') {
-    leadLabel = 'Phases';
-    leadTotal = item.hasBudget
-      ? `${whole(item.spent)} of ${whole(item.budget)}`
-      : null;
-    rows = item.phases.map((p) => ({
-      id: p.id,
-      name: p.name,
-      spent: p.spent,
-      amount: p.budget,
-      pct: p.pct,
-      tone: p.status.tone,
-    }));
-  } else if (lead === 'budget') {
-    leadLabel = 'Project budget';
-    rows = [
-      {
-        id: 'budget',
-        name: 'Whole project',
-        spent: item.spent,
-        amount: item.budget,
-        pct: item.pct,
-        tone: item.status.tone === 'yellow' ? 'amber' : item.status.tone,
-      },
-    ];
-  }
-
-  const budgetLine =
-    lead === 'budget'
-      ? 'No costings or phase budgets yet'
-      : item.hasBudget
-        ? `Project budget ${whole(item.budget)}${item.hasRate ? ` · ${leftText(item.remaining)}` : ''}`
-        : 'No project budget';
-  const records = item.history.records;
-  const recordItems = (list) =>
-    list.flatMap((record) => [
+  const menuItems = [
+    projectworksMenuItem(project, onAddLink),
+    ['Edit project', onEditProject],
+    null,
+    ['Add history', onAddHistory],
+    ...item.history.records.flatMap((record) => [
       [`Edit “${record.label}”`, () => onEditHistory(record.id)],
       [
         `Remove “${record.label}”`,
         () => onRemoveHistory(record.id),
         { danger: true },
       ],
-    ]);
-  const menuItems = [
-    projectworksMenuItem(project, onAddLink),
-    ['Edit project', onEditProject],
-    null,
-    ['Add history', onAddHistory],
-    ...recordItems(records),
+    ]),
   ];
-  const historyText = (amount, list) =>
-    item.hasRate || list.every((r) => r.unit === 'money')
-      ? whole(amount)
-      : `${Math.round(list.reduce((n, r) => n + (r.hours || 0), 0) * 100) / 100}h`;
 
   return (
     <li className="fin-card" style={{ '--pc': item.color || 'var(--muted)' }}>
@@ -264,56 +198,88 @@ export default function FinancialsCard({
         <Chip {...head} />
       </header>
 
-      {low && <LowBanner low={low} />}
-
-      {lead ? (
-        <section
-          className="fin-lead"
-          aria-label={`${item.name} ${leadLabel.toLowerCase()}`}
-        >
+      {costings.length > 0 && (
+        <section className="fin-lead" aria-label={`${item.name} deliverables`}>
           <h4>
-            {leadLabel}
-            {item.hasRate && leadTotal && (
-              <span className="fin-num">{leadTotal}</span>
+            Deliverables
+            {item.hasRate && (
+              <span className="fin-num">
+                {whole(sum(costings, 'spent'))} used of{' '}
+                {whole(sum(costings, 'amount'))}
+              </span>
             )}
           </h4>
           <ul>
-            {rows.map((row) => (
-              <LeadRow key={row.id} {...row} hasRate={item.hasRate} />
+            {item.activities.map((row) => (
+              <DeliverableRow
+                key={row.id}
+                row={row}
+                level={levelName(row.levelId)}
+                hasRate={item.hasRate}
+              />
             ))}
           </ul>
         </section>
-      ) : (
-        <p className="fin-muted">No costings or budget yet.</p>
       )}
 
-      {lead === 'costings' && hasPhases && (
-        <section className="fin-phases" aria-label={`${item.name} phases`}>
-          <h4>Phases</h4>
+      {hasPhases && (
+        <section
+          className="fin-phases"
+          aria-label={`${item.name} your time by phase`}
+        >
+          <h4>
+            Your time by phase
+            <span className="fin-num">
+              share of your {formatDays(item.days)}
+            </span>
+          </h4>
           <ul>
             {item.phases.map((phase) => (
-              <PhaseRow key={phase.id} phase={phase} hasRate={item.hasRate} />
+              <PhaseRow
+                key={phase.id}
+                phase={phase}
+                total={item.days}
+                hasRate={item.hasRate}
+              />
             ))}
           </ul>
         </section>
       )}
 
-      {item.bucketsExceedBudget && (
-        <p className="fin-muted over-text">
-          Phase budgets add up to more than the total.
+      {!costings.length && !hasPhases && (
+        <p className="fin-hint">
+          No deliverables or phases yet. Add costings in the project editor to
+          see your days against each one.
         </p>
       )}
 
-      <footer className="fin-card-foot">
-        <span>
-          {budgetLine}
-          {records.length > 0 && (
-            <small>
-              Includes {historyText(item.history.spent, records)} historical
-              usage
-            </small>
+      <section
+        className={`fin-own ${budgetTone}`}
+        aria-label={`${item.name} project budget`}
+      >
+        <h4>
+          Project budget
+          <span className="fin-num">
+            {item.hasBudget ? whole(item.budget) : 'No budget'}
+          </span>
+        </h4>
+        <span className="fin-lead-head">
+          <span className="fin-lead-name">
+            You’ve used {item.hasRate ? whole(item.spent) : '—'}
+          </span>
+          {item.hasRate && item.pct != null && (
+            <b className="fin-lead-left fin-num">{formatPercent(item.pct)}</b>
           )}
         </span>
+        {item.hasRate && item.hasBudget && (
+          <UsageBar spent={item.spent} amount={item.budget} />
+        )}
+        <small className="fin-num">
+          <b>{formatDays(item.days)}</b> logged by you
+        </small>
+      </section>
+
+      <footer className="fin-card-foot">
         <button type="button" className="fin-edit" onClick={onEditBudget}>
           Edit budget
         </button>

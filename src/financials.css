@@ -958,6 +958,12 @@ fieldset.activity-split {
 .costing-hint::before {
   content: '↳ ';
 }
+.costing-over {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--danger);
+}
 .costing-menu {
   display: grid;
   border: 1px solid var(--ink);
@@ -1173,47 +1179,49 @@ fieldset.activity-split {
   gap: 16px;
   padding: 16px 18px;
 }
-.fin-low {
-  display: flex;
-  gap: 10px;
-  margin: 0;
-  padding: 10px 12px;
-  border: 1px solid color-mix(in srgb, var(--tone) 45%, transparent);
-  border-radius: 4px;
-  background: var(--tone-bg);
-  font-size: 13px;
-  line-height: 1.4;
-}
-.fin-low svg {
-  flex: none;
-  width: 18px;
-  height: 18px;
-  margin-top: 1px;
-  fill: none;
-  stroke: var(--tone);
-  stroke-width: 2.2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.fin-low span {
-  display: grid;
-  gap: 2px;
-}
-.fin-low b {
-  font-size: 14px;
-}
 .fin-lead,
-.fin-phases {
+.fin-phases,
+.fin-own {
   display: grid;
   gap: 10px;
 }
-.fin-phases {
-  gap: 8px;
+.fin-phases,
+.fin-own {
   padding-top: 12px;
   border-top: 1px solid var(--border);
 }
+.fin-phases {
+  gap: 8px;
+}
+.fin-card > header + .fin-phases,
+.fin-card > header + .fin-own {
+  padding-top: 0;
+  border-top: 0;
+}
+.fin-own .fin-lead-left {
+  color: var(--tone);
+}
+.fin-own.tone-green .fin-lead-left,
+.fin-own.tone-neutral .fin-lead-left {
+  color: var(--ink);
+}
+.fin-own small b,
+.fin-lead-row small b,
+.fin-phase-of b {
+  font-weight: 600;
+  color: var(--ink);
+}
+.fin-hint {
+  margin: 0;
+  padding: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
 .fin-lead h4,
-.fin-phases h4 {
+.fin-phases h4,
+.fin-own h4 {
   display: flex;
   justify-content: space-between;
   gap: 8px;
@@ -1224,7 +1232,9 @@ fieldset.activity-split {
   text-transform: uppercase;
   color: var(--muted);
 }
-.fin-lead h4 span {
+.fin-lead h4 span,
+.fin-phases h4 span,
+.fin-own h4 span {
   font-size: 12px;
   font-weight: 500;
   letter-spacing: 0;
@@ -1265,12 +1275,21 @@ fieldset.activity-split {
 .fin-lead-row.tone-amber .fin-lead-left {
   color: var(--fin-amber);
 }
-.fin-lead-row small {
+.fin-lead-row small,
+.fin-own small {
   font-size: 12px;
   color: var(--muted);
 }
+/* A deliverable over its costing: a red wash, and the part of the bar past
+   the costing hatched. */
+.fin-lead-row.is-over {
+  margin: -10px;
+  padding: 10px;
+  border-radius: 4px;
+  background: var(--fin-red-bg);
+}
 .fin-bar {
-  display: block;
+  display: flex;
   height: 10px;
   border-radius: 2px;
   background: var(--surface-3);
@@ -1281,8 +1300,19 @@ fieldset.activity-split {
 }
 .fin-bar i {
   display: block;
+  flex: none;
   height: 100%;
-  background: var(--tone);
+  background: var(--tone, var(--ink));
+}
+.fin-bar i.is-past {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--tone) 0 3px,
+    transparent 3px 6px
+  );
+}
+.fin-phase-row .fin-bar i {
+  background: var(--ink);
 }
 .fin-phase-row {
   display: grid;
@@ -1304,6 +1334,7 @@ fieldset.activity-split {
 .fin-card-foot {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: 8px 10px;
   margin-top: auto;
@@ -1311,11 +1342,6 @@ fieldset.activity-split {
   border-top: 1px solid var(--border);
   font-size: 13px;
   color: var(--muted);
-}
-.fin-card-foot > span {
-  display: grid;
-  flex: 1;
-  min-width: 160px;
 }
 .fin-card-foot .fin-edit,
 .fin-more-button {

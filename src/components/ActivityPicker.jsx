@@ -8,6 +8,7 @@ import { entryActivityTag } from '../lib/entryNotes.js';
 import { isGeneralTask } from '../lib/tasks.js';
 import {
   commitSplitRows,
+  formatMoney,
   normaliseActivities,
   splitEditorRows,
 } from '../lib/budget.js';
@@ -34,6 +35,10 @@ export default function ActivityPicker({
   // A grouped review row tags several entries with different hours, so a
   // split (typed against one entry's hours) is not offered there.
   canSplit = true,
+  // { activityId: dollars over } for costings already over their amount (the
+  // Money card's figure). An entry on one shows a red line; it never blocks
+  // saving.
+  overages = null,
 }) {
   const levels = useContext(LevelsContext);
   const id = useId(),
@@ -187,6 +192,14 @@ export default function ActivityPicker({
           ▾
         </span>
       </button>
+      {keys
+        .filter((key) => overages?.[key] > 0)
+        .map((key) => (
+          <p key={key} className="costing-over" role="status">
+            {formatMoney(overages[key], { whole: true })} over{' '}
+            {keys.length > 1 ? nameOf(key) : 'this costing'}
+          </p>
+        ))}
       {gentle && hint && !open && !rows && (
         <p className="costing-hint">
           Went to General — pick a costing?

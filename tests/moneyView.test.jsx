@@ -64,33 +64,92 @@ const show = (props = {}) =>
     />,
   );
 
-test('the card leads with a bar per costing and flags a project budget 80%+ used', () => {
+test('the card shows only your usage: deliverables, then what you used of the budget', () => {
   show();
   const card = screen
-    .getByRole('region', { name: 'Northwind costings' })
+    .getByRole('region', { name: 'Northwind deliverables' })
     .closest('li.fin-card');
-  const rows = within(card).getAllByRole('listitem');
+  const rows = within(
+    screen.getByRole('region', { name: 'Northwind deliverables' }),
+  ).getAllByRole('listitem');
   expect(
     rows.map((row) => row.querySelector('.fin-lead-name')?.textContent),
   ).toEqual(['Governance framework', 'Policy workshops', 'Adoption reporting']);
+  // Over: how far over, a red wash and the part past the costing hatched.
   expect(rows[0].textContent).toContain('$1,860 over');
-  expect(rows[1].textContent).toContain('$3,960 left');
-  expect(within(card).getByRole('note').textContent).toMatch(
-    /Project budget near its limit/,
+  expect(rows[0].textContent).toContain(
+    '8.7 days · $13,860 used · $12,000 costed · 116%',
   );
-  expect(card.textContent).toContain('1 costing over');
-  expect(card.textContent).toContain('Includes $25,200 historical usage');
-  // No portfolio totals in the headline strip.
+  expect(rows[0].classList.contains('is-over')).toBe(true);
+  expect(rows[0].querySelector('.fin-bar i.is-past')).toBeTruthy();
+  // Under: usage, never what is left.
+  expect(rows[1].textContent).toContain('$5,040 used');
+  expect(rows[1].textContent).toContain('3.2 days · $9,000 costed · 56%');
+  expect(card.textContent).not.toMatch(/left/);
+  expect(card.textContent).toContain('$21,840 used of $28,000');
+  const own = screen.getByRole('region', { name: 'Northwind project budget' });
+  expect(own.textContent).toContain('You’ve used $25,200');
+  expect(own.textContent).toContain('84%');
+  expect(own.textContent).toContain('15.8 days logged by you');
+  // No banner, no history footer line: the chip and sidebar carry the state.
+  expect(within(card).queryByRole('note')).toBeNull();
+  expect(card.textContent).not.toContain('historical usage');
+  expect(card.textContent).toContain('1 deliverable over');
+  // The headline strip: four tiles, no rate sub-line, no subtitle.
   expect(screen.queryByText('Remaining budget')).toBeNull();
-  expect(screen.getByText('Low project budgets')).toBeTruthy();
+  expect(screen.getByText('Project budgets to watch')).toBeTruthy();
+  expect(screen.queryByText(/× \$210/)).toBeNull();
+  expect(screen.queryByText(/projects tracked/)).toBeNull();
+});
+
+test('phases show your share of your own time, and an empty card says what to add', () => {
+  show({
+    projects: [
+      {
+        ...base,
+        id: 'c',
+        name: 'Contoso',
+        budget: 20000,
+        phaseBudgets: { t: 5000 },
+        tasks: [
+          { id: 'general', name: 'General' },
+          { id: 't', name: 'Training' },
+        ],
+        entries: { [W]: { 0: 7.6 } },
+        taskEntries: { t: { [W]: { 1: 7.6, 2: 15.2 } } },
+      },
+      { ...base, id: 'e', name: 'Empty', budget: 1000, tasks: [] },
+    ],
+    settings: {
+      hourlyRate: 100,
+      leaveWeeks: {},
+      capacityByDay: [7.6, 7.6, 7.6, 7.6, 7.6, 0, 0],
+    },
+  });
+  const phases = screen.getByRole('region', {
+    name: 'Contoso your time by phase',
+  });
+  expect(phases.textContent).toContain('share of your 4 days');
+  const [general, training] = within(phases).getAllByRole('listitem');
+  expect(general.textContent).toContain('1 day · $760');
+  expect(training.textContent).toContain('3 days · $2,280');
+  // The bar is the share of your own time, not the phase budget.
+  expect(training.querySelector('.fin-bar i').style.width).toBe('75%');
+  const empty = screen
+    .getByRole('region', { name: 'Empty project budget' })
+    .closest('li.fin-card');
+  expect(empty.textContent).toContain('No deliverables or phases yet.');
 });
 
 test('the sidebar lists the items themselves, and history lives in the ⋯ menu', () => {
   const onRemoveHistory = vi.fn();
   show({ onRemoveHistory });
   const side = screen.getByRole('complementary', { name: 'Needs attention' });
-  expect(side.textContent).toContain('Governance framework');
-  expect(side.textContent).toContain('Project budget near its limit');
+  expect(side.textContent).toContain('Governance framework$1,860 over');
+  expect(side.textContent).toContain('Northwind84% used');
+  expect(side.textContent).toContain('Northwind · project budget');
+  expect(side.textContent).toContain('Northwind · deliverable');
+  expect(side.textContent).not.toMatch(/left/);
   expect(side.textContent).toContain('Presales');
   fireEvent.click(screen.getByRole('button', { name: 'More for Northwind' }));
   fireEvent.click(
@@ -163,10 +222,10 @@ test('costings show their level and other people’s history is ignored', () => 
     ],
   });
   const card = screen
-    .getByRole('region', { name: 'Northwind costings' })
+    .getByRole('region', { name: 'Northwind deliverables' })
     .closest('li.fin-card');
   expect(card.querySelector('.fin-level').textContent).toBe('Certified');
-  expect(card.textContent).toContain('Includes $25,200 historical usage');
+  expect(card.textContent).toContain('You’ve used $25,200');
   expect(card.textContent).not.toContain('other people');
   const side = screen.getByRole('complementary', { name: 'Needs attention' });
   expect(side.textContent).toContain('Governance framework · Certified');

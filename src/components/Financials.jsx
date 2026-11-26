@@ -2,11 +2,9 @@ import { useMemo, useState } from 'react';
 import {
   attentionItems,
   financialsOverview,
-  formatLeft as leftText,
   formatMoney,
   formatPercent,
   rateLevelsOf,
-  tightestItem,
   toCents,
   weekCostRows,
 } from '../lib/budget.js';
@@ -20,16 +18,18 @@ import RowMenu from './RowMenu.jsx';
 import { projectworksMenuItem } from './projectMenu.js';
 
 const KIND_LABELS = {
-  costing: 'costing',
+  costing: 'deliverable',
   phase: 'phase',
   budget: 'project budget',
 };
-const BUDGET_TITLES = {
-  short: 'Project budget low',
-  over: 'Project budget used up',
-  near: 'Project budget near its limit',
-  plan: 'Plan goes over budget',
-};
+
+// Usage, never what is left: "$1,860 over" once past it, else "81% used".
+function usageText(entry) {
+  if (entry.left < 0)
+    return `${formatMoney(-entry.left, { whole: true })} over`;
+  if (entry.reason === 'plan') return 'Plan over budget';
+  return `${formatPercent(entry.pct)} used`;
+}
 
 // A headline tile: how many things of one kind are near or over, with the
 // worst two named. Colour always comes with a word.
@@ -55,7 +55,7 @@ function WatchTile({ label, hasRate, items, empty }) {
               <i aria-hidden="true" />
               <span>
                 <b>{item.kind === 'budget' ? item.project.name : item.name}</b>{' '}
-                {leftText(item.left)}
+                {usageText(item)}
               </span>
             </li>
           ))
@@ -168,25 +168,13 @@ export default function Financials({
     [projects, settings, week, includeArchived],
   );
   const byId = new Map(projects.map((project) => [project.id, project]));
-  const rated = new Set(
-    overview.projects.filter((item) => item.hasRate).map((item) => item.id),
-  );
-  const { hasRate, rate } = overview;
-  const rateText = overview.mixedRates
-    ? 'project rates'
-    : `${formatMoney(rate ?? overview.projects.find((item) => item.hasRate)?.rate)}/h`;
+  const { hasRate } = overview;
 
   // Headline numbers.
   const weekCost = sumMoney(
       weekProjects.flatMap(({ rows }) => rows),
       (row) => row.cost,
     ),
-    // Only hours on projects with a rate are costed, so only they are
-    // counted in "Xh × rate".
-    weekHours = weekProjects
-      .filter(({ project }) => rated.has(project.id))
-      .flatMap(({ rows }) => rows)
-      .reduce((sum, row) => sum + row.hours, 0),
     weekPlanCost = sumMoney(overview.projects, (item) =>
       item.hasRate && isVisible(byId.get(item.id), week)
         ? (item.forecast.thisWeekHours || 0) * item.rate
@@ -210,7 +198,7 @@ export default function Financials({
   );
   const flagged = new Set(attention.map((entry) => entry.project.id));
   const onTrack = tracked.filter(
-    (item) => item.hasRate && !flagged.has(item.id) && tightestItem(item),
+    (item) => item.hasRate && !flagged.has(item.id),
   );
   const untracked = overview.projects.filter(
     (item) => !item.hasRate || !tracked.includes(item),
@@ -224,7 +212,7 @@ export default function Financials({
   const levelName = (levelId) => (levelId && levels.get(levelId)) || null;
   // A costing in Needs attention carries its level: "Workshops · Certified".
   const attentionTitle = (entry) => {
-    if (entry.kind === 'budget') return BUDGET_TITLES[entry.reason];
+    if (entry.kind === 'budget') return entry.project.name;
     const level =
       entry.kind === 'costing' &&
       levelName(
@@ -277,8 +265,8 @@ export default function Financials({
               }}
             />
           </div>
-          <p className="readout-note">
-            {!hasRate ? (
+          {!hasRate && (
+            <p className="readout-note">
               <button
                 type="button"
                 className="link"
@@ -286,14 +274,8 @@ export default function Financials({
               >
                 Set your hourly rate →
               </button>
-            ) : (
-              <>
-                <b>{Math.round(weekHours * 100) / 100}h</b> × {rateText}
-                {weekPlanCost > 0 &&
-                  ` · plan ${formatMoney(weekPlanCost, { whole: true })}`}
-              </>
-            )}
-          </p>
+            </p>
+          )}
         </article>
         <WatchTile
           label="Costings to watch"
@@ -308,7 +290,7 @@ export default function Financials({
           empty="All phases under 80%"
         />
         <WatchTile
-          label="Low project budgets"
+          label="Project budgets to watch"
           hasRate={hasRate}
           items={ofKind('budget')}
           empty="All budgets under 80%"
@@ -319,10 +301,6 @@ export default function Financials({
         <div className="sheet-toolbar fin-toolbar">
           <div>
             <h2 id="financials-title">Budgets</h2>
-            <span>
-              {tracked.length} of {overview.projects.length} projects tracked
-              {hasRate && ` · ${rateText}`}
-            </span>
           </div>
           <button
             type="button"
@@ -463,7 +441,7 @@ export default function Financials({
                   <SideItem
                     key={`${entry.project.id}-${entry.kind}-${entry.id}`}
                     title={attentionTitle(entry)}
-                    value={leftText(entry.left)}
+                    value={usageText(entry)}
                     tone={tone}
                     project={entry.project}
                     kind={KIND_LABELS[entry.kind]}
@@ -480,24 +458,21 @@ export default function Financials({
               On track
               <span>{onTrack.length}</span>
             </h3>
-            {onTrack.map((item) => {
-              const tight = tightestItem(item);
-              return (
-                <SideItem
-                  key={item.id}
-                  title={item.name}
-                  value={`${formatPercent(tight.pct)} used`}
-                  project={item}
-                  kind={
-                    tight.kind === 'budget'
-                      ? 'project budget'
-                      : `fullest: ${tight.name}`
-                  }
-                  onClick={() => onEditProject(byId.get(item.id))}
-                  onMenu={openSideMenu(item)}
-                />
-              );
-            })}
+            {onTrack.map((item) => (
+              <SideItem
+                key={item.id}
+                title={item.name}
+                value={
+                  item.hasBudget
+                    ? `${formatPercent(item.pct)} used`
+                    : `${formatMoney(item.spent, { whole: true })} used`
+                }
+                project={item}
+                kind="project budget"
+                onClick={() => onEditProject(byId.get(item.id))}
+                onMenu={openSideMenu(item)}
+              />
+            ))}
           </section>
         )}
         {untracked.length > 0 && (
