@@ -29,3 +29,9 @@
 ## Delivery
 
 Run `npm test && npm run lint && npm run build` before opening any PR. Every task ends with its PR merged into `main`.
+
+## GitHub Pages deploys
+
+- Keep `.github/workflows/pages.yml` as two jobs: `build` (checkout, `npm ci`, build, `configure-pages`, `upload-pages-artifact`) and `deploy` (`needs: build`, only `deploy-pages`). Never fold the upload and `deploy-pages` back into one job: the Actions artifact API lags the upload by a few seconds, so `deploy-pages` in the same job fails with `No artifacts named "github-pages" were found`.
+- If a deploy still fails, re-run only the failed `deploy` job (`gh api -X POST repos/hamishe2/timemaster/actions/runs/{run_id}/rerun-failed-jobs`). Don't re-run the `build` job or the whole run: a re-run that uploads again leaves two `github-pages` artifacts on the run and fails with `Multiple artifacts named "github-pages"`. A fresh `workflow_dispatch` run is also fine.
+- After a PR merges, check the `Deploy to GitHub Pages` run on `main` succeeded before calling the task done.
