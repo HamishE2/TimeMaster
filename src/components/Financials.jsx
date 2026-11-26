@@ -255,16 +255,20 @@ export default function Financials({
           <strong className="readout-value">
             {hasRate ? <TickMoney value={weekCost} /> : '—'}
           </strong>
-          <div
-            className={`readout-meter ${weekPlanCost > 0 && weekCost > weekPlanCost ? 'excess' : ''}`}
-            aria-hidden="true"
-          >
-            <i
-              style={{
-                width: `${weekPlanCost > 0 ? Math.min(100, (weekCost / weekPlanCost) * 100) : weekCost > 0 ? 100 : 0}%`,
-              }}
-            />
-          </div>
+          {/* Only against a plan: with no resourced hours there is nothing
+              to measure the week's cost against. */}
+          {hasRate && weekPlanCost > 0 && (
+            <div
+              className={`readout-meter ${weekCost > weekPlanCost ? 'excess' : ''}`}
+              aria-hidden="true"
+            >
+              <i
+                style={{
+                  width: `${Math.min(100, (weekCost / weekPlanCost) * 100)}%`,
+                }}
+              />
+            </div>
+          )}
           {!hasRate && (
             <p className="readout-note">
               <button
