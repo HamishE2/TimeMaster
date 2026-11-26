@@ -233,3 +233,14 @@ test('costings show their level and other people’s history is ignored', () => 
   expect(screen.queryByText('Other people')).toBeNull();
   expect(screen.queryByText(/Remove “Team”/)).toBeNull();
 });
+
+test('Cost this week only draws a bar against a resourcing plan', () => {
+  const logged = { ...presales, entries: { [W]: { 0: 2 } } };
+  show({ projects: [logged] });
+  const tile = document.querySelector('.fin-readouts article');
+  expect(tile.querySelector('.readout-meter')).toBeNull();
+  cleanup();
+  show({ projects: [{ ...logged, resourcedHours: 10 }] });
+  const planned = document.querySelector('.fin-readouts article');
+  expect(planned.querySelector('.readout-meter i').style.width).toBe('20%');
+});
