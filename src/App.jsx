@@ -80,6 +80,7 @@ import { LevelsContext } from './components/levelsContext.js';
 import { setActivityTagRecord } from './lib/entryNotes.js';
 import {
   applyProjectFinance,
+  costingOverages,
   removeHistoricalUsageRecord,
   setHistoricalUsageRecord,
   hourlyRateOf,
@@ -1423,6 +1424,15 @@ export default function App() {
                       <ActivityPicker
                         {...entry}
                         compact
+                        overages={
+                          entry.project.activities?.length
+                            ? costingOverages(
+                                entry.project,
+                                data.settings,
+                                entry.week,
+                              )
+                            : null
+                        }
                         onTag={(activityId) =>
                           tagEntryActivity(
                             { ...entry, projectId: entry.project.id },

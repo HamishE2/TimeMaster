@@ -1199,6 +1199,26 @@ export function financialsOverview(
   };
 }
 
+// "3.5 days", "1 day", "0 days": consultant days to one decimal.
+export function formatDays(days) {
+  const value = Math.round((Number(days) || 0) * 10) / 10;
+  const text = Number.isInteger(value) ? String(value) : value.toFixed(1);
+  return `${text} ${value === 1 ? 'day' : 'days'}`;
+}
+
+// How far each costing on a project is over its amount, in dollars:
+// { activityId: overBy } for the costings that are over. The same figure the
+// Money card shows; empty without a rate.
+export function costingOverages(project, settings = {}, week) {
+  const item = projectFinance(project, settings, week);
+  if (!item.hasRate) return {};
+  return Object.fromEntries(
+    item.activities
+      .filter((row) => row.amount != null && row.remaining < 0)
+      .map((row) => [row.id, -row.remaining]),
+  );
+}
+
 // "$1,200 left" or "$450 over", in whole dollars.
 export const formatLeft = (left) =>
   left < 0
@@ -1262,33 +1282,6 @@ export function attentionItems(item) {
   return items.sort(
     (a, b) => rank[a.tone] - rank[b.tone] || (b.pct ?? 0) - (a.pct ?? 0),
   );
-}
-
-// The fullest costing or phase on a project (or its budget when it has
-// neither), for the "On track" list.
-export function tightestItem(item) {
-  if (!item.hasRate) return null;
-  const rows = [
-    ...item.activities
-      .filter((row) => row.amount != null)
-      .map((row) => ({ kind: 'costing', row, amount: row.amount })),
-    ...(item.phases.length > 1 ? item.phases : [])
-      .filter((row) => row.budget != null)
-      .map((row) => ({ kind: 'phase', row, amount: row.budget })),
-  ];
-  if (!rows.length)
-    return item.hasBudget
-      ? { kind: 'budget', name: item.name, pct: item.pct, left: item.remaining }
-      : null;
-  const best = rows.reduce((a, b) =>
-    (b.row.pct ?? 0) > (a.row.pct ?? 0) ? b : a,
-  );
-  return {
-    kind: best.kind,
-    name: best.row.name,
-    pct: best.row.pct,
-    left: roundMoney(best.amount - best.row.spent),
-  };
 }
 
 // Editable text draft of a project's financial fields for the project editor.

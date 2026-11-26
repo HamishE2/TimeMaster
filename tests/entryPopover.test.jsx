@@ -57,3 +57,29 @@ test('Fill tops up the whole day, not only the projects a search shows', async (
   const [audit, build] = latest().projects;
   expect(audit.entries[week][0] + build.entries[week][0]).toBeCloseTo(7.6, 9);
 });
+
+test('an entry on a costing that is over shows the Money card’s overage and still saves', async () => {
+  const data = session().data;
+  data.settings.hourlyRate = 100;
+  data.projects[0] = {
+    ...data.projects[0],
+    budget: 10000,
+    activities: [{ id: 'qrg', name: 'QRGs', amount: 500 }],
+    entries: { [week]: { 0: 2, 1: 4 } },
+    activityTags: { general: { [week]: { 0: 'qrg', 1: 'qrg' } } },
+  };
+  loadSessionFromIdb.mockResolvedValue({ weekKey: week, data });
+  render(<App />);
+  // 6h at $100 = $600 against a $500 costing: $100 over, the same as the card.
+  fireEvent.focus(await cellFor('Audit, General, Monday'));
+  const card = document.querySelector('.entry-popover');
+  expect(card.querySelector('.costing-over').textContent).toBe(
+    '$100 over this costing',
+  );
+  // It never blocks saving.
+  const note = within(card).getByRole('textbox', { name: 'Entry note' });
+  fireEvent.change(note, { target: { value: 'QRG edits' } });
+  fireEvent.keyDown(note, { key: 'Enter' });
+  await act(async () => {});
+  expect(latest().projects[0].notes.general[week][0]).toBe('QRG edits');
+});
