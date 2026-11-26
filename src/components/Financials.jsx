@@ -170,16 +170,11 @@ export default function Financials({
   const byId = new Map(projects.map((project) => [project.id, project]));
   const { hasRate } = overview;
 
-  // Headline numbers.
+  // Headline number: the cost of the time logged this week.
   const weekCost = sumMoney(
-      weekProjects.flatMap(({ rows }) => rows),
-      (row) => row.cost,
-    ),
-    weekPlanCost = sumMoney(overview.projects, (item) =>
-      item.hasRate && isVisible(byId.get(item.id), week)
-        ? (item.forecast.thisWeekHours || 0) * item.rate
-        : 0,
-    );
+    weekProjects.flatMap(({ rows }) => rows),
+    (row) => row.cost,
+  );
   // Everything near or over, across projects, worst first. Totals across
   // projects are deliberately not shown: each costing stands on its own.
   const attention = overview.projects
@@ -255,20 +250,6 @@ export default function Financials({
           <strong className="readout-value">
             {hasRate ? <TickMoney value={weekCost} /> : '—'}
           </strong>
-          {/* Only against a plan: with no resourced hours there is nothing
-              to measure the week's cost against. */}
-          {hasRate && weekPlanCost > 0 && (
-            <div
-              className={`readout-meter ${weekCost > weekPlanCost ? 'excess' : ''}`}
-              aria-hidden="true"
-            >
-              <i
-                style={{
-                  width: `${Math.min(100, (weekCost / weekPlanCost) * 100)}%`,
-                }}
-              />
-            </div>
-          )}
           {!hasRate && (
             <p className="readout-note">
               <button
