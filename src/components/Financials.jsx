@@ -55,9 +55,7 @@ function WatchTile({ label, hasRate, items, empty }) {
               <i aria-hidden="true" />
               <span>
                 <b>{item.kind === 'budget' ? item.project.name : item.name}</b>{' '}
-                {item.kind === 'budget' && item.reason === 'short'
-                  ? `${formatMoney(-item.left, { whole: true })} short of costed work`
-                  : leftText(item.left)}
+                {leftText(item.left)}
               </span>
             </li>
           ))
@@ -307,13 +305,13 @@ export default function Financials({
           label="Phases to watch"
           hasRate={hasRate}
           items={ofKind('phase')}
-          empty="All phases under 75%"
+          empty="All phases under 80%"
         />
         <WatchTile
           label="Low project budgets"
           hasRate={hasRate}
           items={ofKind('budget')}
-          empty="Every budget covers its costed work"
+          empty="All budgets under 80%"
         />
       </div>
 
@@ -465,11 +463,7 @@ export default function Financials({
                   <SideItem
                     key={`${entry.project.id}-${entry.kind}-${entry.id}`}
                     title={attentionTitle(entry)}
-                    value={
-                      entry.reason === 'short'
-                        ? `${formatMoney(-entry.left, { whole: true })} short`
-                        : leftText(entry.left)
-                    }
+                    value={leftText(entry.left)}
                     tone={tone}
                     project={entry.project}
                     kind={KIND_LABELS[entry.kind]}
@@ -543,21 +537,10 @@ export default function Financials({
           key={historyForm.key || 'history'}
           projectId={historyForm.projectId}
           record={historyForm.record}
-          who={historyForm.who || null}
           onClose={() => setHistoryForm(null)}
-          onSave={(projectId, record, options) => {
+          onSave={(projectId, record) => {
             onSaveHistory(projectId, record);
-            // "Save and add…" starts a fresh form for the other kind of work.
-            setHistoryForm(
-              options?.addOther
-                ? {
-                    projectId,
-                    record: null,
-                    who: options.addOther,
-                    key: record.id,
-                  }
-                : null,
-            );
+            setHistoryForm(null);
           }}
         />
       )}

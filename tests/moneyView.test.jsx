@@ -19,8 +19,7 @@ const base = {
   weeklyOverrides: {},
   frontloads: {},
 };
-// $30k budget, $28k of costings; logged time leaves $4,800 against $8,020 of
-// costed work still to do.
+// $30k budget, $28k of costings; $25,200 of your usage is 84% of the budget.
 const northwind = {
   ...base,
   id: 'n',
@@ -65,7 +64,7 @@ const show = (props = {}) =>
     />,
   );
 
-test('the card leads with a bar per costing and flags a low project budget', () => {
+test('the card leads with a bar per costing and flags a project budget 80%+ used', () => {
   show();
   const card = screen
     .getByRole('region', { name: 'Northwind costings' })
@@ -77,7 +76,7 @@ test('the card leads with a bar per costing and flags a low project budget', () 
   expect(rows[0].textContent).toContain('$1,860 over');
   expect(rows[1].textContent).toContain('$3,960 left');
   expect(within(card).getByRole('note').textContent).toMatch(
-    /Project budget low.*\$4,800 left, but \$8,020 of costed work/,
+    /Project budget near its limit/,
   );
   expect(card.textContent).toContain('1 costing over');
   expect(card.textContent).toContain('Includes $25,200 historical usage');
@@ -91,7 +90,7 @@ test('the sidebar lists the items themselves, and history lives in the ⋯ menu'
   show({ onRemoveHistory });
   const side = screen.getByRole('complementary', { name: 'Needs attention' });
   expect(side.textContent).toContain('Governance framework');
-  expect(side.textContent).toContain('Project budget low');
+  expect(side.textContent).toContain('Project budget near its limit');
   expect(side.textContent).toContain('Presales');
   fireEvent.click(screen.getByRole('button', { name: 'More for Northwind' }));
   fireEvent.click(
@@ -135,7 +134,7 @@ test('every Needs attention project has a ⋯ menu with its Projectworks link', 
   open.mockRestore();
 });
 
-test('costings show their level and history is split into yours and other people’s', () => {
+test('costings show their level and other people’s history is ignored', () => {
   show({
     settings: {
       hourlyRate: 210,
@@ -167,11 +166,11 @@ test('costings show their level and history is split into yours and other people
     .getByRole('region', { name: 'Northwind costings' })
     .closest('li.fin-card');
   expect(card.querySelector('.fin-level').textContent).toBe('Certified');
-  expect(card.textContent).toContain(
-    'Includes historical usage: $25,200 yours · $1,000 other people',
-  );
+  expect(card.textContent).toContain('Includes $25,200 historical usage');
+  expect(card.textContent).not.toContain('other people');
   const side = screen.getByRole('complementary', { name: 'Needs attention' });
   expect(side.textContent).toContain('Governance framework · Certified');
   fireEvent.click(screen.getByRole('button', { name: 'More for Northwind' }));
-  expect(screen.getByText('Other people')).toBeTruthy();
+  expect(screen.queryByText('Other people')).toBeNull();
+  expect(screen.queryByText(/Remove “Team”/)).toBeNull();
 });

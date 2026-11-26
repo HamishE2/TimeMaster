@@ -119,24 +119,19 @@ function PhaseRow({ phase, hasRate }) {
 
 function LowBanner({ low }) {
   const [title, text] =
-    low.reason === 'short'
+    low.reason === 'over'
       ? [
-          'Project budget low',
-          `${whole(Math.max(0, low.left))} left, but ${whole(low.workLeft)} of costed work is still to do.`,
+          'Project budget used up',
+          low.left < 0
+            ? `${whole(-low.left)} over budget.`
+            : 'Budget fully used.',
         ]
-      : low.reason === 'over'
-        ? [
-            'Project budget used up',
-            low.left < 0
-              ? `${whole(-low.left)} over budget.`
-              : 'Budget fully used.',
-          ]
-        : low.reason === 'near'
-          ? ['Project budget near its limit', `${whole(low.left)} left.`]
-          : [
-              'Plan goes over the project budget',
-              'The resourcing plan costs more than is left.',
-            ];
+      : low.reason === 'near'
+        ? ['Project budget near its limit', `${whole(low.left)} left.`]
+        : [
+            'Plan goes over the project budget',
+            'The resourcing plan costs more than is left.',
+          ];
   return (
     <p className={`fin-low tone-${low.tone}`} role="note">
       <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -238,21 +233,12 @@ export default function FinancialsCard({
         { danger: true },
       ],
     ]);
-  const mine = records.filter((record) => record.who !== 'others'),
-    theirs = records.filter((record) => record.who === 'others');
   const menuItems = [
     projectworksMenuItem(project, onAddLink),
     ['Edit project', onEditProject],
     null,
     ['Add history', onAddHistory],
-    ...(theirs.length
-      ? [
-          ...(mine.length ? [['Mine', null, { heading: true }]] : []),
-          ...recordItems(mine),
-          ['Other people', null, { heading: true }],
-          ...recordItems(theirs),
-        ]
-      : recordItems(records)),
+    ...recordItems(records),
   ];
   const historyText = (amount, list) =>
     item.hasRate || list.every((r) => r.unit === 'money')
@@ -321,21 +307,12 @@ export default function FinancialsCard({
       <footer className="fin-card-foot">
         <span>
           {budgetLine}
-          {records.length > 0 &&
-            (theirs.length ? (
-              <small>
-                Includes historical usage:{' '}
-                {mine.length > 0 && (
-                  <>{historyText(item.history.mine, mine)} yours · </>
-                )}
-                {historyText(item.history.others, theirs)} other people
-              </small>
-            ) : (
-              <small>
-                Includes {historyText(item.history.spent, records)} historical
-                usage
-              </small>
-            ))}
+          {records.length > 0 && (
+            <small>
+              Includes {historyText(item.history.spent, records)} historical
+              usage
+            </small>
+          )}
         </span>
         <button type="button" className="fin-edit" onClick={onEditBudget}>
           Edit budget

@@ -33,12 +33,9 @@ test('walks the steps with Next and Back and saves the breakdown', () => {
       onClose={() => {}}
     />,
   );
-  expect(screen.getByText('Step 1 of 4')).toBeTruthy();
+  expect(screen.getByText('Step 1 of 3')).toBeTruthy();
   fireEvent.click(screen.getByRole('radio', { name: /Contoso/ }));
-  expect(screen.getByText('Step 1 of 6')).toBeTruthy();
-  next();
-  // Your own work is the default.
-  expect(screen.getByRole('radio', { name: /Mine/ }).getAttribute('aria-checked')).toBe('true');
+  expect(screen.getByText('Step 1 of 5')).toBeTruthy();
   next();
   // An empty total stops on the step with an error.
   next();
@@ -55,9 +52,9 @@ test('walks the steps with Next and Back and saves the breakdown', () => {
   fireEvent.change(screen.getByLabelText('QRGs'), { target: { value: '12' } });
   expect(screen.getByRole('alert').textContent).toMatch(/2h more/);
   next();
-  expect(screen.getByText('Step 5 of 6')).toBeTruthy();
+  expect(screen.getByText('Step 4 of 5')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: '← Back' }));
-  expect(screen.getByText('Step 4 of 6')).toBeTruthy();
+  expect(screen.getByText('Step 3 of 5')).toBeTruthy();
   next();
   fireEvent.change(screen.getByLabelText('QRGs'), { target: { value: '3' } });
   next();
@@ -74,7 +71,7 @@ test('walks the steps with Next and Back and saves the breakdown', () => {
   });
 });
 
-test('other people’s hours can be costed at a level, and Save and add starts your own', () => {
+test('only your own time is recorded: no Whose work step or Save and add', () => {
   const onSave = vi.fn();
   render(
     <HistoricalUsageForm
@@ -91,24 +88,22 @@ test('other people’s hours can be costed at a level, and Save and add starts y
   );
   // Pills jump straight to a step; Check can't finish until every step is opened.
   fireEvent.click(screen.getByRole('button', { name: /^Check, not opened yet/ }));
-  expect(screen.getByText('Step 6 of 6')).toBeTruthy();
+  expect(screen.getByText('Step 5 of 5')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Add usage' }).disabled).toBe(true);
-  fireEvent.click(screen.getByRole('button', { name: /^Whose work, not opened yet/ }));
-  fireEvent.click(screen.getByRole('radio', { name: /Other people/ }));
-  next();
+  expect(screen.queryByRole('button', { name: /Whose work/ })).toBeNull();
+  expect(screen.queryByRole('button', { name: /Save and add/ })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: /^Amount, not opened yet/ }));
   fireEvent.change(screen.getByLabelText('Total hours'), {
     target: { value: '5' },
   });
-  fireEvent.click(screen.getByRole('radio', { name: /Certified/ }));
-  expect(screen.getByText(/at \$200(\.00)?\/h/).textContent).toMatch(/\$1,000/);
+  // Your hours are costed at the project rate, never a level.
+  expect(screen.queryByRole('radio', { name: /Certified/ })).toBeNull();
+  expect(screen.getByText(/at \$100(\.00)?\/h/).textContent).toMatch(/\$500/);
   next();
   next();
   next();
-  expect(screen.getByRole('button', { name: 'Add usage' }).disabled).toBe(false);
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Save and add my own usage' }),
-  );
-  const [, record, options] = onSave.mock.calls[0];
-  expect(record).toMatchObject({ who: 'others', levelId: 'cert', total: 5 });
-  expect(options).toEqual({ addOther: 'me' });
+  fireEvent.click(screen.getByRole('button', { name: 'Add usage' }));
+  const [, record] = onSave.mock.calls[0];
+  expect(record).toMatchObject({ total: 5 });
+  expect('who' in record).toBe(false);
 });
