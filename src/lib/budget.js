@@ -29,7 +29,7 @@ import {
 export const MONEY_MAX = 1_000_000_000;
 export const RATE_MAX = 100_000;
 // Spending at or past this share of a budget turns it amber.
-export const BUDGET_NEAR = 0.75;
+export const BUDGET_NEAR = 0.8;
 // Activities turn amber a little later, at 80% of their costing.
 export const ACTIVITY_NEAR = 0.8;
 // Open-ended projects are forecast over this many weeks.
@@ -749,7 +749,7 @@ export function projectFinance(project, settings = {}, week, options = {}) {
   }));
   // Historical usage (work done before it was logged here) counts towards
   // spend, phase buckets and costings, but not burn, the week or the review.
-  const history = historicalUsageParts(project, activities, rate, settings);
+  const history = historicalUsageParts(project, activities, rate);
   const entries = [...logged, ...history.entries];
   const leaveHours = projectEntries(project, { leaveWeeks, includeLeave: true })
     .filter((entry) => entry.onLeave)
@@ -757,6 +757,11 @@ export function projectFinance(project, settings = {}, week, options = {}) {
   const sum = (list, key) => list.reduce((n, item) => n + item[key], 0);
   const spentCents = sum(entries, 'cents'),
     hours = sum(entries, 'hours');
+  // Consultant days of your time: cost back to hours at the project rate,
+  // so usage entered in dollars counts too. Logged hours without a rate.
+  const perDay = hoursPerDay(settings);
+  const daysOf = (cents, hrs) =>
+    round2(hasRate ? cents / 100 / rate / perDay : hrs / perDay);
 
   // Phase buckets: budgeted phases draw from their own bucket; General and
   // phases without a bucket share the unallocated rest of the budget.
@@ -777,6 +782,7 @@ export function projectFinance(project, settings = {}, week, options = {}) {
       name: task.name,
       budget: fromCents(amountCents),
       hours: sum(list, 'hours'),
+      days: daysOf(cents, sum(list, 'hours')),
       spent: fromCents(cents),
       remaining: fromCents(amountCents - cents),
       pct: pctOf(cents, amountCents),
@@ -800,6 +806,7 @@ export function projectFinance(project, settings = {}, week, options = {}) {
         : 'General',
     budget: unallocatedCents == null ? null : fromCents(unallocatedCents),
     hours: sum(generalList, 'hours'),
+    days: daysOf(generalCents, sum(generalList, 'hours')),
     spent: fromCents(generalCents),
     remaining:
       unallocatedCents == null
@@ -852,6 +859,7 @@ export function projectFinance(project, settings = {}, week, options = {}) {
       entries: list.filter((share) => !share.entry.historical).length,
       historical: list.some((share) => share.entry.historical),
       hours: sum(list, 'hours'),
+      days: daysOf(cents, sum(list, 'hours')),
       bySource: bySource(list),
       spent: fromCents(cents),
       remaining: amountCents == null ? null : fromCents(amountCents - cents),
@@ -1003,6 +1011,8 @@ export function projectFinance(project, settings = {}, week, options = {}) {
     budget,
     hasBudget: budget != null,
     hours,
+    days: daysOf(spentCents, hours),
+    perDay,
     leaveHours,
     spent: fromCents(spentCents),
     remaining: remainingCents == null ? null : fromCents(remainingCents),
@@ -1025,16 +1035,6 @@ export function projectFinance(project, settings = {}, week, options = {}) {
       records: history.records,
       hours: sum(history.entries, 'hours'),
       spent: fromCents(sum(history.entries, 'cents')),
-      mine: fromCents(
-        history.records
-          .filter((record) => record.who !== 'others')
-          .reduce((n, record) => n + toCents(record.cost), 0),
-      ),
-      others: fromCents(
-        history.records
-          .filter((record) => record.who === 'others')
-          .reduce((n, record) => n + toCents(record.cost), 0),
-      ),
     },
     forecast: {
       ...forecast,
@@ -1205,38 +1205,15 @@ export const formatLeft = (left) =>
     ? `${formatMoney(-left, { whole: true })} over`
     : `${formatMoney(left, { whole: true })} left`;
 
-// What is still to do inside a project budget: the unspent part of its
-// costings and of its non-General phase budgets. Costed work is done inside
-// phases, so the two overlap; the larger of the two is counted, never both.
-export function committedWorkLeft(item) {
-  const unspent = (list) =>
-    list.reduce(
-      (cents, row) =>
-        row.amount == null && row.budget == null
-          ? cents
-          : cents +
-            Math.max(0, toCents(row.amount ?? row.budget) - toCents(row.spent)),
-      0,
-    );
-  const costings = unspent(item.activities || []),
-    phases = unspent(
-      (item.phases || []).filter((phase) => phase.id !== GENERAL_NOTE_ID),
-    );
-  return fromCents(Math.max(costings, phases));
-}
-
-// Whether a project budget is low: what is left will not cover the costed
-// work still to do, it is 75%+ used (or used up), or the resourcing plan
-// goes over it. Null when it is fine, or there is no budget or rate.
+// Whether a project budget needs a look: your own usage has used it up,
+// is 80%+ of it, or the resourcing plan goes over it. Null when it is fine,
+// or there is no budget or rate.
 export function budgetLow(item) {
   if (!item.hasRate || !item.hasBudget) return null;
   const left = item.remaining,
-    workLeft = committedWorkLeft(item),
-    shortBy = roundMoney(Math.max(0, workLeft - Math.max(0, left)));
-  const base = { left, workLeft, shortBy };
+    base = { left };
   if (left <= 0 || ['at', 'over'].includes(item.status.level))
     return { ...base, reason: 'over', tone: 'red' };
-  if (shortBy > 0) return { ...base, reason: 'short', tone: 'red' };
   if (item.status.level === 'soon' || item.pct >= BUDGET_NEAR)
     return { ...base, reason: 'near', tone: 'amber' };
   if (item.status.flags.resourcingOver)
@@ -1277,7 +1254,7 @@ export function attentionItems(item) {
       id: 'budget',
       name: item.name,
       tone: low.tone,
-      left: low.reason === 'short' ? -low.shortBy : low.left,
+      left: low.left,
       pct: item.pct,
       reason: low.reason,
     });
@@ -1491,7 +1468,9 @@ export function normaliseHistoricalUsage(list, project, activities = []) {
     activityIds = new Set(activities.map((activity) => activity.id)),
     seen = new Set();
   return list.flatMap((item, index) => {
-    if (!isPlainObject(item)) return [];
+    // Other people's work is not tracked: only your own time counts, so
+    // records of it (from older versions) are dropped.
+    if (!isPlainObject(item) || item.who === 'others') return [];
     const unit = item.unit === 'money' ? 'money' : 'hours';
     // A deleted phase's share moves to General; the total is never smaller
     // than what its phases add up to.
@@ -1531,18 +1510,6 @@ export function normaliseHistoricalUsage(list, project, activities = []) {
         total: fromCents(totalH),
         phases,
         activities: activityBreakdown,
-        // Whose work: your own (the default) or other people's. Other
-        // people's hours may be costed at one of the workspace's levels.
-        ...(item.who === 'others'
-          ? {
-              who: 'others',
-              ...(unit === 'hours' &&
-              typeof item.levelId === 'string' &&
-              item.levelId
-                ? { levelId: item.levelId }
-                : {}),
-            }
-          : {}),
       },
     ];
   });
@@ -1552,7 +1519,7 @@ export function normaliseHistoricalUsage(list, project, activities = []) {
 // in projectFinance. Hours are costed at the project's rate like logged time;
 // dollars are taken as given. Usage dated "up to" a day sits in that week on
 // the spend chart; undated usage comes before everything.
-function historicalUsageParts(project, activities, rate, settings = {}) {
+function historicalUsageParts(project, activities, rate) {
   const records = normaliseHistoricalUsage(
     project.historicalUsage,
     project,
@@ -1563,14 +1530,10 @@ function historicalUsageParts(project, activities, rate, settings = {}) {
     shares = [],
     summaries = [];
   for (const record of records) {
-    const recordRate =
-        record.who === 'others' && record.levelId
-          ? (levelOf(settings, record.levelId)?.rate ?? rate)
-          : rate,
-      cents =
+    const cents =
         record.unit === 'money'
           ? toCents(record.total)
-          : entryCents(record.total, recordRate),
+          : entryCents(record.total, rate),
       hoursOf = (value) => (record.unit === 'hours' ? value : 0),
       week = record.asOf ? weekKeyFor(record.asOf) : '',
       phaseCents = shareCents(record.phases, record.total, cents),
@@ -1600,7 +1563,6 @@ function historicalUsageParts(project, activities, rate, settings = {}) {
       });
     summaries.push({
       ...record,
-      who: record.who === 'others' ? 'others' : 'me',
       cost: fromCents(cents),
       hours: record.unit === 'hours' ? record.total : null,
     });
@@ -1646,8 +1608,6 @@ export function historicalDraftOf(record = null) {
     label: record?.label ?? HISTORY_DEFAULT_LABEL,
     asOf: record?.asOf || '',
     unit: record?.unit === 'money' ? 'money' : 'hours',
-    who: record?.who === 'others' ? 'others' : 'me',
-    levelId: record?.levelId || '',
     total: text(record?.total),
     phases: typed(record?.phases, GENERAL_NOTE_ID),
     activities: typed(record?.activities, NO_ACTIVITY_TAG),
@@ -1734,14 +1694,6 @@ export function validateHistoricalDraft(
         asOf: asOf || null,
         unit,
         total: total.value,
-        ...(draft.who === 'others'
-          ? {
-              who: 'others',
-              ...(unit === 'hours' && draft.levelId
-                ? { levelId: draft.levelId }
-                : {}),
-            }
-          : {}),
         phases: {
           ...phases.out,
           ...(phases.left > 0 ? { [GENERAL_NOTE_ID]: phases.left } : {}),
